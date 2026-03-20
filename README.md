@@ -10,7 +10,7 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 
 [![Overview Video](https://img.youtube.com/vi/GGuK4DPiEVw/0.jpg)](https://www.youtube.com/watch?v=GGuK4DPiEVw)
 
-## ⚙️ How to install nodes
+## ❓ How to install nodes
 
 - Navigate to your `/ComfyUI/custom_nodes/ folder`
 - Run `git clone https://github.com/WhatDreamscost/WhatDreamsCost-ComfyUI`
@@ -18,7 +18,7 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 ## 🔄 Recent Updates
 *Coming Soon*
 
-# Custom Nodes
+# ⚙️ Custom Nodes
 
 ## Multi Image Loader
 ![Multi_Image_Loader_GIF](https://github.com/user-attachments/assets/71924103-92a6-4c1e-b67a-064dcbcce781)
@@ -48,7 +48,7 @@ It also has a sync feature that syncs all LTX Keyframer nodes together in realti
 **I would recommend only using the LTX Sequencer Node as it is superior to this node after further testing**
 
 
-## Workflows
+## 💡 Workflows
 <img width="2720" height="930" alt="LTX IMG2VIDEO FIRST MIDDLE LAST FRAME 3 STAGE OPTIMIZED WORKFLOW" src="https://github.com/user-attachments/assets/f3d88150-973d-44e1-831c-881950166ae2" />
 
 This is a compact LTX 2.3 workflow for I2V and First Frame, Middle Frame, Last frame video generation.
@@ -58,7 +58,7 @@ Download workflows here: https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyU
 
 Or drag and drop image into ComfyUI to import workflow.
 
-## Additional Info
+## 💡 Additional Info
 
 I made these nodes knowing almost nothing about python and a beginner level knowledge of javascript. Feel free to suggest improvements, and if you run into any bugs let me know.
 

@@ -1,8 +1,8 @@
 {
   "id": "1143f409-9410-46d0-a303-318c1b2d0391",
   "revision": 0,
-  "last_node_id": 434,
-  "last_link_id": 1068,
+  "last_node_id": 437,
+  "last_link_id": 1070,
   "nodes": [
     {
       "id": 4,
@@ -16,7 +16,7 @@
         60
       ],
       "flags": {},
-      "order": 8,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
@@ -67,7 +67,7 @@
         440
       ],
       "flags": {},
-      "order": 11,
+      "order": 12,
       "mode": 0,
       "inputs": [
         {
@@ -109,7 +109,7 @@
         100
       ],
       "flags": {},
-      "order": 6,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {
@@ -200,7 +200,7 @@
         152
       ],
       "flags": {},
-      "order": 7,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
@@ -551,30 +551,6 @@
       "bgcolor": "#533"
     },
     {
-      "id": 15,
-      "type": "Note",
-      "pos": [
-        3550,
-        5800
-      ],
-      "size": [
-        210,
-        88
-      ],
-      "flags": {},
-      "order": 4,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "LTX Sequencer Note",
-      "properties": {},
-      "widgets_values": [
-        "Use one image at full strength for regular image to video.\n\nIf frame_insert is -1, it will be inserted at the last frame."
-      ],
-      "color": "#322",
-      "bgcolor": "#533"
-    },
-    {
       "id": 1,
       "type": "34d63160-e149-4935-ab1f-892ffe617fec",
       "pos": [
@@ -586,7 +562,7 @@
         114
       ],
       "flags": {},
-      "order": 10,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
@@ -652,7 +628,7 @@
         315.671875
       ],
       "flags": {},
-      "order": 9,
+      "order": 10,
       "mode": 0,
       "inputs": [
         {
@@ -739,6 +715,54 @@
       "bgcolor": "#000"
     },
     {
+      "id": 436,
+      "type": "MarkdownNote",
+      "pos": [
+        2680,
+        6160
+      ],
+      "size": [
+        370,
+        320
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "FAQ",
+      "properties": {},
+      "widgets_values": [
+        "# FAQ\n\n**How do I set the length of the video?**\n\nYou can set the length of the video under the Model Loader Subgraph →\n\n**I keep getting errors when running this workflow!**\n\nDouble check that all of the correct models loaded. This is using the newest version of 2x upscaler (v1.1). You can change it to the older one under the Model Loader.\n\n**When is the tutorial coming???**\n\nComing soon!\n\n"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 15,
+      "type": "Note",
+      "pos": [
+        3890,
+        5800
+      ],
+      "size": [
+        210,
+        88
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "LTX Sequencer Note",
+      "properties": {},
+      "widgets_values": [
+        "Use one image at full strength for regular image to video.\n\nIf frame_insert is -1, it will be inserted at the last frame."
+      ],
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
       "id": 10,
       "type": "958b2c7a-1f75-4a30-84a8-892bddb9e426",
       "pos": [
@@ -750,7 +774,7 @@
         550
       ],
       "flags": {},
-      "order": 5,
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
@@ -1054,8 +1078,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 33,
-          "lastNodeId": 434,
-          "lastLinkId": 1068,
+          "lastNodeId": 437,
+          "lastLinkId": 1070,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -1646,8 +1670,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 33,
-          "lastNodeId": 434,
-          "lastLinkId": 1068,
+          "lastNodeId": 437,
+          "lastLinkId": 1070,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -2155,8 +2179,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 33,
-          "lastNodeId": 434,
-          "lastLinkId": 1068,
+          "lastNodeId": 437,
+          "lastLinkId": 1070,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -3340,8 +3364,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 33,
-          "lastNodeId": 434,
-          "lastLinkId": 1068,
+          "lastNodeId": 437,
+          "lastLinkId": 1070,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -3774,8 +3798,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 33,
-          "lastNodeId": 434,
-          "lastLinkId": 1068,
+          "lastNodeId": 437,
+          "lastLinkId": 1070,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -5180,8 +5204,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 33,
-          "lastNodeId": 434,
-          "lastLinkId": 1068,
+          "lastNodeId": 437,
+          "lastLinkId": 1070,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -5192,7 +5216,7 @@
           "bounding": [
             2340,
             6080,
-            135.654296875,
+            135.15625,
             80
           ]
         },
@@ -5201,7 +5225,7 @@
           "bounding": [
             3560,
             5580,
-            215.142578125,
+            214.68814086914062,
             200
           ]
         },
@@ -5215,7 +5239,7 @@
             ],
             "label": "Prompt",
             "pos": [
-              2455.654296875,
+              2455.15625,
               6100
             ]
           },
@@ -5228,7 +5252,7 @@
             ],
             "label": "length (seconds)",
             "pos": [
-              2455.654296875,
+              2455.15625,
               6120
             ]
           }
@@ -5764,57 +5788,6 @@
             "bgcolor": "#000"
           },
           {
-            "id": 365,
-            "type": "07609e03-45f4-49c7-a233-a933ebf95094",
-            "pos": [
-              2880,
-              5640
-            ],
-            "size": [
-              210,
-              58
-            ],
-            "flags": {},
-            "order": 9,
-            "mode": 0,
-            "inputs": [
-              {
-                "label": "Seconds",
-                "name": "value",
-                "type": "INT",
-                "widget": {
-                  "name": "value"
-                },
-                "link": 1018
-              }
-            ],
-            "outputs": [
-              {
-                "localized_name": "INT",
-                "name": "INT",
-                "type": "INT",
-                "links": [
-                  729
-                ]
-              }
-            ],
-            "properties": {
-              "proxyWidgets": [
-                [
-                  "-1",
-                  "value"
-                ]
-              ],
-              "cnr_id": "comfy-core",
-              "ver": "0.16.4"
-            },
-            "widgets_values": [
-              5
-            ],
-            "color": "#222",
-            "bgcolor": "#000"
-          },
-          {
             "id": 364,
             "type": "RandomNoise",
             "pos": [
@@ -5865,6 +5838,57 @@
             "widgets_values": [
               0,
               "fixed"
+            ],
+            "color": "#222",
+            "bgcolor": "#000"
+          },
+          {
+            "id": 365,
+            "type": "07609e03-45f4-49c7-a233-a933ebf95094",
+            "pos": [
+              2880,
+              5640
+            ],
+            "size": [
+              210,
+              58
+            ],
+            "flags": {},
+            "order": 9,
+            "mode": 0,
+            "inputs": [
+              {
+                "label": "Seconds",
+                "name": "value",
+                "type": "INT",
+                "widget": {
+                  "name": "value"
+                },
+                "link": 1018
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "INT",
+                "name": "INT",
+                "type": "INT",
+                "links": [
+                  729
+                ]
+              }
+            ],
+            "properties": {
+              "proxyWidgets": [
+                [
+                  "-1",
+                  "value"
+                ]
+              ],
+              "cnr_id": "comfy-core",
+              "ver": "0.16.4"
+            },
+            "widgets_values": [
+              5
             ],
             "color": "#222",
             "bgcolor": "#000"
@@ -6002,8 +6026,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 33,
-          "lastNodeId": 434,
-          "lastLinkId": 1068,
+          "lastNodeId": 437,
+          "lastLinkId": 1070,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -6033,7 +6057,7 @@
             "name": "value",
             "type": "INT",
             "linkIds": [
-              362
+              1070
             ],
             "label": "Seconds",
             "pos": [
@@ -6173,7 +6197,7 @@
                 "widget": {
                   "name": "value"
                 },
-                "link": 362
+                "link": 1070
               }
             ],
             "outputs": [
@@ -6194,7 +6218,7 @@
             },
             "widgets_values": [
               5,
-              "randomize"
+              "fixed"
             ]
           }
         ],
@@ -6225,7 +6249,7 @@
             "type": "INT"
           },
           {
-            "id": 362,
+            "id": 1070,
             "origin_id": -10,
             "origin_slot": 0,
             "target_id": 139,
@@ -6242,8 +6266,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 33,
-          "lastNodeId": 434,
-          "lastLinkId": 1068,
+          "lastNodeId": 437,
+          "lastLinkId": 1070,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -7094,10 +7118,10 @@
     "VHS_MetadataImage": true,
     "VHS_KeepIntermediate": true,
     "ds": {
-      "scale": 0.83004094488189,
+      "scale": 1,
       "offset": [
-        -2511.4829853759234,
-        -5540.351563626499
+        -2742.877149125813,
+        -5602.752240706775
       ]
     }
   },

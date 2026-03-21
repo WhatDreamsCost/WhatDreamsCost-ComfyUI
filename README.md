@@ -18,6 +18,8 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 ## 🔄 Recent Updates
 I've updated the workflows to have less dependancies. I've removed the CacheDiT and IAMCCS vae decode nodes.
 
+# ⚙️ Custom Nodes
+
 ## Multi Image Loader
 ![Multi_Image_Loader_GIF](https://github.com/user-attachments/assets/71924103-92a6-4c1e-b67a-064dcbcce781)
 

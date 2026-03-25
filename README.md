@@ -14,11 +14,18 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 
 - Navigate to your `/ComfyUI/custom_nodes/ folder`
 - Run `git clone https://github.com/WhatDreamscost/WhatDreamsCost-ComfyUI`
+- Or download through the ComfyUI Manager.
 
-## 🔄 Recent Updates
-❗❗❗ **UPDATE YOUR WORKFLOWS** ❗❗❗
+# 🔄 Recent Updates
+* **v1.1.0**
+  * Added resize_method to the Multi Image Loader node for more resize options
+  * Added insert_mode which allows you to enter in seconds instead of frames on the LTX Sequencer node
+  * Updated workflows with more notes
+  * Re-added tiny vae to workflows
+  * Fixed various bugs
+  * more things i can't rememeber
 
-There are a couple issues with the original workflows (nodes that weren't registered, and the length randomzing every generation). I think i fixed everything now, and I cut out all of the extra unnecessary nodes.
+**This update will change the node layouts, so be sure to update your workflows or else they won't work properly.**
 
 # ⚙️ Custom Nodes
 
@@ -49,7 +56,7 @@ It also has a sync feature that syncs all LTX Keyframer nodes together in realti
 
 **I would recommend using the LTX Sequencer Node over this node, after further testing it seems superior in at pretty much everything. I'll leave it in just in case more people want to test it**
 
-## 💡 Workflows
+# 💡 Workflows
 <img width="3130" height="930" alt="LTX I2V First Last Frame 3 Stage Workflow v3" src="https://github.com/user-attachments/assets/de18a10b-6edf-4857-8eb1-cac1a6683923" />
 
 This is a compact LTX 2.3 workflow for I2V and First Frame, Middle Frame, Last frame video generation.
@@ -59,7 +66,7 @@ Download workflows here: https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyU
 
 Or drag and drop image into ComfyUI to import workflow.
 
-## ❗ Known Issues
+# ❗ Known Issues
 **Multi Image Loader**
 - Rearranging images sometimes gets finicky. I'll try and fix this soon. It may be due to my ComfyUI frontend not matching the backend.
 
@@ -68,7 +75,7 @@ Or drag and drop image into ComfyUI to import workflow.
 
 It may also be due to my ComfyUI frontend not matching the backend (that has been causing other issues with ComfyUI, still waiting for ComfyUI to fix the issues with latest version)
 
-## 💡 Additional Info
+# 💡 Additional Info
 
 I made these nodes knowing almost nothing about python and a beginner level knowledge of javascript. Feel free to suggest improvements, and if you run into any bugs let me know.
 

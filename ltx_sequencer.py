@@ -15,6 +15,10 @@ class LTXSequencer(LTXVAddGuide):
         ]
         
         inputs.append(io.Int.Input("num_images", default=1, min=0, max=50, step=1, display_name="images_loaded", tooltip="Select how many index/strength widgets to configure."))
+        
+        # New global settings widgets
+        inputs.append(io.Combo.Input("insert_mode", options=["frames", "seconds"], default="frames", tooltip="Select the method for determining insertion points."))
+        inputs.append(io.Int.Input("frame_rate", default=24, min=1, max=120, step=1, tooltip="Video FPS (used for calculating second insertions)."))
 
         for i in range(1, 51):  # 1 to 50 images
             inputs.extend([
@@ -24,7 +28,16 @@ class LTXSequencer(LTXVAddGuide):
                     min=-9999,
                     max=9999,
                     step=1,
-                    tooltip=f"Frame insert_frame for image {i} (in pixel space).",
+                    tooltip=f"Frame insert point for image {i} (in pixel space).",
+                    optional=True,
+                ),
+                io.Float.Input(
+                    f"insert_second_{i}",
+                    default=0.0,
+                    min=0.0,
+                    max=9999.0,
+                    step=0.1,
+                    tooltip=f"Second insert point for image {i}.",
                     optional=True,
                 ),
                 io.Float.Input(
@@ -42,7 +55,7 @@ class LTXSequencer(LTXVAddGuide):
             node_id="LTXSequencer",
             display_name="LTX Sequencer",
             category="LTXVCustom",
-            description="Add multiple guide images at specified frame indices with strengths. Number of widgets is dynamically configured.",
+            description="Add multiple guide images at specified frame indices or seconds with strengths. Number of widgets is dynamically configured.",
             inputs=inputs,
             outputs=[
                 io.Conditioning.Output(display_name="positive"),
@@ -72,6 +85,10 @@ class LTXSequencer(LTXVAddGuide):
         _, _, latent_length, latent_height, latent_width = latent_image.shape
         batch_size = multi_input.shape[0] if multi_input is not None else 0
 
+        # Retrieve selected insertion settings
+        insert_mode = kwargs.get("insert_mode", "frames")
+        frame_rate = kwargs.get("frame_rate", 24)
+
         # Process inputs up to num_images, extracting dynamic frame/strength values from kwargs
         for i in range(1, num_images + 1):
             # Skip if this image index exceeds the batch
@@ -82,9 +99,18 @@ class LTXSequencer(LTXVAddGuide):
             if img is None:
                 continue
 
-            f_idx = kwargs.get(f"insert_frame_{i}")
+            # Calculate the final frame index based on the chosen mode
+            f_idx = None
+            if insert_mode == "frames":
+                f_idx = kwargs.get(f"insert_frame_{i}")
+            elif insert_mode == "seconds":
+                sec = kwargs.get(f"insert_second_{i}")
+                if sec is not None:
+                    f_idx = int(sec * frame_rate)
+
             if f_idx is None:
                 continue
+                
             strength = kwargs.get(f"strength_{i}", 1.0)
 
             # Execution logic mirrored from LTXVAddGuideMulti

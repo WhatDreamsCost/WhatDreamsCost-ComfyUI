@@ -77,17 +77,28 @@ app.registerExtension({
         // Permanently neutralize the DOM widget's built-in computeSize to prevent infinite LiteGraph loops
         galleryWidget.computeSize = () => [0, 0];
 
-        // Find the paths widget and hide it
+        // --- BUG FIX ---
+        // Find the paths widget and properly hide it from LiteGraph
         const pathsWidget = node.widgets.find(w => w.name === "image_paths");
         if (pathsWidget) {
-            pathsWidget.type = "hidden"; 
-            if (pathsWidget.element) pathsWidget.element.style.display = "none";
+            // Tell LiteGraph to ignore this widget for hit-testing and drawing
+            pathsWidget.hidden = true; 
+            
+            // Return -4 to absorb LiteGraph's default 4px vertical margin between widgets,
+            // entirely eliminating its invisible "ghost" hitbox.
+            pathsWidget.computeSize = () => [0, -4]; 
+            
+            // Hide the actual DOM element
+            if (pathsWidget.element) {
+                pathsWidget.element.style.display = "none";
+            }
         }
 
-        const oldCallback = pathsWidget.callback;
+        const oldCallback = pathsWidget?.callback;
 
         // Centralized helper to prevent infinite loops when updating values internally
         function setWidgetValue(newPathsArray, isRearranging = false) {
+            if (!pathsWidget) return;
             const val = newPathsArray.join("\n");
             
             // Temporarily silence the main callback
@@ -145,7 +156,7 @@ app.registerExtension({
 
         // 2D Square Packing Algorithm: Calculates the optimal grid sizes to fill empty space
         function optimizeGrid(nodeW, containerH) {
-            const paths = (pathsWidget.value || "").split(/\n|,/).map(s => s.trim()).filter(s => s);
+            const paths = (pathsWidget?.value || "").split(/\n|,/).map(s => s.trim()).filter(s => s);
             const N = paths.length;
             
             if (N === 0) {
@@ -285,7 +296,7 @@ app.registerExtension({
 
         function refreshGallery(isRearranging = false) {
             grid.innerHTML = "";
-            const paths = (pathsWidget.value || "").split(/\n|,/).map(s => s.trim()).filter(s => s);
+            const paths = (pathsWidget?.value || "").split(/\n|,/).map(s => s.trim()).filter(s => s);
             
             if (!isRearranging) {
                 syncOutputs(paths.length);
@@ -377,7 +388,7 @@ app.registerExtension({
                     
                     // The DOM visually reorders during dragover. Here we finalize it to data.
                     const newPaths = Array.from(grid.children).map(n => n.dataset.path);
-                    const currentVal = (pathsWidget.value || "").trim();
+                    const currentVal = (pathsWidget?.value || "").trim();
                     if (newPaths.join("\n") !== currentVal) {
                         setWidgetValue(newPaths, true);
                     }
@@ -492,7 +503,7 @@ app.registerExtension({
                 } catch (e) { console.error("Upload error", e); }
             }
             if (uploaded.length > 0) {
-                const current = (pathsWidget.value || "").trim();
+                const current = (pathsWidget?.value || "").trim();
                 const allPaths = current ? current.split('\n').concat(uploaded) : uploaded;
                 setWidgetValue(allPaths, false);
             }
@@ -551,10 +562,12 @@ app.registerExtension({
         };
 
         // Hooks the main callback for external state loads (e.g., undo/redo or initial graph load)
-        pathsWidget.callback = (v) => {
-            if (oldCallback) oldCallback.apply(pathsWidget, [v]);
-            refreshGallery();
-        };
+        if (pathsWidget) {
+            pathsWidget.callback = (v) => {
+                if (oldCallback) oldCallback.apply(pathsWidget, [v]);
+                refreshGallery();
+            };
+        }
 
         setTimeout(() => refreshGallery(), 100);
     }

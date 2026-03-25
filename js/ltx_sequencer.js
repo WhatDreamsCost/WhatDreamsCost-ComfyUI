@@ -22,28 +22,47 @@ function toggleWidget(widget, visible) {
     }
 }
 
-// --- NEW SYNC HELPER FUNCTION ---
-// Finds all other LTXSequencer nodes globally and mirrors the value to them
-function syncWidgetAcrossNodes(sourceNode, widgetName, value) {
+/**
+ * FULL STATE SYNC: 
+ * Instead of syncing one widget, we push the entire properties object 
+ * to ensure no values are ever lost during subgraph transitions or deletions.
+ */
+function syncFullStateAcrossNodes(sourceNode) {
     if (!window._LTXSequencerGlobalNodes) return;
     
     for (const targetNode of window._LTXSequencerGlobalNodes) {
-        // Target all OTHER LTXSequencer nodes by direct object reference
-        if (targetNode !== sourceNode) {
-            
-            // 1. Always update the hidden properties cache so it remembers the sync 
-            // even if the widget isn't currently visible (e.g. fewer images loaded right now)
-            targetNode.properties[widgetName] = value;
-            
-            // 2. If the widget is currently visible on the UI, update it visually
-            if (targetNode.widgets) {
-                const targetWidget = targetNode.widgets.find(w => w.name === widgetName);
-                if (targetWidget && targetWidget.value !== value) {
-                    targetWidget.value = value;
-                    targetNode.setDirtyCanvas(true, false);
+        if (targetNode === sourceNode) continue;
+
+        // 1. Mirror the properties object completely
+        // We use a shallow copy to ensure we don't accidentally share object references
+        const newState = { ...sourceNode.properties };
+        targetNode.properties = { ...targetNode.properties, ...newState };
+
+        // 2. Check if we need to rebuild the widget list (if num_images changed)
+        const targetImageCount = targetNode.properties["num_images"] || 0;
+        const currentVisibleCount = targetNode._currentImageCount;
+
+        if (targetImageCount !== currentVisibleCount) {
+            targetNode._applyWidgetCount(targetImageCount);
+        }
+
+        // 3. Update all existing widget values visually
+        if (targetNode.widgets) {
+            let modeChanged = false;
+            targetNode.widgets.forEach(w => {
+                const newValue = targetNode.properties[w.name];
+                if (newValue !== undefined && w.value !== newValue) {
+                    w.value = newValue;
+                    if (w.name === "insert_mode") modeChanged = true;
                 }
+            });
+
+            if (modeChanged && targetNode._updateVisibility) {
+                targetNode._updateVisibility();
             }
         }
+        
+        targetNode.setDirtyCanvas(true, false);
     }
 }
 
@@ -88,12 +107,76 @@ app.registerExtension({
                 node.widgets.splice(idx, 0, separator);
             }
         };
-        setTimeout(moveSeparator, 50); // Small delay to ensure num_images is present
+        setTimeout(moveSeparator, 50);
+
+        // Binds custom callbacks to python-schema generated widgets
+        node._hookStaticWidgets = function() {
+            if (!this.widgets) return;
+            const staticNames = ["num_images", "insert_mode", "frame_rate"];
+            staticNames.forEach(name => {
+                const w = this.widgets.find(w => w.name === name);
+                if (w && !w._has_custom_callback) {
+                    const orig = w.callback;
+                    w.callback = (val) => {
+                        this.properties[name] = val;
+                        
+                        if (name === "num_images") {
+                            this._applyWidgetCount(val);
+                        }
+                        
+                        // Push full state to siblings
+                        syncFullStateAcrossNodes(this);
+
+                        if (name === "insert_mode") {
+                            this._updateVisibility();
+                        }
+                        if (orig) orig.apply(w, [val]);
+                    };
+                    w._has_custom_callback = true;
+                }
+            });
+        };
+
+        // Handles show/hiding widgets based on insertion method
+        node._updateVisibility = function() {
+            const mode = this.properties["insert_mode"] || "frames";
+            if (!this.widgets) return;
+            
+            let changed = false;
+            for (const w of this.widgets) {
+                let shouldBeVisible = true;
+                
+                if (w.name.startsWith("insert_frame_")) {
+                    shouldBeVisible = (mode === "frames");
+                } else if (w.name.startsWith("insert_second_")) {
+                    shouldBeVisible = (mode === "seconds");
+                }
+                
+                const isHidden = (w.type === "hidden");
+                if (shouldBeVisible && isHidden) {
+                    toggleWidget(w, true);
+                    changed = true;
+                } else if (!shouldBeVisible && !isHidden) {
+                    toggleWidget(w, false);
+                    changed = true;
+                }
+            }
+            
+            if (changed) {
+                this.setDirtyCanvas(true, true);
+                requestAnimationFrame(() => {
+                    if (this.computeSize) {
+                        this.setSize(this.computeSize());
+                    }
+                });
+            }
+        };
 
         // Core update: synchronize widget visibility to match imageCount
         node._applyWidgetCount = function(count) {
+            this._hookStaticWidgets();
+
             const isInitialLoad = this._currentImageCount === -1;
-            
             if (this._currentImageCount === count && !isInitialLoad) return;
             this._currentImageCount = count;
 
@@ -104,20 +187,20 @@ app.registerExtension({
                 numWidget.value = Math.max(0, Math.min(count || 0, 50));
             }
 
-            // 1. Store current widget values in properties BEFORE removing them
-            // We skip reading from `this.widgets` on the initial load because it might be scrambling.
-            if (!isInitialLoad && this.widgets) {
+            // 1. Update properties from current widget values before restructuring
+            if (this.widgets) {
                 this.widgets.forEach(w => {
-                    if (w.name.startsWith("insert_frame_") || w.name.startsWith("strength_")) {
-                        this.properties[w.name] = w.value;
+                    if (w.name.startsWith("insert_") || w.name.startsWith("strength_") || ["num_images", "insert_mode", "frame_rate"].includes(w.name)) {
+                        if (w.type !== "hidden" && w.type !== "button") this.properties[w.name] = w.value;
                     }
                 });
             }
 
-            // 2. Remove all existing dynamic insert_frame/strength/header widgets
+            // 2. Clear dynamic widgets
             if (this.widgets) {
                 this.widgets = this.widgets.filter(w => 
                     !w.name.startsWith("insert_frame_") && 
+                    !w.name.startsWith("insert_second_") && 
                     !w.name.startsWith("strength_") &&
                     !w.name.startsWith("header_")
                 );
@@ -125,9 +208,9 @@ app.registerExtension({
                 this.widgets = [];
             }
 
-            // 3. Add back exactly the right amount of widgets using the cached values
+            // 3. Rebuild precisely
             for (let i = 1; i <= count; i++) {
-                // Add header/separator widget for grouping
+                // Header
                 const headerName = `header_${i}`;
                 this.addCustomWidget({
                     name: headerName,
@@ -137,279 +220,175 @@ app.registerExtension({
                         ctx.save();
                         const margin = 10;
                         const topPadding = 15;
-                        
-                        // Subtle separator line
                         ctx.strokeStyle = "#333";
                         ctx.lineWidth = 1;
                         ctx.beginPath();
                         ctx.moveTo(margin, y + 5);
                         ctx.lineTo(widget_width - margin, y + 5);
                         ctx.stroke();
-                        
-                        // Text label
-                        ctx.fillStyle = "#dddddd"; // Light gray
+                        ctx.fillStyle = "#dddddd";
                         ctx.font = "bold 12px Arial";
                         ctx.textAlign = "left";
                         ctx.fillText(`Image #${i}`, margin, y + topPadding + 10);
                         ctx.restore();
                     },
-                    computeSize(width) {
-                        return [width, 35]; // Vertical gap + label height
-                    }
+                    computeSize(width) { return [width, 35]; }
                 });
 
-                const insertFrameWidgetName = `insert_frame_${i}`;
-                const strengthWidgetName = `strength_${i}`;
+                // Helper to add widget with full sync
+                const addSyncedWidget = (type, name, def, options) => {
+                    const saved = this.properties[name];
+                    return this.addWidget(type, name, saved !== undefined ? saved : def, (val) => {
+                        this.properties[name] = val;
+                        syncFullStateAcrossNodes(this);
+                    }, options);
+                };
 
-                // Add insert_frame widget with Sync Callback
-                const savedInsertFrameValue = this.properties[insertFrameWidgetName];
-                this.addWidget("number", insertFrameWidgetName, 
-                    savedInsertFrameValue !== undefined ? savedInsertFrameValue : 0, 
-                    (value) => {
-                        const rounded = Math.round(value);
-                        this.properties[insertFrameWidgetName] = rounded;
-                        syncWidgetAcrossNodes(this, insertFrameWidgetName, rounded); // Sync out
-                    }, { min: -9999, max: 9999, step: 10, precision: 0 }
-                );
-
-                // Add strength widget with Sync Callback
-                const savedStrengthValue = this.properties[strengthWidgetName];
-                this.addWidget("number", strengthWidgetName, 
-                    savedStrengthValue !== undefined ? savedStrengthValue : 1.0, 
-                    (value) => {
-                        this.properties[strengthWidgetName] = value;
-                        syncWidgetAcrossNodes(this, strengthWidgetName, value); // Sync out
-                    }, { min: 0.0, max: 1.0, step: 0.01 }
-                );
+                addSyncedWidget("number", `insert_frame_${i}`, 0, { min: -9999, max: 9999, step: 10, precision: 0 });
+                addSyncedWidget("number", `insert_second_${i}`, 0.0, { min: 0.0, max: 9999.0, step: 0.1, precision: 2 });
+                addSyncedWidget("number", `strength_${i}`, 1.0, { min: 0.0, max: 1.0, step: 0.01 });
             }
 
+            this._updateVisibility();
             this.setDirtyCanvas(true, true);
             requestAnimationFrame(() => {
                 if (this.computeSize) {
                     this.setSize(this.computeSize());
-                    this.size[0] = initialWidth; // keep width fixed when restructuring
+                    this.size[0] = initialWidth;
                 }
             });
         };
 
-        // --- STRICT ARRAY MAPPER: FIXES ALL SHIFTING FOREVER ---
-        // This runs the exact instant the node is loaded, before any UI widgets shift indices.
-        // It locks the perfectly mapped array values directly into our properties dictionary.
         const origConfigure = node.configure;
         node.configure = function(info) {
-            if (origConfigure) {
-                origConfigure.apply(this, arguments);
-            }
+            if (origConfigure) origConfigure.apply(this, arguments);
             if (this.widgets) {
                 this.widgets.forEach(w => {
-                    if (w.name === "num_images" || w.name.startsWith("insert_frame_") || w.name.startsWith("strength_")) {
-                        this.properties[w.name] = w.value;
+                    if (w.name.startsWith("insert_") || w.name.startsWith("strength_") || ["num_images", "insert_mode", "frame_rate"].includes(w.name)) {
+                        if (w.type !== "button") this.properties[w.name] = w.value;
                     }
                 });
             }
         };
 
-        // Handle deserialization to load properties properly from JSON
-        const originalOnConfigure = node.onConfigure;
         node.onConfigure = function(info) {
-            if (originalOnConfigure) {
-                originalOnConfigure.apply(this, arguments);
-            }
             if (info.properties) {
                 this.properties = { ...this.properties, ...info.properties };
             }
+            this._hookStaticWidgets();
             setTimeout(() => {
                 const count = readSourceImageCount(this);
-                // Fallback to properties.num_images if source node disconnected
                 let targetCount = count !== null ? count : (this.properties.num_images || 0);
                 this._applyWidgetCount(targetCount);
+                this._updateVisibility();
             }, 100);
         };
 
-        // --- STRICT ARRAY GENERATOR ---
-        // Completely detach from ComfyUI's blind visual array saving.
-        // We construct an exact 101-element strict array that Python expects.
-        // This makes your node 100% immune to UI/Header index shifting.
         const originalOnSerialize = node.onSerialize;
         node.onSerialize = function(info) {
-            // Ensure properties are strictly synced with current widget values before building
             if (this.widgets) {
                 this.widgets.forEach(w => {
-                    if (w.name === "num_images" || w.name.startsWith("insert_frame_") || w.name.startsWith("strength_")) {
-                        this.properties[w.name] = w.value;
+                    if (w.name.startsWith("insert_") || w.name.startsWith("strength_") || ["num_images", "insert_mode", "frame_rate"].includes(w.name)) {
+                        if (w.type !== "hidden" && w.type !== "button") this.properties[w.name] = w.value;
                     }
                 });
             }
-
-            if (originalOnSerialize) {
-                originalOnSerialize.apply(this, arguments);
-            }
-            
+            if (originalOnSerialize) originalOnSerialize.apply(this, arguments);
             info.properties = { ...this.properties };
             
-            // Build the exact strict array that maps 1-to-1 to the Python backend
             const strictArray = [];
-            const numWidgetVal = this.properties["num_images"];
-            strictArray.push(numWidgetVal !== undefined ? numWidgetVal : 1);
+            strictArray.push(this.properties["num_images"] !== undefined ? this.properties["num_images"] : 1);
+            strictArray.push(this.properties["insert_mode"] !== undefined ? this.properties["insert_mode"] : "frames");
+            strictArray.push(this.properties["frame_rate"] !== undefined ? this.properties["frame_rate"] : 24);
             
             for (let i = 1; i <= 50; i++) {
-                const fVal = this.properties[`insert_frame_${i}`];
-                const sVal = this.properties[`strength_${i}`];
-                strictArray.push(fVal !== undefined ? fVal : 0);
-                strictArray.push(sVal !== undefined ? sVal : 1.0);
+                strictArray.push(this.properties[`insert_frame_${i}`] !== undefined ? this.properties[`insert_frame_${i}`] : 0);
+                strictArray.push(this.properties[`insert_second_${i}`] !== undefined ? this.properties[`insert_second_${i}`] : 0.0);
+                strictArray.push(this.properties[`strength_${i}`] !== undefined ? this.properties[`strength_${i}`] : 1.0);
             }
-            
             info.widgets_values = strictArray;
         };
 
-        // Set up manual num_images widget callback
-        setTimeout(() => {
-            const numWidget = node.widgets?.find(w => w.name === "num_images");
-            if (numWidget) {
-                numWidget.callback = (val) => {
-                    node.properties["num_images"] = val;
-                    node._applyWidgetCount(val);
-                };
-            }
-        }, 100);
-
-        // Exposed receiver for push-based notifications
-        node._syncImageCount = function(count) {
-            this._applyWidgetCount(count);
-        };
-
-        // Helper: read image count from a connected MultiImageLoader node
         function readSourceImageCount(self) {
             const multiInput = self.inputs?.find(inp => inp.name === "multi_input");
             if (!multiInput || !multiInput.link) return null;
-
             const nodeGraph = self.graph || app.graph;
             
-            // Helper to safely trace back through Reroutes and ComfyUI Group Nodes/Subgraphs
             function traceUpstream(graph, linkId, visited = new Set()) {
                 if (!linkId || visited.has(linkId)) return null;
                 visited.add(linkId);
-
                 const link = graph.links[linkId];
                 if (!link) return null;
-
                 const originNode = graph.getNodeById(link.origin_id);
                 if (!originNode) return null;
-
-                if (originNode.comfyClass === "MultiImageLoader") {
-                    return originNode;
-                }
-
-                // Traverse Reroute nodes
+                if (originNode.comfyClass === "MultiImageLoader") return originNode;
                 if (originNode.type === "Reroute" || originNode.comfyClass === "Reroute") {
-                    if (originNode.inputs && originNode.inputs.length > 0 && originNode.inputs[0].link) {
-                        return traceUpstream(graph, originNode.inputs[0].link, visited);
-                    }
+                    if (originNode.inputs?.[0]?.link) return traceUpstream(graph, originNode.inputs[0].link, visited);
                 }
-
-                // Traverse standard ComfyUI Group Nodes (subgraphs)
                 if (typeof originNode.getInnerNode === "function") {
                     try {
                         const innerNode = originNode.getInnerNode(link.origin_slot);
-                        if (innerNode && innerNode.comfyClass === "MultiImageLoader") {
-                            return innerNode;
-                        }
-                    } catch (e) {
-                        console.warn("Could not trace inner node", e);
-                    }
+                        if (innerNode?.comfyClass === "MultiImageLoader") return innerNode;
+                    } catch (e) {}
                 }
-
                 return null;
             }
 
             let sourceNode = traceUpstream(nodeGraph, multiInput.link);
-
-            // Helper to extract the count once we find a node
             function getCountFromNode(n) {
                 if (typeof n._imageCount === "number") return n._imageCount;
                 const pathsWidget = n.widgets?.find(w => w.name === "image_paths");
-                if (pathsWidget) {
-                    return (pathsWidget.value || "").split('\n').map(p => p.trim()).filter(p => p.length > 0).length;
-                }
-                return null;
+                return pathsWidget ? (pathsWidget.value || "").split('\n').filter(p => p.trim()).length : null;
             }
 
-            if (sourceNode) {
-                return getCountFromNode(sourceNode);
-            }
+            if (sourceNode) return getCountFromNode(sourceNode);
 
-            // Fallback Strategy: If it is connected to something, but we couldn't resolve it
-            // directly (e.g. complex nested 3rd party subgraphs), scan the entire UI.
-            // If there is EXACTLY ONE MultiImageLoader in the workspace, safely assume that's the one.
             let multiImageLoaders = [];
             function findAllLoaders(nodes) {
                 if (!nodes) return;
                 for (let n of nodes) {
-                    if (n.comfyClass === "MultiImageLoader") {
-                        multiImageLoaders.push(n);
-                    }
-                    if (n.subgraph && n.subgraph._nodes) {
-                        findAllLoaders(n.subgraph._nodes);
-                    }
+                    if (n.comfyClass === "MultiImageLoader") multiImageLoaders.push(n);
+                    if (n.subgraph?._nodes) findAllLoaders(n.subgraph._nodes);
                 }
             }
-            if (app.graph && app.graph._nodes) {
-                findAllLoaders(app.graph._nodes);
-            }
-
-            if (multiImageLoaders.length === 1) {
-                return getCountFromNode(multiImageLoaders[0]);
-            }
-
+            if (app.graph?._nodes) findAllLoaders(app.graph._nodes);
+            if (multiImageLoaders.length === 1) return getCountFromNode(multiImageLoaders[0]);
             return null;
         }
 
-        // --- Backup polling via setInterval (4 Hz) ---
         const pollInterval = setInterval(() => {
             if (!node.graph) {
                 clearInterval(pollInterval);
                 return;
             }
             const count = readSourceImageCount(node);
-            if (count !== null) {
+            if (count !== null && count !== node._currentImageCount) {
                 node._applyWidgetCount(count);
+                syncFullStateAcrossNodes(node); // Sync the new count to others
             }
-        }, 250);
+        }, 500);
 
-        // Clean up the interval when the node is deleted
         const origOnRemoved = node.onRemoved;
         node.onRemoved = function() {
-            // Unregister this node instance
             window._LTXSequencerGlobalNodes.delete(node);
-            
             clearInterval(pollInterval);
             if (origOnRemoved) origOnRemoved.apply(this, arguments);
         };
 
-        // --- Connection change handler ---
-        const onConnectionsChange = node.onConnectionsChange;
-        node.onConnectionsChange = function(type, index, connected, link_info) {
-            if (onConnectionsChange) onConnectionsChange.apply(this, arguments);
-
-            if (type === 1) { // 1 = Input
-                const input = this.inputs[index];
-                if (input && input.name === "multi_input") {
-                    if (connected) {
-                        setTimeout(() => {
-                            const count = readSourceImageCount(this);
-                            this._applyWidgetCount(count !== null ? count : (this.properties.num_images || 0));
-                        }, 100);
-                    } else {
-                        this._applyWidgetCount(0);
-                    }
+        node.onConnectionsChange = function(type, index, connected) {
+            if (type === 1 && this.inputs[index]?.name === "multi_input") {
+                if (connected) {
+                    setTimeout(() => {
+                        const count = readSourceImageCount(this);
+                        this._applyWidgetCount(count !== null ? count : (this.properties.num_images || 0));
+                    }, 100);
+                } else {
+                    this._applyWidgetCount(0);
                 }
             }
         };
 
-        // --- Initial sync when first placed on canvas ---
-        const origOnAdded = node.onAdded;
         node.onAdded = function() {
-            if (origOnAdded) origOnAdded.apply(this, arguments);
             setTimeout(() => {
                 const count = readSourceImageCount(this);
                 this._applyWidgetCount(count !== null ? count : (this.properties.num_images || 0));

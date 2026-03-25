@@ -17,6 +17,11 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 - Or download through the ComfyUI Manager.
 
 # 🔄 Recent Updates
+* **v1.2.0**
+  * **New Node: Speech Length Calculator** 
+  
+  Automatically output in realtime how long a video should be based on the dialouge. 
+
 * **v1.1.0**
   * Added resize_method to the Multi Image Loader node for more resize options
   * Added insert_mode which allows you to enter in seconds instead of frames on the LTX Sequencer node
@@ -57,6 +62,15 @@ Connect the Multi Image Loader node's multi_output to automatically update the n
 It also has a sync feature that syncs all LTX Keyframer nodes together in realtime, removing the need to edit every single node manually every time you want to make a change to something. 
 
 **I would recommend using the LTX Sequencer Node over this node, after further testing it seems superior in at pretty much everything. I'll leave it in just in case more people want to test it**
+
+## Speech Length Calculator
+![Speech Length Calculator GIF](https://github.com/user-attachments/assets/1ed07c7d-7d6a-48c4-92cc-8e332ebdf82b)
+
+This node calculates in realtime how long a video should be based on the dialogue. Any words in quotations will be considered as speech. The node updates in realtime without having to run the workflow, and outputs the length depending on how fast the speech is.
+
+If you connect another string/text node to the text_input, it will still update in the length in realtime.
+
+I kept having to play the guessing game on my own generations so I made this node to make it easier :man_shrugging:
 
 # 💡 Workflows
 <img width="3120" height="990" alt="LTX I2V First Last Frame 3 Stage Workflow v6" src="https://github.com/user-attachments/assets/c993ef2f-ac4b-4091-a7f6-5ff1674c3718" />

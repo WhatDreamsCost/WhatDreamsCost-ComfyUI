@@ -78,7 +78,7 @@ I kept having to play the guessing game on my own generations so I made this nod
 This is a compact LTX 2.3 workflow for I2V and First Frame, Middle Frame, Last frame video generation.
 I seperated and organized everything into subraphs to make things as clean as possible, and added toggles to customize the workflow quickly.
 
-Download workflows here: https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI/tree/main/workflows
+Download workflows here: https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI/tree/main/example_workflows
 
 Or drag and drop image into ComfyUI to import workflow.
 

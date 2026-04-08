@@ -82,7 +82,7 @@ I seperated and organized everything into subraphs to make things as clean as po
 
 Download workflows here: https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI/tree/main/example_workflows
 
-Or drag and drop image into ComfyUI to import workflow.
+Or drag and drop the image into ComfyUI to import workflow.
 
 # ❗ Known Issues
 **Multi Image Loader**

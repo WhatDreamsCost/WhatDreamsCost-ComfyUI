@@ -6,9 +6,11 @@ Hopefully it will make creating cool stuff easier.
 
 All of my nodes are created with the help of AI, so there may or may not be redundant, messy code.
 
-## ▶️ YouTube Tutorial Video 
+## ▶️ YouTube Tutorial Videos
 
 [![Overview Video](https://img.youtube.com/vi/aXDIr8eNovI/0.jpg)](https://www.youtube.com/watch?v=aXDIr8eNovI)
+
+[![Prompting and Keyframing Guide](https://img.youtube.com/vi/ZY4hsvTzbas/0.jpg)](https://www.youtube.com/watch?v=ZY4hsvTzbas)
 
 ## ❓ How to install nodes
 
@@ -78,9 +80,9 @@ I kept having to play the guessing game on my own generations so I made this nod
 This is a compact LTX 2.3 workflow for I2V and First Frame, Middle Frame, Last frame video generation.
 I seperated and organized everything into subraphs to make things as clean as possible, and added toggles to customize the workflow quickly.
 
-Download workflows here: https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI/tree/main/workflows
+Download workflows here: https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI/tree/main/example_workflows
 
-Or drag and drop image into ComfyUI to import workflow.
+Or drag and drop the image into ComfyUI to import workflow.
 
 # ❗ Known Issues
 **Multi Image Loader**

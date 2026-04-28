@@ -88,9 +88,35 @@ app.registerExtension({
             // entirely eliminating its invisible "ghost" hitbox.
             pathsWidget.computeSize = () => [0, -4]; 
             
-            // Hide the actual DOM element
+            // Aggressively neutralize the actual DOM element AND its ComfyUI wrapper using a global stylesheet
+            // ComfyUI's background render loop continually overwrites inline styles (like display: none).
+            // By assigning unique IDs and injecting a global !important CSS rule, we guarantee it remains dead.
             if (pathsWidget.element) {
-                pathsWidget.element.style.display = "none";
+                const uid = node.id || Math.random().toString(36).substring(2, 9);
+                pathsWidget.element.id = `hidden-paths-textarea-${uid}`;
+                if (pathsWidget.element.parentElement) {
+                    pathsWidget.element.parentElement.id = `hidden-paths-wrapper-${uid}`;
+                }
+
+                // Inject the shield-killer style into the document head if it doesn't exist yet
+                if (!document.getElementById("multi-image-loader-shield-killer")) {
+                    const style = document.createElement("style");
+                    style.id = "multi-image-loader-shield-killer";
+                    style.innerHTML = `
+                        [id^="hidden-paths-textarea-"],
+                        [id^="hidden-paths-wrapper-"] {
+                            display: none !important;
+                            pointer-events: none !important;
+                            position: absolute !important;
+                            width: 0px !important;
+                            height: 0px !important;
+                            opacity: 0 !important;
+                            z-index: -9999 !important;
+                            overflow: hidden !important;
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
             }
         }
 

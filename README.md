@@ -20,6 +20,11 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 
 # 🔄 Recent Updates
 
+ **v1.2.4**
+  * **New Node: Load Audio UI**
+    
+    Overhaul of the load audio node. Features a simple interface to easily trim audio. Also allows dragging and dropping files (fixes the original node that doesn't allow dropping in videos). Also compatible with nodes 2.0.
+
  **v1.2.3**
   * **Workflow Update + Minor Bug Fix** 
     * Added new workflow that is compatible with the latest ComfyUI version (as of 4/27/26). The new workflow also included an option to include custom audio, and has minor improvements of the previous workflows.
@@ -59,10 +64,10 @@ Connect the Multi Image Loader node's multi_output to automatically update the n
 It also has a sync feature that syncs all LTX Sequencer nodes together in realtime, removing the need to edit every single node manually every time you want to make a change to something. 
 
 
-
 ## LTX Keyframer
 <img width="612" height="563" alt="LTX_Keyframer_Node" src="https://github.com/user-attachments/assets/c4583a8b-4d48-4179-8d64-748ddd07b314" />
-
+<br>
+<br>
 An overhaul of the LTXVImgToVideoInplaceKJ node. It allows you to quickly create FFLF (First Frame Last Frame) videos and shot sequences. Also upports any number of middle frames.
 
 Connect the Multi Image Loader node's multi_output to automatically update the node's widgets.
@@ -73,16 +78,24 @@ It also has a sync feature that syncs all LTX Keyframer nodes together in realti
 
 ## Speech Length Calculator
 ![Speech Length Calculator GIF](https://github.com/user-attachments/assets/1ed07c7d-7d6a-48c4-92cc-8e332ebdf82b)
-
+<br>
+<br>
 This node calculates in realtime how long a video should be based on the dialogue. Any words in quotations will be considered as speech. The node updates in realtime without having to run the workflow, and outputs the length depending on how fast the speech is.
 
 If you connect another string/text node to the text_input, it will still update in the length in realtime.
 
 I kept having to play the guessing game on my own generations so I made this node to make it easier :man_shrugging:
 
+## Load Audio UI  
+<img width="1280" height="720" alt="Load_Audio_UI" src="https://github.com/user-attachments/assets/5ee35d26-2a43-4230-aaf9-7284a31eeeea" />
+<br>
+<br>
+An upgraded Load Audio node. Features a simple interface to easily trim audio. Also allows dragging and dropping files (fixes the original node that doesn't allow dropping in videos). Also compatible with nodes 2.0.
+
 # 💡 Workflows
 <img width="3120" height="990" alt="LTX I2V First Last Frame 3 Stage Workflow v6" src="https://github.com/user-attachments/assets/c993ef2f-ac4b-4091-a7f6-5ff1674c3718" />
-
+<br>
+<br>
 This is a compact LTX 2.3 workflow for I2V and First Frame, Middle Frame, Last frame video generation.
 I seperated and organized everything into subraphs to make things as clean as possible, and added toggles to customize the workflow quickly.
 
@@ -104,3 +117,4 @@ It may also be due to my ComfyUI frontend not matching the backend (that has bee
 I made these nodes knowing almost nothing about python and a beginner level knowledge of javascript. Feel free to suggest improvements, and if you run into any bugs let me know.
 
 For those asking, I mainly used gemini to create these nodes.
+![Uploading Load_Audio_UI.gif…]()

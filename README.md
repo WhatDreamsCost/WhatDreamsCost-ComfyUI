@@ -20,7 +20,7 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 
 # 🔄 Recent Updates
 
- **v1.2.1**
+ **v1.2.3**
   * **Workflow Update + Minor Bug Fix** 
     * Added new workflow that is compatible with the latest ComfyUI version (as of 4/27/26). The new workflow also included an option to include custom audio, and has minor improvements of the previous workflows.
     * Fixed minor bug with Multi Image Loader that blocked mouse input in a small area under the node 🤷‍♂️

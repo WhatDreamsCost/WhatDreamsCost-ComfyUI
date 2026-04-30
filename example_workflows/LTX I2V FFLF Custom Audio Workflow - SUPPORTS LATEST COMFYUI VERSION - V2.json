@@ -1,8 +1,8 @@
 {
-  "id": "16f348ab-5e09-4b05-83e4-b5c8d1913f8b",
+  "id": "c80f3abf-7abe-4c24-8663-009ac9c86e3d",
   "revision": 0,
-  "last_node_id": 498,
-  "last_link_id": 1199,
+  "last_node_id": 499,
+  "last_link_id": 1201,
   "nodes": [
     {
       "id": 4,
@@ -93,51 +93,6 @@
         "video/LTX",
         "auto",
         "auto"
-      ],
-      "color": "#222",
-      "bgcolor": "#000"
-    },
-    {
-      "id": 381,
-      "type": "MultiImageLoader",
-      "pos": [
-        3540,
-        5950
-      ],
-      "size": [
-        340,
-        300
-      ],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "multi_output",
-          "type": "IMAGE",
-          "links": [
-            1046,
-            1047,
-            1048,
-            1157
-          ]
-        }
-      ],
-      "properties": {
-        "cnr_id": "WhatDreamsCost-ComfyUI",
-        "ver": "ecd00e6b404f14b07c7b54b0b0033e8bccb32d24",
-        "Node name for S&R": "MultiImageLoader"
-      },
-      "widgets_values": [
-        "",
-        0,
-        0,
-        "lanczos",
-        "keep proportion",
-        32,
-        18,
-        ""
       ],
       "color": "#222",
       "bgcolor": "#000"
@@ -633,30 +588,6 @@
       "bgcolor": "#000"
     },
     {
-      "id": 15,
-      "type": "Note",
-      "pos": [
-        3900,
-        5740
-      ],
-      "size": [
-        230,
-        140
-      ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "LTX Sequencer Note",
-      "properties": {},
-      "widgets_values": [
-        "Use one image at full strength for regular image to video.\n\nIf frame_insert is -1, it will be inserted at the last frame.\n\nThe insert_mode allows to switch between inserting images by setting the exact frame or by setting the exact second."
-      ],
-      "color": "#223",
-      "bgcolor": "#335"
-    },
-    {
       "id": 481,
       "type": "e8ae487a-31b9-46cf-be65-76e634e0bee1",
       "pos": [
@@ -674,7 +605,7 @@
         {
           "name": "audio",
           "type": "AUDIO",
-          "link": 1189
+          "link": 1200
         },
         {
           "name": "audio_vae",
@@ -769,7 +700,7 @@
           "label": "custom audio",
           "name": "on_true",
           "type": "*",
-          "link": 1190
+          "link": 1201
         },
         {
           "label": "use custom audio",
@@ -820,78 +751,6 @@
       "widgets_values": [],
       "color": "#222",
       "bgcolor": "#000"
-    },
-    {
-      "id": 495,
-      "type": "Note",
-      "pos": [
-        2820,
-        6540
-      ],
-      "size": [
-        270,
-        90
-      ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "Model Loader Note",
-      "properties": {},
-      "widgets_values": [
-        "Load Custom Audio Here →\n\n(Make sure to set use custom audio to true to enable it)"
-      ],
-      "color": "#223",
-      "bgcolor": "#335"
-    },
-    {
-      "id": 418,
-      "type": "Note",
-      "pos": [
-        3130,
-        5800
-      ],
-      "size": [
-        270,
-        90
-      ],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "Model Loader Note",
-      "properties": {},
-      "widgets_values": [
-        "↓ Select your own models in this subgraph ↓"
-      ],
-      "color": "#223",
-      "bgcolor": "#335"
-    },
-    {
-      "id": 439,
-      "type": "MarkdownNote",
-      "pos": [
-        2750,
-        6050
-      ],
-      "size": [
-        350,
-        380
-      ],
-      "flags": {},
-      "order": 4,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "FAQ",
-      "properties": {},
-      "widgets_values": [
-        "# FAQ\n\n**How do I set the length of the video?**\n\nYou can set the length of the video in the Model Loader Subgraph →\n\n**I keep getting errors when running this workflow!**\n\nDouble check that all of the correct models loaded. This is using the newest version of 2x upscaler (v1.1). You can change it to the older one under the Model Loader.\n\n**Where do I download these models??**\n\nThere is a good list of models and download links here: <https://github.com/wildminder/awesome-ltx2?tab=readme-ov-file>\n\nAlso the latest v1.1 spatial upscaler can be found here: <https://huggingface.co/Lightricks/LTX-2.3/tree/main>\n\nThe tiny vae (taeltx2_3.safetensors) is found here:\n<https://huggingface.co/Kijai/LTX2.3_comfy/blob/main/vae/taeltx2_3.safetensors>\n\n**I want to use my own models!**\n\nYou can change the models in the Model Loader Subgraph →\n\n\n\n\n"
-      ],
-      "color": "#432",
-      "bgcolor": "#653"
     },
     {
       "id": 11,
@@ -989,18 +848,142 @@
       "bgcolor": "#000"
     },
     {
+      "id": 7,
+      "type": "2979f3eb-1c4c-45ff-8387-f1f4addb72f4",
+      "pos": [
+        4160,
+        5950
+      ],
+      "size": [
+        220,
+        110
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1048
+        },
+        {
+          "label": "length_seconds",
+          "name": "length",
+          "type": "INT",
+          "widget": {
+            "name": "length"
+          },
+          "link": 21
+        },
+        {
+          "name": "audio_vae",
+          "type": "VAE",
+          "link": 22
+        },
+        {
+          "name": "frame_rate",
+          "type": "INT",
+          "widget": {
+            "name": "frame_rate"
+          },
+          "link": 1109
+        }
+      ],
+      "outputs": [
+        {
+          "label": "video_latent",
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            803
+          ]
+        },
+        {
+          "label": "audio_latent",
+          "name": "Latent",
+          "type": "LATENT",
+          "links": [
+            1166
+          ]
+        }
+      ],
+      "properties": {
+        "proxyWidgets": [
+          [
+            "352",
+            "length"
+          ],
+          [
+            "353",
+            "frame_rate"
+          ]
+        ],
+        "cnr_id": "comfy-core",
+        "ver": "0.17.2"
+      },
+      "widgets_values": [],
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 381,
+      "type": "MultiImageLoader",
+      "pos": [
+        3540,
+        5950
+      ],
+      "size": [
+        340,
+        300
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "multi_output",
+          "type": "IMAGE",
+          "links": [
+            1046,
+            1047,
+            1048,
+            1157
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "WhatDreamsCost-ComfyUI",
+        "ver": "ecd00e6b404f14b07c7b54b0b0033e8bccb32d24",
+        "Node name for S&R": "MultiImageLoader"
+      },
+      "widgets_values": [
+        "",
+        0,
+        0,
+        "lanczos",
+        "keep proportion",
+        32,
+        18,
+        ""
+      ],
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
       "id": 10,
       "type": "958b2c7a-1f75-4a30-84a8-892bddb9e426",
       "pos": [
-        3130,
-        5950
+        2720,
+        5960
       ],
       "size": [
         390,
         480
       ],
       "flags": {},
-      "order": 5,
+      "order": 1,
       "mode": 0,
       "inputs": [
         {
@@ -1153,97 +1136,42 @@
       "bgcolor": "#000"
     },
     {
-      "id": 7,
-      "type": "2979f3eb-1c4c-45ff-8387-f1f4addb72f4",
+      "id": 418,
+      "type": "Note",
       "pos": [
-        4160,
-        5950
+        2730,
+        5820
       ],
       "size": [
-        220,
-        110
+        270,
+        90
       ],
       "flags": {},
-      "order": 7,
+      "order": 2,
       "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 1048
-        },
-        {
-          "label": "length_seconds",
-          "name": "length",
-          "type": "INT",
-          "widget": {
-            "name": "length"
-          },
-          "link": 21
-        },
-        {
-          "name": "audio_vae",
-          "type": "VAE",
-          "link": 22
-        },
-        {
-          "name": "frame_rate",
-          "type": "INT",
-          "widget": {
-            "name": "frame_rate"
-          },
-          "link": 1109
-        }
+      "inputs": [],
+      "outputs": [],
+      "title": "Model Loader Note",
+      "properties": {},
+      "widgets_values": [
+        "↓ Select your own models in this subgraph ↓"
       ],
-      "outputs": [
-        {
-          "label": "video_latent",
-          "name": "LATENT",
-          "type": "LATENT",
-          "links": [
-            803
-          ]
-        },
-        {
-          "label": "audio_latent",
-          "name": "Latent",
-          "type": "LATENT",
-          "links": [
-            1166
-          ]
-        }
-      ],
-      "properties": {
-        "proxyWidgets": [
-          [
-            "352",
-            "length"
-          ],
-          [
-            "353",
-            "frame_rate"
-          ]
-        ],
-        "cnr_id": "comfy-core",
-        "ver": "0.17.2"
-      },
-      "widgets_values": [],
-      "color": "#222",
-      "bgcolor": "#000"
+      "color": "#223",
+      "bgcolor": "#335"
     },
     {
-      "id": 489,
-      "type": "LoadAudio",
+      "id": 499,
+      "type": "LoadAudioUI",
       "pos": [
         3130,
-        6480
+        5960
       ],
       "size": [
-        300,
-        140
+        390,
+        334
       ],
       "flags": {},
-      "order": 6,
+      "order": 3,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1251,24 +1179,98 @@
           "name": "AUDIO",
           "type": "AUDIO",
           "links": [
-            1189,
-            1190
+            1200,
+            1201
           ]
         }
       ],
-      "title": "Load Custom Audio",
       "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.19.3",
-        "Node name for S&R": "LoadAudio"
+        "cnr_id": "WhatDreamsCost-ComfyUI",
+        "ver": "919e3c15e53502a7f9165c4355a635b4fa2a07ae",
+        "Node name for S&R": "LoadAudioUI"
       },
       "widgets_values": [
-        "LTX2_00376_.mp3",
+        "audio.wav",
+        0,
+        25,
         null,
-        null
+        null,
+        ""
       ],
       "color": "#222",
       "bgcolor": "#000"
+    },
+    {
+      "id": 15,
+      "type": "Note",
+      "pos": [
+        3900,
+        5740
+      ],
+      "size": [
+        230,
+        150
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "LTX Sequencer Note",
+      "properties": {},
+      "widgets_values": [
+        "Use one image at full strength for regular image to video.\n\nIf frame_insert is -1, it will be inserted at the last frame.\n\nThe insert_mode allows to switch between inserting images by setting the exact frame or by setting the exact second."
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 495,
+      "type": "Note",
+      "pos": [
+        3130,
+        6350
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Custom Audio Note",
+      "properties": {},
+      "widgets_values": [
+        "↑ Load Custom Audio Here ↑\n\n(Make sure to set use custom audio to true to enable it)"
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 439,
+      "type": "MarkdownNote",
+      "pos": [
+        2340,
+        6060
+      ],
+      "size": [
+        350,
+        380
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "FAQ",
+      "properties": {},
+      "widgets_values": [
+        "# FAQ\n\n**How do I set the length of the video?**\n\nYou can set the length of the video in the Model Loader Subgraph →\n\n**I keep getting errors when running this workflow!**\n\nDouble check that all of the correct models loaded. This is using the newest version of 2x upscaler (v1.1). You can change it to the older one under the Model Loader.\n\n**Where do I download these models??**\n\nThere is a good list of models and download links here: <https://github.com/wildminder/awesome-ltx2?tab=readme-ov-file>\n\nAlso the latest v1.1 spatial upscaler can be found here: <https://huggingface.co/Lightricks/LTX-2.3/tree/main>\n\nThe tiny vae (taeltx2_3.safetensors) is found here:\n<https://huggingface.co/Kijai/LTX2.3_comfy/blob/main/vae/taeltx2_3.safetensors>\n\n**I want to use my own models!**\n\nYou can change the models in the Model Loader Subgraph →\n\n\n\n\n"
+      ],
+      "color": "#323",
+      "bgcolor": "#535"
     }
   ],
   "links": [
@@ -1513,28 +1515,28 @@
       "BOOLEAN"
     ],
     [
-      1189,
-      489,
-      0,
-      481,
-      0,
-      "AUDIO"
-    ],
-    [
-      1190,
-      489,
-      0,
-      1,
-      4,
-      "AUDIO"
-    ],
-    [
       1199,
       10,
       8,
       11,
       8,
       "INT"
+    ],
+    [
+      1200,
+      499,
+      0,
+      481,
+      0,
+      "AUDIO"
+    ],
+    [
+      1201,
+      499,
+      0,
+      1,
+      4,
+      "AUDIO"
     ]
   ],
   "groups": [],
@@ -1545,8 +1547,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 33,
-          "lastNodeId": 498,
-          "lastLinkId": 1199,
+          "lastNodeId": 499,
+          "lastLinkId": 1201,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -2331,8 +2333,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 33,
-          "lastNodeId": 498,
-          "lastLinkId": 1199,
+          "lastNodeId": 499,
+          "lastLinkId": 1201,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -2840,8 +2842,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 33,
-          "lastNodeId": 498,
-          "lastLinkId": 1199,
+          "lastNodeId": 499,
+          "lastLinkId": 1201,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -4262,8 +4264,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 33,
-          "lastNodeId": 498,
-          "lastLinkId": 1199,
+          "lastNodeId": 499,
+          "lastLinkId": 1201,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -4728,8 +4730,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 33,
-          "lastNodeId": 498,
-          "lastLinkId": 1199,
+          "lastNodeId": 499,
+          "lastLinkId": 1201,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -5768,8 +5770,8 @@
             "id": 496,
             "type": "MarkdownNote",
             "pos": [
-              2170,
-              5500
+              2180,
+              5510
             ],
             "size": [
               350,
@@ -5785,8 +5787,8 @@
             "widgets_values": [
               "# FAQ\n\n**How do I set the length of the video?**\n\nYou can set the length of the video in the Model Loader Subgraph →\n\n**I keep getting errors when running this workflow!**\n\nDouble check that all of the correct models loaded. This is using the newest version of 2x upscaler (v1.1). You can change it to the older one under the Model Loader.\n\n**Where do I download these models??**\n\nThere is a good list of models and download links here: <https://github.com/wildminder/awesome-ltx2?tab=readme-ov-file>\n\nAlso the latest v1.1 spatial upscaler can be found here: <https://huggingface.co/Lightricks/LTX-2.3/tree/main>\n\nThe tiny vae (taeltx2_3.safetensors) is found here:\n<https://huggingface.co/Kijai/LTX2.3_comfy/blob/main/vae/taeltx2_3.safetensors>\n\n**I want to use my own models!**\n\nYou can change the models in the Model Loader Subgraph →\n\n\n\n\n"
             ],
-            "color": "#432",
-            "bgcolor": "#653"
+            "color": "#323",
+            "bgcolor": "#535"
           }
         ],
         "groups": [],
@@ -5993,8 +5995,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 33,
-          "lastNodeId": 498,
-          "lastLinkId": 1199,
+          "lastNodeId": 499,
+          "lastLinkId": 1201,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -6269,8 +6271,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 33,
-          "lastNodeId": 498,
-          "lastLinkId": 1199,
+          "lastNodeId": 499,
+          "lastLinkId": 1201,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -6928,8 +6930,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 33,
-          "lastNodeId": 498,
-          "lastLinkId": 1199,
+          "lastNodeId": 499,
+          "lastLinkId": 1201,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -7495,10 +7497,10 @@
     "VHS_MetadataImage": true,
     "VHS_KeepIntermediate": true,
     "ds": {
-      "scale": 1.015858193817759,
+      "scale": 0.5159609120521172,
       "offset": [
-        -2587.3940265259275,
-        -5856.2206443447785
+        -1943.5366161616175,
+        -5193.440972222219
       ]
     }
   },

@@ -17,7 +17,7 @@ class MultiImageLoader:
                 "height": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 1}),
                 "interpolation": (["lanczos", "nearest", "bilinear", "bicubic", "area", "nearest-exact"],),
                 "resize_method": (["keep proportion", "stretch", "pad", "crop"],),
-                "multiple_of": ("INT", {"default": 0, "min": 0, "max": 512, "step": 1}),
+                "multiple_of": ("INT", {"default": 32, "min": 0, "max": 512, "step": 1}),
                 "img_compression": ("INT", {"default": 18, "min": 0, "max": 100, "step": 1}),
             },
         }

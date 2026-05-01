@@ -61,9 +61,10 @@ class LoadAudioUI:
 
         return {
             "required": {
-                "audio": (files, {"audio_upload": True}),
+                "audio": (files, {"audio_upload": True}), # Moved to the top so it appears first
                 "start_time": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100000.0, "step": 0.01}),
                 "end_time": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100000.0, "step": 0.01}),
+                "duration": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100000.0, "step": 0.01}),
             },
             "optional": {
                 "audioUI": ("AUDIO_UI",)
@@ -82,7 +83,7 @@ class LoadAudioUI:
         # where our fallback silence logic can handle the missing file gracefully.
         return True
     
-    def load_audio(self, audio, start_time, end_time, **kwargs):
+    def load_audio(self, audio, start_time, end_time, duration, **kwargs):
         # Determine the annotated file path if a file is actually selected
         # We wrap this in a try/except because get_annotated_filepath can fail if 
         # the input string is malformed or doesn't follow expected paths.

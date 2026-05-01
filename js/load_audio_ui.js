@@ -245,9 +245,6 @@ app.registerExtension({
                 const widget = this.addDOMWidget("audio_ui", "audio_ui", container);
                 
                 // --- DEFAULT SIZE FOR NEW NODES ---
-                // We set the width to 475 initially. 
-                // If a workflow is loading, LiteGraph will overwrite this size 
-                // automatically after this function finishes.
                 this.size = [475, this.computeSize()[1]];
                 
                 widget.computeSize = function(width) {
@@ -259,6 +256,49 @@ app.registerExtension({
                     const audioWidget = node.widgets && node.widgets.find(w => w.name === "audio");
                     const startWidget = node.widgets && node.widgets.find(w => w.name === "start_time");
                     const endWidget = node.widgets && node.widgets.find(w => w.name === "end_time");
+                    const durationWidget = node.widgets && node.widgets.find(w => w.name === "duration");
+                    
+                    let duration = 0;
+                    let dragging = null;
+                    let dragOffset = 0;
+                    let dragSelectionWidth = 0;
+                    let isUpdatingDuration = false; // Flag to prevent infinite loops
+
+                    // Hook into the Python-generated native duration widget
+                    if (durationWidget) {
+                        const origCallback = durationWidget.callback;
+                        durationWidget.callback = function(v) {
+                            // If we're internally triggering it, ignore it
+                            if (!duration || isUpdatingDuration) {
+                                if (origCallback) origCallback.apply(this, arguments);
+                                return;
+                            }
+                            
+                            isUpdatingDuration = true;
+                            let d = parseFloat(v) || 0;
+                            if (d < 0) d = 0;
+                            if (d > duration) d = duration;
+
+                            let s = startWidget ? parseFloat(startWidget.value) || 0 : 0;
+                            let newStart = s;
+                            let newEnd = s + d;
+
+                            // If adding duration pushes past the end of the audio, shift the start time back instead
+                            if (newEnd > duration) {
+                                newEnd = duration;
+                                newStart = duration - d;
+                            }
+
+                            if (startWidget) startWidget.value = parseFloat(newStart.toFixed(2));
+                            if (endWidget) endWidget.value = parseFloat(newEnd.toFixed(2));
+
+                            updateUI(true);
+                            app.graph.setDirtyCanvas(true, false);
+                            
+                            if (origCallback) origCallback.apply(this, arguments);
+                            isUpdatingDuration = false;
+                        };
+                    }
                     
                     if (audioWidget) {
                         const updateAudio = () => {
@@ -305,9 +345,6 @@ app.registerExtension({
                             handleFileUpload(e.dataTransfer.files[0]);
                         }
                     };
-
-                    let duration = 0;
-                    let dragging = null;
 
                     const formatTime = (secs) => {
                         if (secs < 60) return secs.toFixed(1) + "s";
@@ -360,7 +397,16 @@ app.registerExtension({
                         endHandle.style.left = `${ePct}%`;
                         fill.style.left = `${sPct}%`;
                         fill.style.width = `${ePct - sPct}%`;
-                        trimLength.textContent = `Trimmed: ${formatTime(e - s)}`;
+                        
+                        // Sync native duration widget seamlessly to match UI handles
+                        const currentDur = parseFloat((e - s).toFixed(2));
+                        trimLength.textContent = `Trimmed: ${currentDur}s`;
+                        if (durationWidget && durationWidget.value !== currentDur) {
+                            isUpdatingDuration = true;
+                            durationWidget.value = currentDur;
+                            isUpdatingDuration = false;
+                        }
+                        
                         if (syncPlayer && audioEl.readyState >= 1) { audioEl.currentTime = s; }
                     };
 
@@ -370,13 +416,13 @@ app.registerExtension({
                         // Handle trim reset for new audio selection
                         if (node._should_reset_trim) {
                             if (startWidget) startWidget.value = 0;
-                            if (endWidget) endWidget.value = parseFloat(duration.toFixed(3));
+                            if (endWidget) endWidget.value = parseFloat(duration.toFixed(2));
                             node._should_reset_trim = false;
                         } else {
                             // Default clamping logic for initial load or out-of-bounds saved values
                             let e = endWidget ? parseFloat(endWidget.value) || 0 : 0;
                             if (endWidget && (e === 0 || e > duration)) { 
-                                endWidget.value = parseFloat(duration.toFixed(3)); 
+                                endWidget.value = parseFloat(duration.toFixed(2)); 
                             }
                         }
                         
@@ -414,12 +460,20 @@ app.registerExtension({
                         const val = (x / rect.width) * duration;
                         let s = startWidget ? parseFloat(startWidget.value) || 0 : 0;
                         let e_val = endWidget ? parseFloat(endWidget.value) || duration : duration;
-                        if (Math.abs(val - s) < Math.abs(val - e_val)) {
+                        
+                        // Define a "handle tolerance" zone (approx 10px on each side) to prioritize resizing over dragging
+                        const handleTolerance = (10 / rect.width) * duration;
+                        
+                        if (val > s + handleTolerance && val < e_val - handleTolerance) {
+                            dragging = 'center';
+                            dragOffset = val - s;
+                            dragSelectionWidth = e_val - s;
+                        } else if (Math.abs(val - s) < Math.abs(val - e_val)) {
                             dragging = 'start';
-                            if(startWidget) startWidget.value = parseFloat(Math.min(val, e_val).toFixed(3));
+                            if(startWidget) startWidget.value = parseFloat(Math.min(val, e_val).toFixed(2));
                         } else {
                             dragging = 'end';
-                            if(endWidget) endWidget.value = parseFloat(Math.max(val, s).toFixed(3));
+                            if(endWidget) endWidget.value = parseFloat(Math.max(val, s).toFixed(2));
                         }
                         updateUI(true); app.graph.setDirtyCanvas(true, false);
                         sliderBox.setPointerCapture(e.pointerId);
@@ -432,10 +486,25 @@ app.registerExtension({
                         const val = (x / rect.width) * duration;
                         if (dragging === 'start') {
                             let e_val = endWidget ? parseFloat(endWidget.value) || duration : duration;
-                            if(startWidget) startWidget.value = parseFloat(Math.min(val, e_val).toFixed(3));
+                            if(startWidget) startWidget.value = parseFloat(Math.min(val, e_val).toFixed(2));
                         } else if (dragging === 'end') {
                             const s = startWidget ? parseFloat(startWidget.value) || 0 : 0;
-                            if(endWidget) endWidget.value = parseFloat(Math.max(val, s).toFixed(3));
+                            if(endWidget) endWidget.value = parseFloat(Math.max(val, s).toFixed(2));
+                        } else if (dragging === 'center') {
+                            let newStart = val - dragOffset;
+                            let newEnd = newStart + dragSelectionWidth;
+                            
+                            // Clamp to bounds
+                            if (newStart < 0) {
+                                newStart = 0;
+                                newEnd = dragSelectionWidth;
+                            } else if (newEnd > duration) {
+                                newEnd = duration;
+                                newStart = duration - dragSelectionWidth;
+                            }
+                            
+                            if(startWidget) startWidget.value = parseFloat(newStart.toFixed(2));
+                            if(endWidget) endWidget.value = parseFloat(newEnd.toFixed(2));
                         }
                         updateUI(true); app.graph.setDirtyCanvas(true, false);
                     };

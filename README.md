@@ -20,6 +20,12 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 
 # 🔄 Recent Updates
 
+ **v1.2.5**
+  * **Updated Load Audio UI Node**
+    * Added Duration Setting
+    * Made the whole selection bar draggable
+    * Fixed Trimmed UI to show centiseconds
+    
  **v1.2.4**
   * **New Node: Load Audio UI**
     
@@ -87,7 +93,7 @@ If you connect another string/text node to the text_input, it will still update 
 I kept having to play the guessing game on my own generations so I made this node to make it easier :man_shrugging:
 
 ## Load Audio UI  
-<img width="1280" height="720" alt="Load_Audio_UI" src="https://github.com/user-attachments/assets/5ee35d26-2a43-4230-aaf9-7284a31eeeea" />
+<img width="1280" height="720" alt="Load_Audio_UI_V2" src="https://github.com/user-attachments/assets/e3dc5c8d-d0b9-4336-8196-944204719239" />
 <br>
 <br>
 An upgraded Load Audio node. Features a simple interface to easily trim audio. Also allows dragging and dropping files (fixes the original node that doesn't allow dropping in videos). Also compatible with nodes 2.0.

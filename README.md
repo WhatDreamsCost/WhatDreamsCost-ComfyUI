@@ -135,4 +135,3 @@ It may also be due to my ComfyUI frontend not matching the backend (that has bee
 I made these nodes knowing almost nothing about python and a beginner level knowledge of javascript. Feel free to suggest improvements, and if you run into any bugs let me know.
 
 For those asking, I mainly used gemini to create these nodes.
-![Uploading Load_Audio_UI.gif…]()

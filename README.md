@@ -86,8 +86,6 @@ It also has a sync feature that syncs all LTX Sequencer nodes together in realti
 ## LTX Keyframer
 <img width="1082" height="608" alt="LTX Keyframer Wide" src="https://github.com/user-attachments/assets/850ba4a2-dbca-4e5a-a580-1c271e9f0c41" />
 
-<br>
-<br>
 An overhaul of the LTXVImgToVideoInplaceKJ node. It allows you to quickly create FFLF (First Frame Last Frame) videos and shot sequences. Also upports any number of middle frames.
 
 Connect the Multi Image Loader node's multi_output to automatically update the node's widgets.

@@ -8,9 +8,22 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 
 ## ▶️ YouTube Tutorial Videos
 
-[![Overview Video](https://img.youtube.com/vi/aXDIr8eNovI/0.jpg)](https://www.youtube.com/watch?v=aXDIr8eNovI)
-
-[![Prompting and Keyframing Guide](https://img.youtube.com/vi/ZY4hsvTzbas/0.jpg)](https://www.youtube.com/watch?v=ZY4hsvTzbas)
+<table>
+  <tr>
+    <td>
+      <p align="center">Overview Video</p>
+      <a href="https://www.youtube.com/watch?v=aXDIr8eNovI">
+        <img src="https://img.youtube.com/vi/aXDIr8eNovI/0.jpg" alt="Overview Video" width="400">
+      </a>
+    </td>
+    <td>
+      <p align="center">Prompting and Keyframing Guide</p>
+      <a href="https://www.youtube.com/watch?v=ZY4hsvTzbas">
+        <img src="https://img.youtube.com/vi/ZY4hsvTzbas/0.jpg" alt="Prompting and Keyframing Guide" width="400">
+      </a>
+    </td>
+  </tr>
+</table>
 
 ## ❓ How to install nodes
 
@@ -56,7 +69,7 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 # ⚙️ Custom Nodes
 
 ## Multi Image Loader
-![Multi_Image_Loader_GIF](https://github.com/user-attachments/assets/71924103-92a6-4c1e-b67a-064dcbcce781)
+<img width="1280" height="720" alt="Multi_Image_Loader_Wide_Gif" src="https://github.com/user-attachments/assets/99b6afd8-5197-4e6c-81da-a7bd156c42c7" />
 
 An Image loader that features a built in gallery, allowing your to easily rearrange images and output them seperately or batched together. It also combines the image resize node and LTXVPreprocess node to reduce clutter in LTX workflows.
 
@@ -71,7 +84,8 @@ It also has a sync feature that syncs all LTX Sequencer nodes together in realti
 
 
 ## LTX Keyframer
-<img width="612" height="563" alt="LTX_Keyframer_Node" src="https://github.com/user-attachments/assets/c4583a8b-4d48-4179-8d64-748ddd07b314" />
+<img width="1082" height="608" alt="LTX Keyframer Wide" src="https://github.com/user-attachments/assets/850ba4a2-dbca-4e5a-a580-1c271e9f0c41" />
+
 <br>
 <br>
 An overhaul of the LTXVImgToVideoInplaceKJ node. It allows you to quickly create FFLF (First Frame Last Frame) videos and shot sequences. Also upports any number of middle frames.

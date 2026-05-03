@@ -33,6 +33,12 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 
 # 🔄 Recent Updates
 
+ **v1.2.6**
+  * **Updated Speech Length Calculator UI**
+    * Updated Speech Length Calculator UI
+
+    Also added duration output to the Load Audio UI node
+    
  **v1.2.5**
   * **Updated Load Audio UI Node**
     * Added Duration Setting

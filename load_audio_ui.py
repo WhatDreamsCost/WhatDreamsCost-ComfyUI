@@ -72,7 +72,8 @@ class LoadAudioUI:
         }
 
     CATEGORY = "audio"
-    RETURN_TYPES = ("AUDIO", )
+    RETURN_TYPES = ("AUDIO", "FLOAT")
+    RETURN_NAMES = ("audio", "duration")
     FUNCTION = "load_audio"
 
     @classmethod
@@ -134,4 +135,7 @@ class LoadAudioUI:
         # Format for ComfyUI's standard AUDIO type: [batch, channels, time]
         audio_output = {"waveform": trimmed_waveform.unsqueeze(0), "sample_rate": sample_rate}
         
-        return (audio_output, )
+        # Calculate the final trimmed duration in seconds as a float
+        final_duration = float(trimmed_waveform.shape[1] / sample_rate)
+        
+        return (audio_output, final_duration)

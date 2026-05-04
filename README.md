@@ -35,16 +35,18 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 
  **v1.2.7**
   * **New Node: Load Video UI**
-    * Custom Node to Trim, Resize, and Preview Videos in Realtime
+
+Custom Node to Trim, Resize, and Preview Videos in Realtime
   
-
-    
- **v1.2.6**
+   **v1.2.6**
   * **Updated Speech Length Calculator UI**
-    * Updated Speech Length Calculator UI
 
-    Also added duration output to the Load Audio UI node
+Also added duration output to the Load Audio UI node
     
+
+<details>
+  <summary>Click to view older Updates</summary>
+
  **v1.2.5**
   * **Updated Load Audio UI Node**
     * Added Duration Setting
@@ -52,31 +54,32 @@ All of my nodes are created with the help of AI, so there may or may not be redu
     * Fixed Trimmed UI to show centiseconds
     
  **v1.2.4**
-  * **New Node: Load Audio UI**
-    
-    Overhaul of the load audio node. Features a simple interface to easily trim audio. Also allows dragging and dropping files (fixes the original node that doesn't allow dropping in videos). Also compatible with nodes 2.0.
+ * **New Node: Load Audio UI**
+
+Overhaul of the load audio node. Features a simple interface to easily trim audio. Also allows dragging and dropping files (fixes the original node that doesn't allow dropping in videos). Also compatible with nodes 2.0.
 
  **v1.2.3**
   * **Workflow Update + Minor Bug Fix** 
     * Added new workflow that is compatible with the latest ComfyUI version (as of 4/27/26). The new workflow also included an option to include custom audio, and has minor improvements of the previous workflows.
     * Fixed minor bug with Multi Image Loader that blocked mouse input in a small area under the node 🤷‍♂️
 
-* **v1.2.0**
+**v1.2.0**
   * **New Node: Speech Length Calculator** 
   
   Automatically output in realtime how long a video should be based on the dialouge. 
 
-* **v1.1.0**
+**v1.1.0**
   * Added resize_method to the Multi Image Loader node for more resize options
   * Added insert_mode which allows you to enter in seconds instead of frames on the LTX Sequencer node
   * Updated workflows with more notes
   * Re-added tiny vae to workflows
   * Fixed various bugs
   * more things i can't rememeber
-
+  
 **This update will change the node layouts, so be sure to update your workflows or else they won't work properly.**
 
 ❗❗❗ **New Tutorial on using these nodes available: https://www.youtube.com/watch?v=aXDIr8eNovI**  ❗❗❗
+</details>
 
 # ⚙️ Custom Nodes
 

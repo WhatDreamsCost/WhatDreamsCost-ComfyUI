@@ -33,6 +33,12 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 
 # 🔄 Recent Updates
 
+ **v1.2.7**
+  * **New Node: Load Video UI**
+    * Custom Node to Trim, Resize, and Preview Videos in Realtime
+  
+
+    
  **v1.2.6**
   * **Updated Speech Length Calculator UI**
     * Updated Speech Length Calculator UI
@@ -109,6 +115,22 @@ This node calculates in realtime how long a video should be based on the dialogu
 If you connect another string/text node to the text_input, it will still update in the length in realtime.
 
 I kept having to play the guessing game on my own generations so I made this node to make it easier :man_shrugging:
+
+## Load Video UI  
+<img width="1280" height="720" alt="Load Video UI GIF" src="https://github.com/user-attachments/assets/fb76ff03-a6ff-4837-bd63-7e429f5f3d37" />
+<br>
+<br>
+An upgraded Load Video node. It has the following features:
+
+* Simple interface to quickly trim videos and preview them in realtime.
+* Ability to load any length of video into the node (the default load video node was limited to 100MB files)
+* Easily switch between showing seconds and frames with a toggle button. This will change the widgets as well as the interface.
+* Multiple options for resizing the video (maintain aspect ratio, crop, stretch to fit, pad)
+* Allows dragging and dropping files into the node
+* Progress bar
+* Optimized to use less RAM (still very limited due to ComfyUI limitations, but at least a little more efficient)
+
+Please note that due to ComfyUI limitations (and the fact that this node doesn't use any addtional libraries), this node will not work well for outputting large videos. You can trim any length of video without a problem, but if the output is still large it will end up using a lot of RAM. I have implemented various optimizations though to make it use less memory.
 
 ## Load Audio UI  
 <img width="1280" height="720" alt="Load_Audio_UI_V2" src="https://github.com/user-attachments/assets/e3dc5c8d-d0b9-4336-8196-944204719239" />

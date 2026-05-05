@@ -140,8 +140,6 @@ I kept having to play the guessing game on my own generations so I made this nod
   </tr>
 </table>
 
-<br>
-<br>
 An upgraded Load Video node. It has the following features:
 
 * Simple interface to quickly trim videos and preview them in realtime.

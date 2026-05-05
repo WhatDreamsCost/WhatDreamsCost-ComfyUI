@@ -54,6 +54,10 @@ class LoadVideoUI:
                 "custom_height": ("INT", {"default": 0, "min": 0, "max": 100000, "step": 8, "tooltip": "Custom height. 0 means original height."}),
                 "frame_rate": ("INT", {"default": 24, "min": 1, "max": 120, "step": 1, "tooltip": "Force the video to a specific frame rate for extraction."}),
                 "display_mode": (["seconds", "frames"], {"default": "seconds"}),
+                "crop_x": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.001}),
+                "crop_y": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.001}),
+                "crop_w": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.001}),
+                "crop_h": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.001}),
             }
         }
 
@@ -62,7 +66,7 @@ class LoadVideoUI:
     FUNCTION = "load_video"
     CATEGORY = "Custom/Video"
 
-    def load_video(self, video, frame_rate, display_mode, start_time, end_time, duration, start_frame, end_frame, duration_frames, custom_width=0, custom_height=0, resize_method="maintain aspect ratio", **kwargs):
+    def load_video(self, video, frame_rate, display_mode, start_time, end_time, duration, start_frame, end_frame, duration_frames, custom_width=0, custom_height=0, resize_method="maintain aspect ratio", crop_x=0.0, crop_y=0.0, crop_w=1.0, crop_h=1.0, **kwargs):
         if not video:
             # Return blank defaults if no video is loaded
             empty_image = torch.zeros((1, 512, 512, 3), dtype=torch.float32)
@@ -94,21 +98,75 @@ class LoadVideoUI:
         orig_w = video_stream.codec_context.width if video_stream else 512
         orig_h = video_stream.codec_context.height if video_stream else 512
 
+        # Determine correct colorspace and color range for PyAV conversion to prevent color shift
+        try:
+            from av.video.reformatter import Colorspace, ColorRange
+            # Improve fallback heuristic to check both dimensions (e.g. 720x1280 vertical video is HD)
+            fallback_cs = Colorspace.ITU709 if max(orig_w, orig_h) >= 720 else Colorspace.ITU601
+            fallback_cr = ColorRange.MPEG
+            dst_range = ColorRange.JPEG # RGB should always be full range
+        except ImportError:
+            fallback_cs = "itu709" if max(orig_w, orig_h) >= 720 else "itu601"
+            fallback_cr = "mpeg"
+            dst_range = "jpeg"
+            
+        src_colorspace = fallback_cs
+        src_color_range = fallback_cr
+        
+        if video_stream and video_stream.codec_context:
+            cc = video_stream.codec_context
+            
+            c_space = getattr(cc, 'colorspace', getattr(cc, 'color_space', None))
+            if c_space and hasattr(c_space, 'name') and c_space.name != "UNSPECIFIED":
+                src_colorspace = c_space
+            elif c_space and isinstance(c_space, str) and "unspecified" not in c_space.lower():
+                src_colorspace = c_space
+                
+            c_range = getattr(cc, 'color_range', None)
+            if c_range and hasattr(c_range, 'name') and c_range.name != "UNSPECIFIED":
+                src_color_range = c_range
+            elif c_range and isinstance(c_range, str) and "unspecified" not in c_range.lower():
+                src_color_range = c_range
+
         target_w = custom_width if custom_width > 0 else orig_w
         target_h = custom_height if custom_height > 0 else orig_h
         
         target_w = target_w - (target_w % 2)
         target_h = target_h - (target_h % 2)
         
+        # Calculate manual crop from interactive UI first
+        manual_crop_left = int(orig_w * crop_x)
+        manual_crop_top = int(orig_h * crop_y)
+        manual_crop_right = orig_w - int(orig_w * (crop_x + crop_w))
+        manual_crop_bottom = orig_h - int(orig_h * (crop_y + crop_h))
+        
+        # Ensure we don't crop more than the image
+        manual_crop_left = max(0, min(manual_crop_left, orig_w - 1))
+        manual_crop_top = max(0, min(manual_crop_top, orig_h - 1))
+        manual_crop_right = max(0, min(manual_crop_right, orig_w - manual_crop_left - 1))
+        manual_crop_bottom = max(0, min(manual_crop_bottom, orig_h - manual_crop_top - 1))
+        
+        # After manual crop, the new original dimensions are:
+        cropped_orig_w = orig_w - manual_crop_left - manual_crop_right
+        cropped_orig_h = orig_h - manual_crop_top - manual_crop_bottom
+        
+        # If no custom width/height is provided, use the cropped original dimensions
+        if custom_width == 0:
+            target_w = cropped_orig_w
+            target_w = target_w - (target_w % 2)
+        if custom_height == 0:
+            target_h = cropped_orig_h
+            target_h = target_h - (target_h % 2)
+
         scale_w, scale_h = target_w, target_h
         pad_left = pad_right = pad_top = pad_bottom = 0
         crop_left = crop_right = crop_top = crop_bottom = 0
 
         if custom_width > 0 or custom_height > 0:
             if resize_method == "maintain aspect ratio" or resize_method == "pad":
-                ratio = min(target_w / orig_w, target_h / orig_h)
-                scale_w = int(orig_w * ratio)
-                scale_h = int(orig_h * ratio)
+                ratio = min(target_w / cropped_orig_w, target_h / cropped_orig_h)
+                scale_w = int(cropped_orig_w * ratio)
+                scale_h = int(cropped_orig_h * ratio)
                 scale_w = scale_w - (scale_w % 2)
                 scale_h = scale_h - (scale_h % 2)
                 
@@ -123,9 +181,9 @@ class LoadVideoUI:
                     target_w, target_h = scale_w, scale_h
 
             elif resize_method == "crop":
-                ratio = max(target_w / orig_w, target_h / orig_h)
-                scale_w = int(orig_w * ratio)
-                scale_h = int(orig_h * ratio)
+                ratio = max(target_w / cropped_orig_w, target_h / cropped_orig_h)
+                scale_w = int(cropped_orig_w * ratio)
+                scale_h = int(cropped_orig_h * ratio)
                 scale_w = scale_w - (scale_w % 2)
                 scale_h = scale_h - (scale_h % 2)
                 
@@ -193,7 +251,30 @@ class LoadVideoUI:
                 if frame_time > actual_end_time + frame_interval: 
                     break
                     
-                frame_rgb = frame.reformat(width=scale_w, height=scale_h, format='rgb24').to_ndarray()
+                # Fix PyAV color shift by forcing proper colorspace and range conversion.
+                # Omit dst_colorspace so swscale defaults naturally for RGB output
+                # (passing it can cause the YUV matrix to be applied incorrectly).
+                try:
+                    frame = frame.reformat(
+                        format="rgb24",
+                        src_colorspace=src_colorspace,
+                        src_color_range=src_color_range,
+                        dst_color_range=dst_range
+                    )
+                    frame_rgb = frame.to_ndarray(format='rgb24')
+                except Exception as e:
+                    # Fallback: if explicit color reformat fails, use PyAV's default conversion
+                    print(f"[LoadVideoUI] Color reformat failed, using default: {e}")
+                    frame_rgb = frame.to_ndarray(format='rgb24')
+                
+                # Apply interactive crop first
+                if manual_crop_left > 0 or manual_crop_top > 0 or manual_crop_right > 0 or manual_crop_bottom > 0:
+                    frame_rgb = frame_rgb[manual_crop_top:orig_h-manual_crop_bottom, manual_crop_left:orig_w-manual_crop_right, :]
+                    
+                # Now resize to the scaled dimensions
+                if scale_w != cropped_orig_w or scale_h != cropped_orig_h:
+                    import cv2
+                    frame_rgb = cv2.resize(frame_rgb, (scale_w, scale_h), interpolation=cv2.INTER_AREA)
                 
                 if crop_left > 0 or crop_top > 0 or crop_right > 0 or crop_bottom > 0:
                     frame_rgb = frame_rgb[crop_top:scale_h-crop_bottom, crop_left:scale_w-crop_right, :]

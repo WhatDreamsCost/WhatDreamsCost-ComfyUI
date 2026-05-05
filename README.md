@@ -13,13 +13,13 @@ All of my nodes are created with the help of AI, so there may or may not be redu
     <td>
       <p align="center">Overview Video</p>
       <a href="https://www.youtube.com/watch?v=aXDIr8eNovI">
-        <img src="https://img.youtube.com/vi/aXDIr8eNovI/0.jpg" alt="Overview Video" width="400">
+        <img src="https://img.youtube.com/vi/aXDIr8eNovI/0.jpg" alt="Overview Video" width="100%">
       </a>
     </td>
     <td>
       <p align="center">Prompting and Keyframing Guide</p>
       <a href="https://www.youtube.com/watch?v=ZY4hsvTzbas">
-        <img src="https://img.youtube.com/vi/ZY4hsvTzbas/0.jpg" alt="Prompting and Keyframing Guide" width="400">
+        <img src="https://img.youtube.com/vi/ZY4hsvTzbas/0.jpg" alt="Prompting and Keyframing Guide" width="100%">
       </a>
     </td>
   </tr>
@@ -127,10 +127,18 @@ If you connect another string/text node to the text_input, it will still update 
 I kept having to play the guessing game on my own generations so I made this node to make it easier :man_shrugging:
 
 ## Load Video UI  
-<img width="1280" height="720" alt="Load Video UI GIF" src="https://github.com/user-attachments/assets/fb76ff03-a6ff-4837-bd63-7e429f5f3d37" />
-<img width="1280" height="720" alt="Load Video UI Cropping GIF" src="https://github.com/user-attachments/assets/28cfb4ca-e42a-44da-9afb-f20cb01b9722" />
-
-
+<table>
+  <tr>
+    <td>
+      <p align="center">Trim, Resize, and Preview Videos in Realtime</p>
+  <img src="https://github.com/user-attachments/assets/fb76ff03-a6ff-4837-bd63-7e429f5f3d37" width="100%" />
+    </td>
+    <td>
+      <p align="center">New Crop Mode!</p>
+  <img src="https://github.com/user-attachments/assets/28cfb4ca-e42a-44da-9afb-f20cb01b9722" width="100%" />
+    </td>
+  </tr>
+</table>
 
 <br>
 <br>

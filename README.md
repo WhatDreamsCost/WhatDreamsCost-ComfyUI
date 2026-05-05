@@ -33,12 +33,20 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 
 # 🔄 Recent Updates
 
- **v1.2.6**
-  * **Updated Speech Length Calculator UI**
-    * Updated Speech Length Calculator UI
+ **v1.2.7**
+  * **New Node: Load Video UI**
 
-    Also added duration output to the Load Audio UI node
+Custom Node to Trim, Resize, and Preview Videos in Realtime
+  
+   **v1.2.6**
+  * **Updated Speech Length Calculator UI**
+
+Also added duration output to the Load Audio UI node
     
+
+<details>
+  <summary>Click to view older Updates</summary>
+
  **v1.2.5**
   * **Updated Load Audio UI Node**
     * Added Duration Setting
@@ -46,31 +54,32 @@ All of my nodes are created with the help of AI, so there may or may not be redu
     * Fixed Trimmed UI to show centiseconds
     
  **v1.2.4**
-  * **New Node: Load Audio UI**
-    
-    Overhaul of the load audio node. Features a simple interface to easily trim audio. Also allows dragging and dropping files (fixes the original node that doesn't allow dropping in videos). Also compatible with nodes 2.0.
+ * **New Node: Load Audio UI**
+
+Overhaul of the load audio node. Features a simple interface to easily trim audio. Also allows dragging and dropping files (fixes the original node that doesn't allow dropping in videos). Also compatible with nodes 2.0.
 
  **v1.2.3**
   * **Workflow Update + Minor Bug Fix** 
     * Added new workflow that is compatible with the latest ComfyUI version (as of 4/27/26). The new workflow also included an option to include custom audio, and has minor improvements of the previous workflows.
     * Fixed minor bug with Multi Image Loader that blocked mouse input in a small area under the node 🤷‍♂️
 
-* **v1.2.0**
+**v1.2.0**
   * **New Node: Speech Length Calculator** 
   
   Automatically output in realtime how long a video should be based on the dialouge. 
 
-* **v1.1.0**
+**v1.1.0**
   * Added resize_method to the Multi Image Loader node for more resize options
   * Added insert_mode which allows you to enter in seconds instead of frames on the LTX Sequencer node
   * Updated workflows with more notes
   * Re-added tiny vae to workflows
   * Fixed various bugs
   * more things i can't rememeber
-
+  
 **This update will change the node layouts, so be sure to update your workflows or else they won't work properly.**
 
 ❗❗❗ **New Tutorial on using these nodes available: https://www.youtube.com/watch?v=aXDIr8eNovI**  ❗❗❗
+</details>
 
 # ⚙️ Custom Nodes
 
@@ -109,6 +118,22 @@ This node calculates in realtime how long a video should be based on the dialogu
 If you connect another string/text node to the text_input, it will still update in the length in realtime.
 
 I kept having to play the guessing game on my own generations so I made this node to make it easier :man_shrugging:
+
+## Load Video UI  
+<img width="1280" height="720" alt="Load Video UI GIF" src="https://github.com/user-attachments/assets/fb76ff03-a6ff-4837-bd63-7e429f5f3d37" />
+<br>
+<br>
+An upgraded Load Video node. It has the following features:
+
+* Simple interface to quickly trim videos and preview them in realtime.
+* Ability to load any length of video into the node (the default load video node was limited to 100MB files)
+* Easily switch between showing seconds and frames with a toggle button. This will change the widgets as well as the interface.
+* Multiple options for resizing the video (maintain aspect ratio, crop, stretch to fit, pad)
+* Allows dragging and dropping files into the node
+* Progress bar
+* Optimized to use less RAM (still very limited due to ComfyUI limitations, but at least a little more efficient)
+
+Please note that due to ComfyUI limitations (and the fact that this node doesn't use any addtional libraries), this node will not work well for outputting large videos. You can trim any length of video without a problem, but if the output is still large it will end up using a lot of RAM. I have implemented various optimizations though to make it use less memory.
 
 ## Load Audio UI  
 <img width="1280" height="720" alt="Load_Audio_UI_V2" src="https://github.com/user-attachments/assets/e3dc5c8d-d0b9-4336-8196-944204719239" />

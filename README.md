@@ -33,6 +33,13 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 
 # 🔄 Recent Updates
 
+ **v1.2.8**
+  * **Updated Load Video UI and Color Conversion**
+    * Added crop mode, a simple interface to crop videos. It also include various aspect ratio presets.
+    * Updated color conversion to ensure colors are as accurate as possible. Will first check metadata for colorspace, and if metadata is missing then it will guess the colorspace based on video dimensions.
+    * Updated display mode toggle UI to be more understandable 
+
+
  **v1.2.7**
   * **New Node: Load Video UI**
 
@@ -121,6 +128,10 @@ I kept having to play the guessing game on my own generations so I made this nod
 
 ## Load Video UI  
 <img width="1280" height="720" alt="Load Video UI GIF" src="https://github.com/user-attachments/assets/fb76ff03-a6ff-4837-bd63-7e429f5f3d37" />
+<img width="1280" height="720" alt="Load Video UI Cropping GIF" src="https://github.com/user-attachments/assets/28cfb4ca-e42a-44da-9afb-f20cb01b9722" />
+
+
+
 <br>
 <br>
 An upgraded Load Video node. It has the following features:

@@ -6,10 +6,28 @@ app.registerExtension({
     async nodeCreated(node) {
         if (node.comfyClass !== "MultiImageLoader") return;
 
+        // Helper to detect if we are in the new Nodes 2.0 / V3 Web Component frontend
+        let v3NodeElement = null;
+        function checkIsV3() {
+            if (v3NodeElement) return true;
+            let el = container.parentElement;
+            while (el) {
+                if ((el.tagName && el.tagName.toLowerCase().includes('comfy-node')) || 
+                    (el.classList && el.classList.contains('comfy-node'))) {
+                    v3NodeElement = el;
+                    return true;
+                }
+                el = el.parentElement || (el.getRootNode ? el.getRootNode().host : null);
+            }
+            return false;
+        }
+
         // --- 1. UI Setup: Main Container ---
         const container = document.createElement("div");
         container.style.cssText = `
             width: 100%;
+            min-height: 250px; 
+            min-width: 100px; /* Reduced from 400px to allow thin resizing in V3 */
             background: #222222;
             border: 1px solid #353545;
             border-radius: 4px;
@@ -25,7 +43,8 @@ app.registerExtension({
 
         // Top Bar for Actions
         const topBar = document.createElement("div");
-        topBar.style.cssText = "display: flex; justify-content: flex-start; align-items: center; width: 100%; gap: 8px;";
+        // Added flex-wrap: wrap so buttons stack if the node gets extremely thin
+        topBar.style.cssText = "display: flex; flex-wrap: wrap; justify-content: flex-start; align-items: center; width: 100%; gap: 8px;";
         
         const uploadBtn = document.createElement("button");
         uploadBtn.innerText = "Upload Images";
@@ -51,18 +70,26 @@ app.registerExtension({
         topBar.appendChild(removeAllBtn);
         container.appendChild(topBar);
 
-        // The Grid Area - Setup to center the dynamically packed square blocks
+        const gridWrapper = document.createElement("div");
+        gridWrapper.style.cssText = `
+            position: relative;
+            flex-grow: 1;
+            width: 100%;
+            min-height: 0;
+        `;
+
         const grid = document.createElement("div");
         grid.style.cssText = `
-            position: relative; /* Crucial for anti-flicker offset calculations */
-            flex-grow: 1;
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
             display: grid;
             gap: 8px;
-            width: 100%;
             justify-content: center;
             align-content: center;
         `;
-        container.appendChild(grid);
+        
+        gridWrapper.appendChild(grid);
+        container.appendChild(gridWrapper);
 
         const fileInput = document.createElement("input");
         fileInput.type = "file";
@@ -74,60 +101,45 @@ app.registerExtension({
         // Add the Widget to the Node
         const galleryWidget = node.addDOMWidget("Gallery", "html_gallery", container, { serialize: false });
         
-        // Permanently neutralize the DOM widget's built-in computeSize to prevent infinite LiteGraph loops
-        galleryWidget.computeSize = () => [0, 0];
+        galleryWidget.computeSize = function() {
+            const galleryY = this.last_y || 40;
+            const minOutputsHeight = (node.outputs ? node.outputs.length : 1) * 20;
+            const requiredGalleryHeight = Math.max(250, minOutputsHeight + 40 - galleryY);
+            return [150, requiredGalleryHeight]; // Changed minimum theoretical widget width
+        };
 
-        // --- BUG FIX ---
-        // Find the paths widget and properly hide it from LiteGraph
+        // --- SAFELY HIDE THE IMAGE_PATHS WIDGET ---
         const pathsWidget = node.widgets.find(w => w.name === "image_paths");
         if (pathsWidget) {
-            // Tell LiteGraph to ignore this widget for hit-testing and drawing
-            pathsWidget.hidden = true; 
+            // Forcefully lock the hidden state against V3's reactive redraws
+            Object.defineProperty(pathsWidget, 'hidden', {
+                get: () => true,
+                set: () => {} // Ignore attempts by V3 to unhide it
+            });
+            Object.defineProperty(pathsWidget, 'type', {
+                get: () => "hidden",
+                set: () => {} // Ignore attempts by V3 to reset the type
+            });
             
-            // Return -4 to absorb LiteGraph's default 4px vertical margin between widgets,
-            // entirely eliminating its invisible "ghost" hitbox.
-            pathsWidget.computeSize = () => [0, -4]; 
-            
-            // Aggressively neutralize the actual DOM element AND its ComfyUI wrapper using a global stylesheet
-            // ComfyUI's background render loop continually overwrites inline styles (like display: none).
-            // By assigning unique IDs and injecting a global !important CSS rule, we guarantee it remains dead.
-            if (pathsWidget.element) {
-                const uid = node.id || Math.random().toString(36).substring(2, 9);
-                pathsWidget.element.id = `hidden-paths-textarea-${uid}`;
-                if (pathsWidget.element.parentElement) {
-                    pathsWidget.element.parentElement.id = `hidden-paths-wrapper-${uid}`;
-                }
+            pathsWidget.computeSize = function() {
+                return [0, 0];
+            };
 
-                // Inject the shield-killer style into the document head if it doesn't exist yet
-                if (!document.getElementById("multi-image-loader-shield-killer")) {
-                    const style = document.createElement("style");
-                    style.id = "multi-image-loader-shield-killer";
-                    style.innerHTML = `
-                        [id^="hidden-paths-textarea-"],
-                        [id^="hidden-paths-wrapper-"] {
-                            display: none !important;
-                            pointer-events: none !important;
-                            position: absolute !important;
-                            width: 0px !important;
-                            height: 0px !important;
-                            opacity: 0 !important;
-                            z-index: -9999 !important;
-                            overflow: hidden !important;
-                        }
-                    `;
-                    document.head.appendChild(style);
+            // Catch for V3 delayed DOM rendering to ensure no stubborn inputs appear
+            const hideInterval = setInterval(() => {
+                if (pathsWidget.element) {
+                    pathsWidget.element.style.display = "none";
                 }
-            }
+            }, 50);
+            setTimeout(() => clearInterval(hideInterval), 1000);
         }
 
         const oldCallback = pathsWidget?.callback;
 
-        // Centralized helper to prevent infinite loops when updating values internally
         function setWidgetValue(newPathsArray, isRearranging = false) {
             if (!pathsWidget) return;
             const val = newPathsArray.join("\n");
             
-            // Temporarily silence the main callback
             const tempCallback = pathsWidget.callback;
             pathsWidget.callback = null;
             
@@ -139,32 +151,29 @@ app.registerExtension({
         }
 
         // --- 2. Logic: Output Syncing & Dynamic Packing ---
-        // Manages image_N outputs (slots 1+) while always preserving multi_output at slot 0
         function syncOutputs(count) {
             if (!node.outputs) return;
 
             let changed = false;
-            // Target = multi_output (slot 0) + count image outputs
             const targetTotal = count + 1;
+            
+            const wasFresh = node.outputs.length >= 50;
 
-            // Remove excess outputs from the end, but NEVER remove slot 0 (multi_output)
             while (node.outputs.length > targetTotal && node.outputs.length > 1) {
                 node.removeOutput(node.outputs.length - 1);
                 changed = true;
             }
 
-            // Add missing image_N outputs after multi_output
             for (let i = node.outputs.length; i < targetTotal; i++) {
                 node.addOutput(`image_${i}`, "IMAGE");
                 changed = true;
             }
 
-            if (changed) {
-                updateLayout();
+            if (changed || wasFresh) {
+                updateLayout(wasFresh);
             }
         }
 
-        // Push-based notification: broadcast image count to all connected nodes
         function notifyConnectedNodes(imageCount) {
             if (!node.outputs) return;
             for (const output of node.outputs) {
@@ -180,8 +189,7 @@ app.registerExtension({
             }
         }
 
-        // 2D Square Packing Algorithm: Calculates the optimal grid sizes to fill empty space
-        function optimizeGrid(nodeW, containerH) {
+        function optimizeGrid(gridW, gridH) {
             const paths = (pathsWidget?.value || "").split(/\n|,/).map(s => s.trim()).filter(s => s);
             const N = paths.length;
             
@@ -190,129 +198,187 @@ app.registerExtension({
                 grid.style.gridAutoRows = 'max-content';
                 return;
             }
-
-            // Approximate the available internal working space
-            const gridW = nodeW - 22; // Container padding + border
-            const gridH = containerH - 60; // Top bar height + container padding + gap
             
             if (gridW <= 0 || gridH <= 0) return;
 
             let bestS = 0;
             let bestCols = 1;
 
-            // Test every possible column combination to find the one that yields the largest squares
             for (let c = 1; c <= N; c++) {
                 const r = Math.ceil(N / c);
-                const maxW = (gridW - (c - 1) * 8) / c;
-                const maxH = (gridH - (r - 1) * 8) / r;
+                // Math.max guarantees we don't end up with negative max width in ultra-thin layouts
+                const maxW = Math.max(5, (gridW - (c - 1) * 8) / c);
+                const maxH = Math.max(5, (gridH - (r - 1) * 8) / r);
                 const size = Math.min(maxW, maxH);
                 
-                if (size > bestS) {
+                // By using >= instead of strict > (with a tiny 0.1 buffer for float precision),
+                // if multiple column counts yield the exact same optimal cell size
+                // (which happens when height is the bottleneck), we aggressively pack
+                // more items horizontally onto the row to fill empty space.
+                if (size >= bestS - 0.1) {
                     bestS = size;
                     bestCols = c;
                 }
             }
             
-            bestS = Math.max(75, Math.floor(bestS)); // Keep a minimum size floor
+            // Allow grid cells to shrink down to 10px instead of 15 to prevent horizontal overflow in V3
+            bestS = Math.max(10, Math.floor(bestS)); 
             
-            // Force the grid to perfectly adopt the optimal maximum square scale
             grid.style.gridTemplateColumns = `repeat(${bestCols}, ${bestS}px)`;
             grid.style.gridAutoRows = `${bestS}px`;
         }
 
-        // Centralized measurement function shared by automatic updates and manual resizes
-        function getGalleryHeights() {
-            const baseHeight = node.computeSize()[1];
-            
-            // Temporarily force natural height measurement using minimum settings
-            const oldHeight = container.style.height;
-            const oldCols = grid.style.gridTemplateColumns;
-            const oldRows = grid.style.gridAutoRows;
-            
-            container.style.height = 'fit-content';
-            grid.style.gridTemplateColumns = `repeat(auto-fit, minmax(75px, 1fr))`;
-            grid.style.gridAutoRows = `max-content`;
-            
-            const naturalGalleryHeight = container.offsetHeight || 100;
-            const minNodeHeight = baseHeight + naturalGalleryHeight + 15;
-            
-            // Restore styles instantly
-            container.style.height = oldHeight;
-            grid.style.gridTemplateColumns = oldCols;
-            grid.style.gridAutoRows = oldRows;
-            
-            return { baseHeight, minNodeHeight };
+        let v3EventsAttached = false;
+
+        function enforceV3CSS() {
+            const isV3 = checkIsV3();
+            if (isV3 && v3NodeElement) {
+                const paddingBottom = 15;
+                const galleryY = galleryWidget.last_y || 40;
+                const minOutputsHeight = (node.outputs ? node.outputs.length : 1) * 20;
+                const absoluteMinHeight = Math.max(galleryY + 250 + paddingBottom, minOutputsHeight + 40);
+
+                // For Nodes 2.0 (V3), we remove the min-width constraint completely.
+                // We leave min-height so outputs don't bleed out vertically.
+                v3NodeElement.style.removeProperty('min-width');
+                v3NodeElement.style.setProperty('min-height', absoluteMinHeight + 'px', 'important');
+
+                // Attach drag & drop to the entire V3 Web Component
+                if (!v3EventsAttached) {
+                    v3EventsAttached = true;
+                    v3NodeElement.addEventListener("dragover", (e) => {
+                        e.preventDefault(); 
+                    });
+                    v3NodeElement.addEventListener("drop", (e) => {
+                        if (e.dataTransfer && e.dataTransfer.files) {
+                            const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+                            if (files.length > 0) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleFiles(files);
+                            }
+                        }
+                    });
+                }
+            }
         }
 
         let isLayouting = false;
-        let isFirstLayout = true;
-        function updateLayout(forceHeight = null) {
+        
+        function updateLayout(forceShrink = false) {
             if (isLayouting) return;
             isLayouting = true;
 
-            const { baseHeight, minNodeHeight } = getGalleryHeights();
+            const isV3 = checkIsV3();
+            const minW = isV3 ? 100 : 200; // 100 in V3, 440 in V1
+            const paddingBottom = isV3 ? 15 : 25; // Apply extra 20px pad on V1
 
-            let targetW = Math.max(node.size[0], 240);
-            let targetH = forceHeight !== null ? forceHeight : node.size[1];
-            
-            if (isFirstLayout) {
-                targetH = 0; // Force shrink to minimum bounds on initial load
-                isFirstLayout = false;
-            }
+            const galleryY = galleryWidget.last_y || 40; 
+            const minOutputsHeight = (node.outputs ? node.outputs.length : 1) * 20;
+            const absoluteMinHeight = Math.max(galleryY + 250 + paddingBottom, minOutputsHeight + 40);
 
-            // Enforce minimum height
-            targetH = Math.max(targetH, minNodeHeight);
+            node.min_size = [minW, absoluteMinHeight];
+            enforceV3CSS();
+
+            let targetW = Math.max(node.size[0], minW);
+            let targetH = forceShrink ? absoluteMinHeight : node.size[1];
+
+            targetH = Math.max(targetH, absoluteMinHeight);
 
             if (node.size[0] !== targetW || node.size[1] !== targetH) {
                 node.setSize([targetW, targetH]);
                 app.graph.setDirtyCanvas(true, true);
             }
 
-            const availableGalleryHeight = targetH - baseHeight - 15;
+            const availableGalleryHeight = targetH - galleryY - paddingBottom;
             container.style.height = availableGalleryHeight + "px";
-
-            // Recalculate and stretch image squares using the new node space
-            optimizeGrid(targetW, availableGalleryHeight);
 
             isLayouting = false;
         }
 
-        // Intercept user dragging the node corner to strictly enforce size constraints
+        // --- OVERRIDE LOGIC FOR RESIZING --- 
         const origOnResize = node.onResize;
         node.onResize = function(size) {
+            const isV3 = checkIsV3();
+            const minW = isV3 ? 100 : 220; // Adjust limits based on frontend
+            const paddingBottom = isV3 ? 15 : 25; // Apply extra 20px pad on V1
+
+            const galleryY = galleryWidget.last_y || 40;
+            const minOutputsHeight = (this.outputs ? this.outputs.length : 1) * 20;
+            const absoluteMinHeight = Math.max(galleryY + 250 + paddingBottom, minOutputsHeight + 40);
+            
+            size[0] = Math.max(size[0], minW);
+            size[1] = Math.max(size[1], absoluteMinHeight);
+
             if (origOnResize) origOnResize.call(this, size);
-            if (isLayouting) return; // Prevent duplicate cycles
+            if (isLayouting) return; 
             
-            const { baseHeight, minNodeHeight } = getGalleryHeights();
+            node.min_size = [minW, absoluteMinHeight];
+            enforceV3CSS(); 
             
-            // Prevent user from making node smaller than the minimum content
-            size[0] = Math.max(size[0], 240);
-            size[1] = Math.max(size[1], minNodeHeight);
-            
-            // Immediately apply the fluid heights for smooth dragging
-            const availableGalleryHeight = size[1] - baseHeight - 15;
+            const availableGalleryHeight = size[1] - galleryY - paddingBottom;
             container.style.height = availableGalleryHeight + "px";
-            
-            // Expand the image slots instantly as you drag
-            optimizeGrid(size[0], availableGalleryHeight);
         };
 
-        // Auto-adjust layout if dimensions change programmatically (e.g., undo/redo wrap reflows)
-        let lastWidth = -1;
-        let lastHeight = -1;
+        const origComputeSize = node.computeSize;
+        node.computeSize = function(out) {
+            const isV3 = checkIsV3();
+            const minW = isV3 ? 100 : 220; 
+            const paddingBottom = isV3 ? 15 : 25; 
+
+            let res = origComputeSize ? origComputeSize.apply(this, arguments) : [minW, 250];
+            const galleryY = galleryWidget.last_y || 40;
+            const minOutputsHeight = (this.outputs ? this.outputs.length : 1) * 20;
+            const absoluteMinHeight = Math.max(galleryY + 250 + paddingBottom, minOutputsHeight + 40);
+
+            this.min_size = [minW, absoluteMinHeight];
+            res[0] = Math.max(res[0], minW);
+            res[1] = Math.max(res[1], absoluteMinHeight);
+            
+            enforceV3CSS(); 
+            return res;
+        };
+
+        const origSetSize = node.setSize;
+        node.setSize = function(size) {
+            const isV3 = checkIsV3();
+            const minW = isV3 ? 100 : 220;
+            const paddingBottom = isV3 ? 15 : 25; 
+
+            const galleryY = galleryWidget.last_y || 40;
+            const minOutputsHeight = (this.outputs ? this.outputs.length : 1) * 20;
+            const absoluteMinHeight = Math.max(galleryY + 250 + paddingBottom, minOutputsHeight + 40);
+
+            size[0] = Math.max(size[0], minW);
+            size[1] = Math.max(size[1], absoluteMinHeight);
+
+            if (origSetSize) {
+                origSetSize.call(this, size);
+            } else {
+                this.size = size;
+            }
+            enforceV3CSS();
+        };
+
+        let lastObservedWidth = 0;
+        let lastObservedHeight = 0;
+        
         const resizeObserver = new ResizeObserver((entries) => {
+            enforceV3CSS(); 
             for (const entry of entries) {
-                const currentWidth = entry.contentRect.width;
-                const currentHeight = entry.contentRect.height;
-                if ((lastWidth !== -1 && Math.abs(currentWidth - lastWidth) > 2) || 
-                    (lastHeight !== -1 && Math.abs(currentHeight - lastHeight) > 2)) {
-                    requestAnimationFrame(() => updateLayout());
+                const w = Math.round(entry.contentRect.width);
+                const h = Math.round(entry.contentRect.height);
+                
+                if (Math.abs(w - lastObservedWidth) > 1 || Math.abs(h - lastObservedHeight) > 1) {
+                    lastObservedWidth = w;
+                    lastObservedHeight = h;
+                    if (h > 0) {
+                        optimizeGrid(w, h);
+                    }
                 }
-                lastWidth = currentWidth;
-                lastHeight = currentHeight;
             }
         });
-        resizeObserver.observe(container);
+        resizeObserver.observe(gridWrapper);
 
         // --- 3. Logic: Gallery Rendering ---
         let draggedNode = null;
@@ -327,14 +393,12 @@ app.registerExtension({
             if (!isRearranging) {
                 syncOutputs(paths.length);
             }
-            // Cache image count on the node for easy access by connected nodes
             node._imageCount = paths.length;
-            // Push notification: immediately tell connected nodes about the new count
             notifyConnectedNodes(paths.length);
 
             paths.forEach((path, index) => {
                 const item = document.createElement("div");
-                item.dataset.path = path; // Store path on the node for easy retrieval
+                item.dataset.path = path; 
                 item.draggable = true;
                 item.style.cssText = `
                     position: relative; 
@@ -349,14 +413,14 @@ app.registerExtension({
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    will-change: transform;
                 `;
 
                 const img = document.createElement("img");
                 img.src = `/api/view?filename=${encodeURIComponent(path)}&type=input`;
-                img.style.cssText = "max-width: 100%; max-height: 100%; object-fit: contain; pointer-events: none; display: block;";
+                // Allow pointer-events so context menu interacts directly with the image
+                img.style.cssText = "max-width: 100%; max-height: 100%; object-fit: contain; pointer-events: auto; display: block;";
+                img.draggable = false; // Prevent native browser ghost dragging on the image itself
                 
-                // Delete Button
                 const del = document.createElement("div");
                 del.style.cssText = `
                     position: absolute; top: 0; right: 0; 
@@ -381,7 +445,6 @@ app.registerExtension({
                     setWidgetValue(newPaths, false);
                 };
 
-                // Number Badge
                 const numBadge = document.createElement("div");
                 numBadge.style.cssText = `
                     position: absolute; bottom: 0; left: 0; 
@@ -392,27 +455,37 @@ app.registerExtension({
                 `;
                 numBadge.innerText = (index + 1).toString();
 
-                // Dynamic Animated Drag & Drop Events
+                // Prevent LiteGraph context menu and instead show standard browser context menu (Copy, Save, Open)
+                item.addEventListener("contextmenu", (e) => {
+                    e.stopPropagation();
+                });
+
                 item.ondragstart = (e) => { 
                     draggedNode = item; 
-                    // Delay opacity drop so the browser capture image remains opaque
+                    
+                    e.dataTransfer.setData('text/plain', path);
+                    e.dataTransfer.effectAllowed = "move";
+                    
                     setTimeout(() => { 
                         if (draggedNode === item) {
-                            item.style.opacity = "0.4"; 
-                            item.style.pointerEvents = "none"; // Prevent drag ghost from capturing events
+                            // Style as an empty dashed placeholder
+                            item.style.background = "transparent";
+                            item.style.border = "2px dashed #666";
+                            // Hide the visual children (image, delete button, badge)
+                            Array.from(item.children).forEach(c => c.style.opacity = "0");
                         }
                     }, 0);
-                    e.dataTransfer.effectAllowed = "move";
                 };
                 
                 item.ondragend = () => { 
                     if (draggedNode) {
-                        draggedNode.style.opacity = "1";
-                        draggedNode.style.pointerEvents = "auto";
+                        // Restore original appearance
+                        draggedNode.style.background = "#000000";
+                        draggedNode.style.border = "1px solid #444";
+                        Array.from(draggedNode.children).forEach(c => c.style.opacity = "1");
                     }
                     draggedNode = null; 
                     
-                    // The DOM visually reorders during dragover. Here we finalize it to data.
                     const newPaths = Array.from(grid.children).map(n => n.dataset.path);
                     const currentVal = (pathsWidget?.value || "").trim();
                     if (newPaths.join("\n") !== currentVal) {
@@ -422,34 +495,20 @@ app.registerExtension({
 
                 item.ondragover = (e) => { 
                     e.preventDefault(); 
-                    e.stopPropagation(); // Stop ComfyUI canvas listener from grabbing this internally
+                    e.stopPropagation(); 
                     if (!draggedNode || draggedNode === item) return;
 
-                    // ANTI-FLICKER 1: Prevent rapid swaps if the mouse hasn't moved physically.
-                    // Reduced delay from 300ms to 50ms and distance to 5px to drastically improve responsiveness 
-                    // while still absorbing the immediate CSS transform shock.
                     const distMoved = Math.hypot(e.clientX - lastSwapX, e.clientY - lastSwapY);
                     if (Date.now() - lastSwapTime < 50 && distMoved < 5) {
                         return;
                     }
 
-                    // ANTI-FLICKER 2: True logical target boundaries.
-                    // Reduced the buffer from 25% down to 10%, meaning 80% of the target square 
-                    // is now an active drop zone, making it much easier to trigger a swap.
-                    const gridRect = grid.getBoundingClientRect();
-                    const mouseX = e.clientX - gridRect.left;
-                    const mouseY = e.clientY - gridRect.top;
+                    const itemRect = item.getBoundingClientRect();
+                    const bufferX = itemRect.width * 0.25; 
+                    const bufferY = itemRect.height * 0.25;
                     
-                    const left = item.offsetLeft;
-                    const top = item.offsetTop;
-                    const width = item.offsetWidth;
-                    const height = item.offsetHeight;
-                    
-                    const bufferX = width * 0.10; 
-                    const bufferY = height * 0.10;
-                    
-                    if (mouseX < left + bufferX || mouseX > left + width - bufferX ||
-                        mouseY < top + bufferY || mouseY > top + height - bufferY) {
+                    if (e.clientX < itemRect.left + bufferX || e.clientX > itemRect.right - bufferX ||
+                        e.clientY < itemRect.top + bufferY || e.clientY > itemRect.bottom - bufferY) {
                         return;
                     }
 
@@ -457,39 +516,13 @@ app.registerExtension({
                     const draggedIdx = items.indexOf(draggedNode);
                     const targetIdx = items.indexOf(item);
 
-                    // FLIP Animation Step 1: Record old positions
-                    const rects = new Map();
-                    items.forEach(node => rects.set(node, node.getBoundingClientRect()));
-
-                    // Physically move the DOM element to the new slot
+                    // Instantly snap the placeholder to its new position, moving items aside
                     if (draggedIdx < targetIdx) {
                         grid.insertBefore(draggedNode, item.nextSibling);
                     } else {
                         grid.insertBefore(draggedNode, item);
                     }
 
-                    // FLIP Animation Step 2: Calculate difference and animate
-                    items.forEach(node => {
-                        const oldRect = rects.get(node);
-                        const newRect = node.getBoundingClientRect();
-                        const dx = oldRect.left - newRect.left;
-                        const dy = oldRect.top - newRect.top;
-
-                        if (dx !== 0 || dy !== 0) {
-                            // Instantly shift it visually back to the old spot
-                            node.style.transition = 'none';
-                            node.style.transform = `translate(${dx}px, ${dy}px)`;
-
-                            // Force browser layout recalculation
-                            node.offsetWidth; 
-
-                            // Turn on transition and remove transform so it glides to its real new position
-                            node.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)';
-                            node.style.transform = '';
-                        }
-                    });
-
-                    // Log the swap to lock out rapid feedback triggers
                     lastSwapX = e.clientX;
                     lastSwapY = e.clientY;
                     lastSwapTime = Date.now();
@@ -497,8 +530,7 @@ app.registerExtension({
                 
                 item.ondrop = (e) => {
                     e.preventDefault();
-                    e.stopPropagation(); // Stop ComfyUI canvas listener
-                    // Finalization is handled safely in ondragend
+                    e.stopPropagation(); 
                 };
 
                 item.appendChild(img);
@@ -508,7 +540,10 @@ app.registerExtension({
             });
 
             if (!isRearranging) {
-                requestAnimationFrame(() => updateLayout());
+                requestAnimationFrame(() => {
+                    updateLayout();
+                    if (gridWrapper.offsetWidth > 0) optimizeGrid(gridWrapper.offsetWidth, gridWrapper.offsetHeight);
+                });
             }
         }
 
@@ -535,29 +570,61 @@ app.registerExtension({
             }
         }
 
+        // Apply drag & drop to LiteGraph node container bounds (V1)
+        const origOnDragDrop = node.onDragDrop;
+        node.onDragDrop = function(e) {
+            let handled = false;
+            if (e.dataTransfer && e.dataTransfer.files) {
+                const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+                if (files.length > 0) {
+                    e.preventDefault();
+                    handleFiles(files);
+                    handled = true;
+                }
+            }
+            if (!handled && origOnDragDrop) {
+                return origOnDragDrop.apply(this, arguments);
+            }
+            return handled;
+        };
+
+        const origOnDragOver = node.onDragOver;
+        node.onDragOver = function(e) {
+            if (e.dataTransfer && e.dataTransfer.items) {
+                const hasImage = Array.from(e.dataTransfer.items).some(f => f.kind === 'file' && f.type.startsWith('image/'));
+                if (hasImage) {
+                    e.preventDefault();
+                    return true;
+                }
+            }
+            if (origOnDragOver) {
+                return origOnDragOver.apply(this, arguments);
+            }
+            return false;
+        };
+
         uploadBtn.onclick = () => fileInput.click();
         fileInput.onchange = (e) => handleFiles(e.target.files);
         
         container.ondragover = (e) => { 
             e.preventDefault(); 
-            e.stopPropagation(); // Prevent ComfyUI from seeing the drag event over this node
+            e.stopPropagation(); 
             container.style.borderColor = "#4CAF50"; 
         };
         container.ondragleave = (e) => { 
             e.preventDefault();
-            e.stopPropagation(); // Prevent ComfyUI from seeing the drag event leave
+            e.stopPropagation(); 
             container.style.borderColor = "#353545"; 
         };
         container.ondrop = (e) => {
             e.preventDefault();
-            e.stopPropagation(); // Crucial: Stop ComfyUI from capturing the dropped file and making a LoadImage node!
+            e.stopPropagation(); 
             container.style.borderColor = "#353545";
             if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
         };
 
         // --- 5. Logic: Paste Handling ---
         const pasteHandler = (e) => {
-            // Only capture the paste if THIS specific node is currently selected in the graph
             if (app.canvas.selected_nodes && app.canvas.selected_nodes[node.id]) {
                 const items = e.clipboardData?.items;
                 if (!items) return;
@@ -571,29 +638,50 @@ app.registerExtension({
 
                 if (files.length > 0) {
                     e.preventDefault();
-                    e.stopImmediatePropagation(); // Crucial: Stops ComfyUI from turning the pasted image into a "Load Image" node
+                    e.stopImmediatePropagation(); 
                     handleFiles(files);
                 }
             }
         };
 
-        // Use capture: true to intercept the event BEFORE ComfyUI's default global paste listener triggers
         document.addEventListener("paste", pasteHandler, { capture: true });
 
-        // Clean up the global event listener if the node is deleted
         const origOnRemoved = node.onRemoved;
         node.onRemoved = function() {
             document.removeEventListener("paste", pasteHandler, { capture: true });
+            resizeObserver.disconnect();
             if (origOnRemoved) origOnRemoved.apply(this, arguments);
         };
 
-        // Hooks the main callback for external state loads (e.g., undo/redo or initial graph load)
         if (pathsWidget) {
             pathsWidget.callback = (v) => {
                 if (oldCallback) oldCallback.apply(pathsWidget, [v]);
                 refreshGallery();
             };
         }
+
+        // Run immediately to trim blank outputs before LiteGraph does its first layout calculations
+        refreshGallery();
+
+        // Enforce the tightest possible packing explicitly upon being dropped into the graph (V1 specifically)
+        const origOnAdded = node.onAdded;
+        node.onAdded = function() {
+            if (origOnAdded) origOnAdded.apply(this, arguments);
+            const isV3 = checkIsV3();
+            if (!isV3) {
+                requestAnimationFrame(() => {
+                    const galleryY = galleryWidget.last_y || 40;
+                    const minOutputsHeight = (this.outputs ? this.outputs.length : 1) * 20;
+                    const paddingBottom = 25; // Apply extra 20px pad on V1
+                    const absoluteMinHeight = Math.max(galleryY + 250 + paddingBottom, minOutputsHeight + 40);
+                    // Force the node to snap to its absolute minimum size on initial drop
+                    if (this.size && this.size[1] > absoluteMinHeight + 5) {
+                        this.setSize([this.size[0], absoluteMinHeight]);
+                        if (app.graph) app.graph.setDirtyCanvas(true, true);
+                    }
+                });
+            }
+        };
 
         setTimeout(() => refreshGallery(), 100);
     }

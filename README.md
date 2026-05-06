@@ -33,12 +33,22 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 
 # 🔄 Recent Updates
 
+ **v1.2.9**
+  * **Fixed every known issue with Multi Image Loader and added text output to Speech Length Calculator**
+  
+  I re-made the gallery view, removed the completely useless drag and drop animations (now it's snappy and no longer finicky), fixed the node resizing for nodes 2.0, updated grid logic to fit images better, and fixed the "invisible hitbox" underneath node issue.
+
+  Also added a text output to the Speech Length Calculator node (can't believe i didn't do this initially)
+
+    
  **v1.2.8**
   * **Updated Load Video UI and Color Conversion**
     * Added crop mode, a simple interface to crop videos. It also include various aspect ratio presets.
     * Updated color conversion to ensure colors are as accurate as possible. Will first check metadata for colorspace, and if metadata is missing then it will guess the colorspace based on video dimensions.
     * Updated display mode toggle UI to be more understandable 
 
+<details>
+  <summary>Click to view older Updates</summary>
 
  **v1.2.7**
   * **New Node: Load Video UI**
@@ -49,10 +59,6 @@ Custom Node to Trim, Resize, and Preview Videos in Realtime
   * **Updated Speech Length Calculator UI**
 
 Also added duration output to the Load Audio UI node
-    
-
-<details>
-  <summary>Click to view older Updates</summary>
 
  **v1.2.5**
   * **Updated Load Audio UI Node**
@@ -172,13 +178,8 @@ Download workflows here: https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyU
 Or drag and drop the image into ComfyUI to import workflow.
 
 # ❗ Known Issues
-**Multi Image Loader**
-- Rearranging images sometimes gets finicky. I'll try and fix this soon. It may be due to my ComfyUI frontend not matching the backend.
 
-**LTX Sequencer and LTX Keyframer**
-- Will randomly swap the widget values when loading workflows. It happens very rarely, and for some reason only happens to 1 node. It can be reversed by just re-syncing it with another node.
-
-It may also be due to my ComfyUI frontend not matching the backend (that has been causing other issues with ComfyUI, still waiting for ComfyUI to fix the issues with latest version)
+Fixed everything so far. If there are any other issue or bugs you find please let me know!
 
 # 💡 Additional Info
 

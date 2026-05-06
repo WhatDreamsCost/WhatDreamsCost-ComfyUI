@@ -36,7 +36,11 @@ All of my nodes are created with the help of AI, so there may or may not be redu
  **v1.2.9**
   * **Fixed every known issue with Multi Image Loader and added text output to Speech Length Calculator**
   
-  I re-made the gallery view, removed the completely useless drag and drop animations (now it's snappy and no longer finicky), fixed the node resizing for nodes 2.0, updated grid logic to fit images better, and fixed the "invisible hitbox" underneath node issue.
+    - Removed the completely useless drag and drop animations (now it's snappy and no longer finicky)
+    - Fixed the node resizing on nodes 2.0 
+    - Updated grid logic to fit images better
+    - Added ablity to right click images to copy/open/save images
+    - Fixed the "invisible hitbox" underneath node issue (actually this time).
 
   Also added a text output to the Speech Length Calculator node (can't believe i didn't do this initially)
 

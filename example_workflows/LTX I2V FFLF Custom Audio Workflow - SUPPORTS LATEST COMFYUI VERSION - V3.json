@@ -935,7 +935,7 @@
       ],
       "size": [
         340,
-        300
+        445
       ],
       "flags": {},
       "order": 0,
@@ -1168,7 +1168,7 @@
       ],
       "size": [
         390,
-        334
+        378
       ],
       "flags": {},
       "order": 3,
@@ -1176,12 +1176,17 @@
       "inputs": [],
       "outputs": [
         {
-          "name": "AUDIO",
+          "name": "audio",
           "type": "AUDIO",
           "links": [
             1200,
             1201
           ]
+        },
+        {
+          "name": "duration",
+          "type": "FLOAT",
+          "links": null
         }
       ],
       "properties": {
@@ -1192,6 +1197,7 @@
       "widgets_values": [
         "audio.wav",
         0,
+        25,
         25,
         null,
         null,
@@ -1225,30 +1231,6 @@
       "bgcolor": "#335"
     },
     {
-      "id": 495,
-      "type": "Note",
-      "pos": [
-        3130,
-        6350
-      ],
-      "size": [
-        270,
-        90
-      ],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "Custom Audio Note",
-      "properties": {},
-      "widgets_values": [
-        "↑ Load Custom Audio Here ↑\n\n(Make sure to set use custom audio to true to enable it)"
-      ],
-      "color": "#223",
-      "bgcolor": "#335"
-    },
-    {
       "id": 439,
       "type": "MarkdownNote",
       "pos": [
@@ -1260,7 +1242,7 @@
         380
       ],
       "flags": {},
-      "order": 6,
+      "order": 5,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -1271,6 +1253,30 @@
       ],
       "color": "#323",
       "bgcolor": "#535"
+    },
+    {
+      "id": 495,
+      "type": "Note",
+      "pos": [
+        3130,
+        6380
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Custom Audio Note",
+      "properties": {},
+      "widgets_values": [
+        "↑ Load Custom Audio Here ↑\n\n(Make sure to set use custom audio to true to enable it)"
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
     }
   ],
   "links": [
@@ -7497,10 +7503,10 @@
     "VHS_MetadataImage": true,
     "VHS_KeepIntermediate": true,
     "ds": {
-      "scale": 0.5159609120521172,
+      "scale": 0.6830134553650705,
       "offset": [
-        -1943.5366161616175,
-        -5193.440972222219
+        -2314.684986327,
+        -5200.910351747899
       ]
     }
   },

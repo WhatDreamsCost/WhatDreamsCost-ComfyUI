@@ -1,7 +1,7 @@
 [project]
 name = "WhatDreamsCost-ComfyUI"
 description = "A variety of custom ComfyUI nodes and workflows for creatives."
-version = "1.2.8"
+version = "1.2.9"
 license = {file = "LICENSE"} 
 # classifiers = [
 #     # For OS-independent nodes (works on all operating systems)

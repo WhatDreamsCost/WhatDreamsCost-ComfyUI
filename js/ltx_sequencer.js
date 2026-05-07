@@ -150,6 +150,8 @@ app.registerExtension({
                     shouldBeVisible = (mode === "frames");
                 } else if (w.name.startsWith("insert_second_")) {
                     shouldBeVisible = (mode === "seconds");
+                } else if (w.name.startsWith("insert_fraction_")) {
+                    shouldBeVisible = (mode === "fractional");
                 }
                 
                 const isHidden = (w.type === "hidden");
@@ -177,7 +179,10 @@ app.registerExtension({
             this._hookStaticWidgets();
 
             const isInitialLoad = this._currentImageCount === -1;
-            if (this._currentImageCount === count && !isInitialLoad) return;
+            if (this._currentImageCount === count && !isInitialLoad) {
+                this._updateVisibility();
+                return;
+            }
             this._currentImageCount = count;
 
             const initialWidth = this.size[0];
@@ -201,6 +206,7 @@ app.registerExtension({
                 this.widgets = this.widgets.filter(w => 
                     !w.name.startsWith("insert_frame_") && 
                     !w.name.startsWith("insert_second_") && 
+                    !w.name.startsWith("insert_fraction_") &&
                     !w.name.startsWith("strength_") &&
                     !w.name.startsWith("header_")
                 );
@@ -246,6 +252,7 @@ app.registerExtension({
 
                 addSyncedWidget("number", `insert_frame_${i}`, 0, { min: -9999, max: 9999, step: 10, precision: 0 });
                 addSyncedWidget("number", `insert_second_${i}`, 0.0, { min: 0.0, max: 9999.0, step: 0.1, precision: 2 });
+                addSyncedWidget("number", `insert_fraction_${i}`, 0.0, { min: 0.0, max: 1.0, step: 0.01, precision: 3 });
                 addSyncedWidget("number", `strength_${i}`, 1.0, { min: 0.0, max: 1.0, step: 0.01 });
             }
 
@@ -300,11 +307,15 @@ app.registerExtension({
             strictArray.push(this.properties["num_images"] !== undefined ? this.properties["num_images"] : 1);
             strictArray.push(this.properties["insert_mode"] !== undefined ? this.properties["insert_mode"] : "frames");
             strictArray.push(this.properties["frame_rate"] !== undefined ? this.properties["frame_rate"] : 24);
-            
+
             for (let i = 1; i <= 50; i++) {
                 strictArray.push(this.properties[`insert_frame_${i}`] !== undefined ? this.properties[`insert_frame_${i}`] : 0);
                 strictArray.push(this.properties[`insert_second_${i}`] !== undefined ? this.properties[`insert_second_${i}`] : 0.0);
                 strictArray.push(this.properties[`strength_${i}`] !== undefined ? this.properties[`strength_${i}`] : 1.0);
+            }
+
+            for (let i = 1; i <= 50; i++) {
+                strictArray.push(this.properties[`insert_fraction_${i}`] !== undefined ? this.properties[`insert_fraction_${i}`] : 0.0);
             }
             info.widgets_values = strictArray;
         };

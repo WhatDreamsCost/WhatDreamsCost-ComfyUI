@@ -79,6 +79,7 @@ app.registerExtension({
         // Initialize persistent properties cache
         node.properties = node.properties || {};
 
+        /** It seems that the `num_images_separator` field is not being used and is unnecessarily taking up space in the widget.
         // Add subtle separator line above images_loaded
         node.addCustomWidget({
             name: "num_images_separator",
@@ -108,6 +109,7 @@ app.registerExtension({
             }
         };
         setTimeout(moveSeparator, 50);
+        **/
 
         // Binds custom callbacks to python-schema generated widgets
         node._hookStaticWidgets = function() {

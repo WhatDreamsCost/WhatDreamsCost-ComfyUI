@@ -105,6 +105,7 @@ Overhaul of the load audio node. Features a simple interface to easily trim audi
 
 
 ## LTX Director
+<img width="1481" height="833" alt="Clipboard Image (2)" src="https://github.com/user-attachments/assets/08f3fe53-9393-4f5d-9de5-58b229fbed47" />
 
 A Complete Timeline Editor For LTX 2.3. This is the sucessor of my previous nodes, and has loads of features in it. It was originally based off of [Kijai's Prompt Relay node](https://github.com/kijai/ComfyUI-PromptRelay) and my LTX Sequencer/Multi Image Loader nodes.
 
@@ -115,6 +116,8 @@ A Complete Timeline Editor For LTX 2.3. This is the sucessor of my previous node
 - **Custom Audio Support:** Import, trim, and combine your own audio clips in this node. Enabling custom audio is as simple as clicking 1 button. It is also compatible with every other feature in the node, include first/last frames, t2v, i2v, and prompt relay.
 - **Image to Video:** Part of the goal of this node was to make it easier to do everything, including Image to Video. It has built in resize functionality, and of course all the benifits of the prompt relay and custom audio integration.
 - **Text to Video:** Simply load any images and use text segments to create T2V videos. Compatible with all other features of the node.
+
+Download workflows here: https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI/tree/main/example_workflows
 
 
 ## Multi Image Loader

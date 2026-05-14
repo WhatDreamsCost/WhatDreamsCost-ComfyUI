@@ -33,6 +33,10 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 
 # 🔄 Recent Updates
 
+**v1.3.1**
+  * **LTX Director Example Workflow Fix**
+    - Minor fix to the example workflow (i forgot to set the clip loader type to ltxv lol)
+    
  **v1.3.0**
   * **New nodes: LTX Director and LTX Director Guide**
     - A complete timeline editor that can do almost everything. It's my most ambitious node so far and the successor to LTX Sequencer/Multi Image Loader.
@@ -118,6 +122,8 @@ A Complete Timeline Editor For LTX 2.3. This is the sucessor of my previous node
 - **Text to Video:** Simply load any images and use text segments to create T2V videos. Compatible with all other features of the node.
 
 Download workflows here: https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI/tree/main/example_workflows
+
+**Tutorial videos and documentation coming soon**
 
 
 ## Multi Image Loader

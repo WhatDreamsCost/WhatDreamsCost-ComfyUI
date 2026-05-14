@@ -15,10 +15,12 @@ const HIDDEN_WIDGET_NAMES = ["timeline_data", "local_prompts", "segment_lengths"
 function hideWidget(w) {
   if (!w) return;
   if (!w._origType && w.type !== "hidden") w._origType = w.type;
-  w.type = "hidden";
+  // We don't set w.type = "hidden" anymore because it causes rendering issues in Nodes 2.0.
+  // Instead we use the computeSize = () => [0,0] trick which works in both V1 and V2.
   w.hidden = true;
   if (!w.options) w.options = {};
   w.options.hidden = true;
+  w.computeSize = () => [0, 0];
   if (w.element) w.element.style.display = "none";
 }
 
@@ -1641,7 +1643,9 @@ class TimelineEditor {
 
     if (this.durationFramesWidget) {
       const isVisible = mode === "frames";
-      this.durationFramesWidget.type = isVisible ? "INT" : "hidden";
+      // We don't set type to "hidden" anymore because it breaks rendering in Nodes 2.0.
+      // We keep the type as "INT" and use computeSize to hide it.
+      this.durationFramesWidget.type = "INT";
       if (!this.durationFramesWidget.options) this.durationFramesWidget.options = {};
       this.durationFramesWidget.options.hidden = !isVisible;
       this.durationFramesWidget.hidden = !isVisible;
@@ -1654,7 +1658,9 @@ class TimelineEditor {
     }
     if (this.durationSecondsWidget) {
       const isVisible = mode === "seconds";
-      this.durationSecondsWidget.type = isVisible ? "FLOAT" : "hidden";
+      // We don't set type to "hidden" anymore because it breaks rendering in Nodes 2.0.
+      // We keep the type as "FLOAT" and use computeSize to hide it.
+      this.durationSecondsWidget.type = "FLOAT";
       if (!this.durationSecondsWidget.options) this.durationSecondsWidget.options = {};
       this.durationSecondsWidget.options.hidden = !isVisible;
       this.durationSecondsWidget.hidden = !isVisible;
@@ -1881,7 +1887,7 @@ class TimelineEditor {
           this.ctx.clip();
 
           // Translucent background
-          this.ctx.fillStyle = "rgba(0, 0, 0, 0.70)";
+          this.ctx.fillStyle = "rgba(0, 0, 0, 0.60)";
           this.ctx.fillRect(startX, overlayY, pxWidth, overlayH);
 
           // Text
@@ -3225,6 +3231,18 @@ class TimelineEditor {
     for (const name of this._settingsWidgetNames) {
       const w = this.node.widgets?.find(w => w.name === name);
       if (w) hideWidget(w);
+
+      // Also remove corresponding input slot if it exists and is NOT connected
+      // to prevent overlapping issues in classic ComfyUI (nodes v1)
+      if (this.node.inputs) {
+        const inputIdx = this.node.inputs.findIndex(i => i.name === name);
+        if (inputIdx !== -1) {
+          const input = this.node.inputs[inputIdx];
+          if (input.link == null) {
+            this.node.removeInput(inputIdx);
+          }
+        }
+      }
     }
     this.updateWidgetVisibility();
 
@@ -3246,15 +3264,16 @@ class TimelineEditor {
     for (const name of this._settingsWidgetNames) {
       const w = this.node.widgets?.find(w => w.name === name);
       if (!w) continue;
-      // Restore original type from widget's origType if available, otherwise guess.
+      
       const typeMap = {
-        display_mode: "combo", epsilon: "number", divisible_by: "number",
-        img_compression: "number",
+        display_mode: "combo", epsilon: "FLOAT", divisible_by: "INT",
+        img_compression: "INT",
       };
-      w.type = typeMap[name] || "number";
+      w.type = typeMap[name] || w._origType || "number";
       w.hidden = false;
       if (w.options) w.options.hidden = false;
-      w.computeSize = null;
+      delete w.computeSize;
+      if (w.element) w.element.style.display = "";
     }
     this.updateWidgetVisibility();
 

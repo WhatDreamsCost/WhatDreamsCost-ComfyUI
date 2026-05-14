@@ -33,6 +33,14 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 
 # 🔄 Recent Updates
 
+**v1.3.2**
+  * **LTX Director Hotfix**
+    - Fixed epsilon input overlapping custom_width input
+    - Fixed invisible widgets in nodes 2.0 when toggling widget visibility through settings menu
+
+If anyone find anymore bugs or has idea for improvements please let me know! 
+
+
 **v1.3.1**
   * **LTX Director Example Workflow Fix**
     - Minor fix to the example workflow (i forgot to set the clip loader type to ltxv lol)

@@ -1024,56 +1024,6 @@
             "bgcolor": "#000"
           },
           {
-            "id": 84,
-            "type": "DualCLIPLoader",
-            "pos": [
-              1530,
-              4290
-            ],
-            "size": [
-              270,
-              130
-            ],
-            "flags": {},
-            "order": 2,
-            "mode": 0,
-            "inputs": [
-              {
-                "label": "text_encoder",
-                "localized_name": "clip_name1",
-                "name": "clip_name1",
-                "type": "COMBO",
-                "widget": {
-                  "name": "clip_name1"
-                },
-                "link": null
-              }
-            ],
-            "outputs": [
-              {
-                "localized_name": "CLIP",
-                "name": "CLIP",
-                "type": "CLIP",
-                "links": [
-                  211
-                ]
-              }
-            ],
-            "properties": {
-              "cnr_id": "comfy-core",
-              "ver": "0.19.3",
-              "Node name for S&R": "DualCLIPLoader"
-            },
-            "widgets_values": [
-              "gemma_3_12B_it_fp4_mixed.safetensors",
-              "ltx-2.3_text_projection_bf16.safetensors",
-              "sdxl",
-              "default"
-            ],
-            "color": "#222",
-            "bgcolor": "#000"
-          },
-          {
             "id": 4,
             "type": "VAELoaderKJ",
             "pos": [
@@ -1085,7 +1035,7 @@
               110
             ],
             "flags": {},
-            "order": 3,
+            "order": 2,
             "mode": 0,
             "inputs": [
               {
@@ -1135,7 +1085,7 @@
               110
             ],
             "flags": {},
-            "order": 4,
+            "order": 3,
             "mode": 0,
             "inputs": [
               {
@@ -1169,6 +1119,56 @@
               "LTX23_video_vae_bf16.safetensors",
               "main_device",
               "bf16"
+            ],
+            "color": "#222",
+            "bgcolor": "#000"
+          },
+          {
+            "id": 84,
+            "type": "DualCLIPLoader",
+            "pos": [
+              1530,
+              4290
+            ],
+            "size": [
+              270,
+              130
+            ],
+            "flags": {},
+            "order": 4,
+            "mode": 0,
+            "inputs": [
+              {
+                "label": "text_encoder",
+                "localized_name": "clip_name1",
+                "name": "clip_name1",
+                "type": "COMBO",
+                "widget": {
+                  "name": "clip_name1"
+                },
+                "link": null
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "CLIP",
+                "name": "CLIP",
+                "type": "CLIP",
+                "links": [
+                  211
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.19.3",
+              "Node name for S&R": "DualCLIPLoader"
+            },
+            "widgets_values": [
+              "gemma_3_12B_it_fp4_mixed.safetensors",
+              "ltx-2.3_text_projection_bf16.safetensors",
+              "ltxv",
+              "default"
             ],
             "color": "#222",
             "bgcolor": "#000"
@@ -3627,10 +3627,10 @@
     "VHS_MetadataImage": true,
     "VHS_KeepIntermediate": true,
     "ds": {
-      "scale": 0.8964143292718676,
+      "scale": 0.38016718211916745,
       "offset": [
-        -1001.6666666666667,
-        -3562.019444444444
+        -15.98656997397939,
+        -3169.400636838179
       ]
     }
   },

@@ -1,5 +1,5 @@
 {
-  "id": "5976fef9-a511-4781-82c4-0b78c14a37d3",
+  "id": "64b81755-dd7d-4e01-9e14-9b2ad6ab4341",
   "revision": 0,
   "last_node_id": 92,
   "last_link_id": 211,
@@ -1461,44 +1461,6 @@
       ]
     },
     {
-      "id": 84,
-      "type": "DualCLIPLoader",
-      "pos": [
-        1530,
-        4290
-      ],
-      "size": [
-        270,
-        130
-      ],
-      "flags": {},
-      "order": 7,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "CLIP",
-          "type": "CLIP",
-          "links": [
-            211
-          ]
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.19.3",
-        "Node name for S&R": "DualCLIPLoader"
-      },
-      "widgets_values": [
-        "gemma_3_12B_it_fp4_mixed.safetensors",
-        "ltx-2.3_text_projection_bf16.safetensors",
-        "sdxl",
-        "default"
-      ],
-      "color": "#222",
-      "bgcolor": "#000"
-    },
-    {
       "id": 77,
       "type": "CheckpointLoaderSimple",
       "pos": [
@@ -1510,7 +1472,7 @@
         100
       ],
       "flags": {},
-      "order": 8,
+      "order": 7,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1761,7 +1723,7 @@
         560
       ],
       "flags": {},
-      "order": 9,
+      "order": 8,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -1772,6 +1734,44 @@
       ],
       "color": "#322",
       "bgcolor": "#533"
+    },
+    {
+      "id": 84,
+      "type": "DualCLIPLoader",
+      "pos": [
+        1530,
+        4290
+      ],
+      "size": [
+        270,
+        130
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            211
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.19.3",
+        "Node name for S&R": "DualCLIPLoader"
+      },
+      "widgets_values": [
+        "gemma_3_12B_it_fp4_mixed.safetensors",
+        "ltx-2.3_text_projection_bf16.safetensors",
+        "ltxv",
+        "default"
+      ],
+      "color": "#222",
+      "bgcolor": "#000"
     }
   ],
   "links": [
@@ -2321,10 +2321,10 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 1.116781577942553,
+      "scale": 0.5730855330117197,
       "offset": [
-        -3185.8854794552367,
-        -3676.7424382820964
+        -201.37060625041624,
+        -3463.614317275976
       ]
     },
     "frontendVersion": "1.42.14",

@@ -33,6 +33,10 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 
 # 🔄 Recent Updates
 
+ **v1.3.0**
+  * **New nodes: LTX Director and LTX Director Guide**
+    - A complete timeline editor that can do almost everything. It's my most ambitious node so far and the successor to LTX Sequencer/Multi Image Loader.
+
  **v1.2.9**
   * **Fixed every known issue with Multi Image Loader and added text output to Speech Length Calculator**
   
@@ -44,15 +48,14 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 
   Also added a text output to the Speech Length Calculator node (can't believe i didn't do this initially)
 
-    
+<details>
+  <summary>Click to view older Updates</summary>
+
  **v1.2.8**
   * **Updated Load Video UI and Color Conversion**
     * Added crop mode, a simple interface to crop videos. It also include various aspect ratio presets.
     * Updated color conversion to ensure colors are as accurate as possible. Will first check metadata for colorspace, and if metadata is missing then it will guess the colorspace based on video dimensions.
     * Updated display mode toggle UI to be more understandable 
-
-<details>
-  <summary>Click to view older Updates</summary>
 
  **v1.2.7**
   * **New Node: Load Video UI**
@@ -99,6 +102,20 @@ Overhaul of the load audio node. Features a simple interface to easily trim audi
 </details>
 
 # ⚙️ Custom Nodes
+
+
+## LTX Director
+
+A Complete Timeline Editor For LTX 2.3. This is the sucessor of my previous nodes, and has loads of features in it. It was originally based off of [Kijai's Prompt Relay node](https://github.com/kijai/ComfyUI-PromptRelay) and my LTX Sequencer/Multi Image Loader nodes.
+
+**Main Features:**
+- **Fully Functional Timeline Editor:** I spent hours studying various video editors and ended up with this design. If anyone has ideas for improvements let me know! I will adding documentation on all the functions soon.
+- **Prompt Relay integrated:** This unlocks the ability to have granular control over video generation. For more information on Prompt Relay go here, https://gordonchen19.github.io/Prompt-Relay/
+- **First, Middle, Last Frame Support:** This has by far the easiest method of creating first/last frames videos. It supports any number of keyframes, and will be the successor of my previous nodes.
+- **Custom Audio Support:** Import, trim, and combine your own audio clips in this node. Enabling custom audio is as simple as clicking 1 button. It is also compatible with every other feature in the node, include first/last frames, t2v, i2v, and prompt relay.
+- **Image to Video:** Part of the goal of this node was to make it easier to do everything, including Image to Video. It has built in resize functionality, and of course all the benifits of the prompt relay and custom audio integration.
+- **Text to Video:** Simply load any images and use text segments to create T2V videos. Compatible with all other features of the node.
+
 
 ## Multi Image Loader
 <img width="1280" height="720" alt="Multi_Image_Loader_Wide_Gif" src="https://github.com/user-attachments/assets/99b6afd8-5197-4e6c-81da-a7bd156c42c7" />

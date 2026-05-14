@@ -119,7 +119,7 @@ A Complete Timeline Editor For LTX 2.3. This is the sucessor of my previous node
 - **First, Middle, Last Frame Support:** This has by far the easiest method of creating first/last frames videos. It supports any number of keyframes, and will be the successor of my previous nodes.
 - **Custom Audio Support:** Import, trim, and combine your own audio clips in this node. Enabling custom audio is as simple as clicking 1 button. It is also compatible with every other feature in the node, include first/last frames, t2v, i2v, and prompt relay.
 - **Image to Video:** Part of the goal of this node was to make it easier to do everything, including Image to Video. It has built in resize functionality, and of course all the benifits of the prompt relay and custom audio integration.
-- **Text to Video:** Simply load any images and use text segments to create T2V videos. Compatible with all other features of the node.
+- **Text to Video:** Use text segments to create T2V videos. Compatible with all other features of the node.
 
 Download workflows here: https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI/tree/main/example_workflows
 

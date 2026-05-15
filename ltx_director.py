@@ -597,8 +597,23 @@ class LTXDirector(io.ComfyNode):
                 try:
                     if audio_out is not None:
                         # 1. Encode audio waveform into latent space
-                        # VAE expects shape (batch, samples, channels), so we move dim 1 (channels) to the end
-                        latent_samples = audio_vae.encode(audio_out["waveform"].movedim(1, -1))
+                        waveform = audio_out["waveform"]
+                        if waveform.ndim == 2:
+                            waveform = waveform.unsqueeze(0)
+                        if waveform.ndim != 3:
+                            raise ValueError(
+                                f"Expected custom audio waveform with 2 or 3 dims, got shape {tuple(waveform.shape)}"
+                            )
+
+                        # Wrapped ComfyUI VAE expects (batch, samples, channels);
+                        # raw AudioVAE expects a dict with waveform in (batch, channels, samples).
+                        if hasattr(audio_vae, "first_stage_model"):
+                            latent_samples = audio_vae.encode(waveform.movedim(1, -1))
+                        else:
+                            latent_samples = audio_vae.encode({
+                                "waveform": waveform,
+                                "sample_rate": audio_out["sample_rate"],
+                            })
                         
                         if latent_samples.numel() == 0:
                             raise ValueError("Encoded audio latent is empty (0 elements).")

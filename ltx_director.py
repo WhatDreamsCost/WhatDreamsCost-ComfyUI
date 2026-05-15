@@ -584,9 +584,11 @@ class LTXDirector(io.ComfyNode):
         if audio_vae is not None:
             # Helper to generate empty latent
             def get_empty_latent():
+                # Support both raw AudioVAE objects and ComfyUI VAE wrappers.
+                inner = getattr(audio_vae, "first_stage_model", audio_vae)
                 z_channels = audio_vae.latent_channels
-                audio_freq = audio_vae.first_stage_model.latent_frequency_bins
-                num_audio_latents = audio_vae.first_stage_model.num_of_latents_from_frames(ltxv_length, float(frame_rate))
+                audio_freq = inner.latent_frequency_bins
+                num_audio_latents = inner.num_of_latents_from_frames(ltxv_length, float(frame_rate))
                 audio_latents = torch.zeros(
                     (1, z_channels, num_audio_latents, audio_freq),
                     device=comfy.model_management.intermediate_device(),
@@ -644,7 +646,8 @@ class LTXDirector(io.ComfyNode):
                     audio_latent = get_empty_latent()
                     log.info("[PromptRelay] Auto-generated empty audio latent.")
                 except Exception as e:
-                    log.warning("[PromptRelay] Could not generate empty audio latent: %s", e)
+                    log.error("[PromptRelay] Could not generate empty audio latent: %s", e)
+                    raise e
 
         return io.NodeOutput(patched, conditioning, latent, audio_latent, guide_data, float(frame_rate), audio_out)
 

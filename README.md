@@ -38,6 +38,13 @@ ALSO you need to update ComfyUI-LTXVideo and ComfyUI-KJNodes to the latest versi
 
 # 🔄 Recent Updates
 
+**v1.3.3**
+  * **LTX Director Hotfix 2**
+    - Fixed duration_seconds input issue.
+    - Made both duration widgets visible at all times now
+    - Implemented audio latent fix to improve compatibility
+
+
 **v1.3.2**
   * **LTX Director Hotfix**
     - Fixed epsilon input overlapping custom_width input

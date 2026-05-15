@@ -1642,34 +1642,20 @@ class TimelineEditor {
     const mode = this.displayModeWidget ? this.displayModeWidget.value : "seconds";
 
     if (this.durationFramesWidget) {
-      const isVisible = mode === "frames";
-      // We don't set type to "hidden" anymore because it breaks rendering in Nodes 2.0.
-      // We keep the type as "INT" and use computeSize to hide it.
+      // Always visible regardless of display mode
       this.durationFramesWidget.type = "INT";
       if (!this.durationFramesWidget.options) this.durationFramesWidget.options = {};
-      this.durationFramesWidget.options.hidden = !isVisible;
-      this.durationFramesWidget.hidden = !isVisible;
-
-      if (isVisible) {
-        delete this.durationFramesWidget.computeSize;
-      } else {
-        this.durationFramesWidget.computeSize = () => [0, 0];
-      }
+      this.durationFramesWidget.options.hidden = false;
+      this.durationFramesWidget.hidden = false;
+      delete this.durationFramesWidget.computeSize;
     }
     if (this.durationSecondsWidget) {
-      const isVisible = mode === "seconds";
-      // We don't set type to "hidden" anymore because it breaks rendering in Nodes 2.0.
-      // We keep the type as "FLOAT" and use computeSize to hide it.
+      // Always visible regardless of display mode
       this.durationSecondsWidget.type = "FLOAT";
       if (!this.durationSecondsWidget.options) this.durationSecondsWidget.options = {};
-      this.durationSecondsWidget.options.hidden = !isVisible;
-      this.durationSecondsWidget.hidden = !isVisible;
-
-      if (isVisible) {
-        delete this.durationSecondsWidget.computeSize;
-      } else {
-        this.durationSecondsWidget.computeSize = () => [0, 0];
-      }
+      this.durationSecondsWidget.options.hidden = false;
+      this.durationSecondsWidget.hidden = false;
+      delete this.durationSecondsWidget.computeSize;
     }
 
     // Force node resize and redraw deferred to next tick

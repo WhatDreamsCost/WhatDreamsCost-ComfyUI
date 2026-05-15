@@ -11,7 +11,7 @@ class LTXDirectorGuide(LTXVAddGuide):
         return io.Schema(
             node_id="LTXDirectorGuide",
             display_name="LTX Director Guide",
-            category="LTXVCustom",
+            category="WhatDreamsCost",
             description=(
                 "Applies guide images from a Prompt Relay Timeline node at the frame positions "
                 "and strengths defined on the timeline. Connect guide_data from the timeline node."

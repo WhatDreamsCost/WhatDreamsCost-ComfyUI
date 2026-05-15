@@ -54,7 +54,7 @@ class LTXSequencer(LTXVAddGuide):
         return io.Schema(
             node_id="LTXSequencer",
             display_name="LTX Sequencer",
-            category="LTXVCustom",
+            category="WhatDreamsCost",
             description="Add multiple guide images at specified frame indices or seconds with strengths. Number of widgets is dynamically configured.",
             inputs=inputs,
             outputs=[

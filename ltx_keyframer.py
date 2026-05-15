@@ -38,7 +38,7 @@ class LTXKeyframer(io.ComfyNode):
         return io.Schema(
             node_id="LTXKeyframer",
             display_name="LTX Keyframer",
-            category="LTXVCustom",
+            category="WhatDreamsCost",
             description="Replaces video latent frames with the encoded input images. Number of widgets is dynamically configured.",
             inputs=inputs,
             outputs=[

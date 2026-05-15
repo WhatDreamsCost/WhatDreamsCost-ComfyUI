@@ -31,6 +31,11 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 - Run `git clone https://github.com/WhatDreamscost/WhatDreamsCost-ComfyUI`
 - Or download through the ComfyUI Manager.
 
+**❗❗IMPORTANT❗❗**
+
+If your trying to install LTX Director through the manager, make sure you download the nightly version. The manager is delayed in showing the latest updates.
+ALSO you need to update ComfyUI-LTXVideo and ComfyUI-KJNodes to the latest version as well. You cannot use this node without updating ComfyUI-LTXVideo!
+
 # 🔄 Recent Updates
 
 **v1.3.2**

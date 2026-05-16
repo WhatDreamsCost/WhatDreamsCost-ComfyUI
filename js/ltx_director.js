@@ -790,6 +790,39 @@ class TimelineEditor {
     }
   }
 
+  _liveScrubVideo(seg, edge) {
+    if (seg.type !== "video" || !seg.videoEl) return;
+    const targetSec = edge === "end" 
+        ? (seg.trimStart + seg.length) / this.getFrameRate() 
+        : seg.trimStart / this.getFrameRate();
+        
+    this._floatingPreviewSeg = seg;
+    this._floatingPreviewEdge = edge;
+        
+    if (!seg._isSeeking && Math.abs(seg.videoEl.currentTime - targetSec) > 0.05) {
+        seg._isSeeking = true;
+        seg.videoEl.currentTime = targetSec;
+        seg.videoEl.onseeked = () => { seg._isSeeking = false; this.render(); };
+    }
+  }
+
+  _liveScrubPlayhead() {
+    const targetFrame = this.currentFrame;
+    const seg = this.timeline.segments.find(s => s.type === "video" && targetFrame >= s.start && targetFrame < s.start + s.length);
+    if (seg && seg.videoEl) {
+      this._floatingPreviewSeg = seg;
+      this._floatingPreviewEdge = "playhead";
+      const targetSec = (seg.trimStart + (targetFrame - seg.start)) / this.getFrameRate();
+      if (!seg._isSeeking && Math.abs(seg.videoEl.currentTime - targetSec) > 0.05) {
+          seg._isSeeking = true;
+          seg.videoEl.currentTime = targetSec;
+          seg.videoEl.onseeked = () => { seg._isSeeking = false; this.render(); };
+      }
+    } else {
+      this._floatingPreviewSeg = null;
+    }
+  }
+
   loadMedia() {
     for (const seg of this.timeline.segments) {
       if (seg.type === "video" && seg.imageFile && !seg.videoEl) {
@@ -1783,12 +1816,26 @@ class TimelineEditor {
   }
 
   deleteSelectedSegment() {
+    const delSibling = (seg) => {
+      if (!seg || !seg.id) return;
+      const isVid = seg.id.endsWith("_v");
+      const isAud = seg.id.endsWith("_a");
+      if (!isVid && !isAud) return;
+      
+      const siblingId = isVid ? seg.id.slice(0, -2) + "_a" : seg.id.slice(0, -2) + "_v";
+      const siblingArray = isVid ? this.timeline.audioSegments : this.timeline.segments;
+      const sIdx = siblingArray.findIndex(s => s.id === siblingId);
+      if (sIdx !== -1) siblingArray.splice(sIdx, 1);
+    };
+
     if (this.selectionType === "audio") {
       if (this.timeline.audioSegments.length === 0 || this.selectedIndex === -1) return;
+      delSibling(this.timeline.audioSegments[this.selectedIndex]);
       this.timeline.audioSegments.splice(this.selectedIndex, 1);
       this.selectedIndex = Math.max(-1, this.selectedIndex - 1);
     } else {
       if (this.timeline.segments.length === 0 || this.selectedIndex === -1) return;
+      delSibling(this.timeline.segments[this.selectedIndex]);
       this.timeline.segments.splice(this.selectedIndex, 1);
       this.selectedIndex = Math.max(-1, this.selectedIndex - 1);
     }
@@ -2339,6 +2386,47 @@ class TimelineEditor {
     this.ctx.roundRect(hBarX, hBarY, hBarW, hBarH, 2);
     this.ctx.fill();
 
+    if (this._isDragging && this._floatingPreviewSeg && this._floatingPreviewSeg.videoEl) {
+      const vid = this._floatingPreviewSeg.videoEl;
+      if (vid.readyState >= 2) {
+        const pw = 180;
+        const ph = Math.round((vid.videoHeight / vid.videoWidth) * pw);
+        
+        let drawX = 0;
+        if (this._floatingPreviewEdge === "playhead") {
+          drawX = (this.currentFrame / totalFrames) * width - (pw / 2);
+        } else {
+          const arr = this._previewSegments || this.timeline.segments;
+          const pSeg = arr.find(s => s.id === this._floatingPreviewSeg.id);
+          if (pSeg) {
+            if (this._floatingPreviewEdge === "start") drawX = (pSeg.start / totalFrames) * width - (pw / 2);
+            else if (this._floatingPreviewEdge === "end") drawX = ((pSeg.start + pSeg.length) / totalFrames) * width - (pw / 2);
+          }
+        }
+        
+        drawX = clamp(drawX, 10, width - pw - 10);
+        const drawY = RULER_HEIGHT + 10;
+        
+        this.ctx.save();
+        this.ctx.shadowColor = "rgba(0,0,0,0.8)";
+        this.ctx.shadowBlur = 8;
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeStyle = "#38bdf8";
+        this.ctx.strokeRect(drawX, drawY, pw, ph);
+        this.ctx.shadowBlur = 0;
+        this.ctx.drawImage(vid, drawX, drawY, pw, ph);
+        
+        this.ctx.fillStyle = "rgba(0,0,0,0.75)";
+        this.ctx.fillRect(drawX, drawY + ph - 20, pw, 20);
+        this.ctx.fillStyle = "#38bdf8";
+        this.ctx.font = "bold 11px sans-serif";
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillText("Source: " + vid.currentTime.toFixed(2) + "s", drawX + pw / 2, drawY + ph - 10);
+        this.ctx.restore();
+      }
+    }
+
     this.updatePlayerUI();
   }
 
@@ -2705,6 +2793,7 @@ class TimelineEditor {
       const totalFrames = this.getVisualDurationFrames();
       let mouseFrameX = mouseX * (totalFrames / logicalWidth);
       this.currentFrame = clamp(mouseFrameX, 0, totalFrames);
+      this._liveScrubPlayhead();
       this.render();
       if (this.isPlaying) {
         this.playAudio(); // Scrub (restart from new position)
@@ -2809,6 +2898,45 @@ class TimelineEditor {
       }
     }
 
+    const targetArray = this.selectionType === "audio" ? this.timeline.audioSegments : this.timeline.segments;
+    for (let ps of t) {
+      const orig = targetArray.find(s => s.id === ps.id);
+      if (orig) {
+          ps.videoEl = orig.videoEl;
+          ps.imgObj = orig.imgObj;
+      }
+    }
+
+    if (this._dragType === "left") {
+        this._liveScrubVideo(t.find(s => s.id === this._dragTargetId), "start");
+    } else if (this._dragType === "right") {
+        this._liveScrubVideo(t.find(s => s.id === this._dragTargetId), "end");
+    } else if (this._dragType === "joint") {
+        this._liveScrubVideo(t.find(s => s.id === this._dragTargetId), "end");
+        this._liveScrubVideo(t.find(s => s.id === this._dragTargetIdRight), "start");
+    }
+
+    const syncSibling = (targetId, activeArray) => {
+      if (!targetId) return;
+      const isVid = targetId.endsWith("_v");
+      const isAud = targetId.endsWith("_a");
+      if (!isVid && !isAud) return;
+      
+      const siblingId = isVid ? targetId.slice(0, -2) + "_a" : targetId.slice(0, -2) + "_v";
+      const siblingArray = isVid ? this.timeline.audioSegments : this.timeline.segments;
+      const sibling = siblingArray.find(s => s.id === siblingId);
+      const active = activeArray.find(s => s.id === targetId);
+      
+      if (sibling && active) {
+        sibling.start = active.start;
+        sibling.length = active.length;
+        if (active.trimStart !== undefined) sibling.trimStart = active.trimStart;
+      }
+    };
+
+    syncSibling(this._dragTargetId, t);
+    if (this._dragType === "joint") syncSibling(this._dragTargetIdRight, t);
+
     this._previewSegments = t;
     this.updateUIFromSelection(); // Live update of trim values
     this.render();
@@ -2895,6 +3023,7 @@ class TimelineEditor {
 
   onMouseUp(e) {
     document.body.style.userSelect = "";
+    this._floatingPreviewSeg = null;
     if (this._isDragging) {
       if (this._previewSegments) {
         const targetArray = this.selectionType === "audio" ? this.timeline.audioSegments : this.timeline.segments;
@@ -2914,6 +3043,25 @@ class TimelineEditor {
         } else {
           this.timeline.segments = mappedArray;
           if (this._dragTargetId) this.selectedIndex = this.timeline.segments.findIndex(s => s.id === this._dragTargetId);
+        }
+
+        if (this._dragType === "left" || this._dragType === "right" || this._dragType === "joint") {
+            for (let seg of mappedArray) {
+                if (seg.type === "video" && seg.videoEl) {
+                    seg.videoEl.currentTime = (seg.trimStart || 0) / this.getFrameRate() + 0.01;
+                    seg.videoEl.onseeked = () => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = Math.min(seg.videoEl.videoWidth, 512);
+                        canvas.height = Math.round((seg.videoEl.videoHeight / seg.videoEl.videoWidth) * canvas.width);
+                        canvas.getContext('2d').drawImage(seg.videoEl, 0, 0, canvas.width, canvas.height);
+                        seg.imageB64 = canvas.toDataURL('image/jpeg');
+                        const newImg = new Image();
+                        newImg.onload = () => { seg.imgObj = newImg; this.render(); };
+                        newImg.src = seg.imageB64;
+                        this.commitChanges(true);
+                    };
+                }
+            }
         }
       }
 
@@ -3184,6 +3332,30 @@ class TimelineEditor {
     };
     menu.appendChild(copySegBtn);
 
+    const isVidLink = trackType === "video" && seg.id.endsWith("_v");
+    const isAudLink = trackType === "audio" && seg.id.endsWith("_a");
+    let siblingForUnlink = null;
+
+    if (isVidLink) {
+        siblingForUnlink = this.timeline.audioSegments.find(s => s.id === seg.id.slice(0, -2) + "_a");
+    } else if (isAudLink) {
+        siblingForUnlink = this.timeline.segments.find(s => s.id === seg.id.slice(0, -2) + "_v");
+    }
+
+    if (siblingForUnlink) {
+        const unlinkBtn = document.createElement("button");
+        unlinkBtn.className = "pr-gap-menu-btn";
+        unlinkBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="12" x2="16" y2="12"></line></svg> Unlink Media`;
+        unlinkBtn.onclick = () => {
+            seg.id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+            siblingForUnlink.id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+            this.commitChanges();
+            this.render();
+            this.dismissContextMenu();
+        };
+        menu.appendChild(unlinkBtn);
+    }
+
     const currentTrack = trackType === "audio" ? "audio" : "image";
     if (this._copiedSegment && this._copiedSegmentTrack === currentTrack) {
       const pasteReplaceBtn = document.createElement("button");
@@ -3285,6 +3457,20 @@ class TimelineEditor {
         fi.click();
       };
       menu.appendChild(imgBtn);
+
+      const vidBtn = document.createElement("button");
+      vidBtn.className = "pr-gap-menu-btn";
+      vidBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg> Video Segment`;
+      vidBtn.onclick = () => {
+        this.dismissContextMenu();
+        const fi = document.createElement("input");
+        fi.type = "file"; fi.accept = "video/*";
+        fi.addEventListener("change", (ev) => {
+          if (ev.target.files?.[0]) this.handleVideoUpload([ev.target.files[0]], gap.frameStart);
+        });
+        fi.click();
+      };
+      menu.appendChild(vidBtn);
     }
 
     document.body.appendChild(menu);

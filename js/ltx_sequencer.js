@@ -66,6 +66,82 @@ function syncFullStateAcrossNodes(sourceNode) {
     }
 }
 
+// ─── LTX Sequencer Mirror ────────────────────────────────────────────────────
+// Displays a read-only summary of the inherited sequencer settings on the node.
+app.registerExtension({
+    name: "Comfy.LTXSequencerMirror",
+    async nodeCreated(node) {
+        if (node.comfyClass !== "LTXSequencerMirror") return;
+
+        // Add a custom info widget that polls the connected sequencer_info link
+        // and renders a human-readable summary.
+        node.addCustomWidget({
+            name: "mirror_info_display",
+            type: "text",
+            value: "",
+            _summary: "Not connected",
+            draw(ctx, node, widget_width, y, widget_height) {
+                ctx.save();
+                const margin = 10;
+                // Background
+                ctx.fillStyle = "#1a1a2e";
+                ctx.beginPath();
+                ctx.roundRect(margin, y + 2, widget_width - margin * 2, widget_height - 4, 4);
+                ctx.fill();
+                // Label
+                ctx.fillStyle = "#8888bb";
+                ctx.font = "bold 11px Arial";
+                ctx.textAlign = "left";
+                ctx.fillText("⟵ sequencer_info", margin + 6, y + 14);
+                // Summary
+                ctx.fillStyle = "#cccccc";
+                ctx.font = "11px Arial";
+                ctx.fillText(this._summary, margin + 6, y + 28);
+                ctx.restore();
+            },
+            computeSize(width) {
+                return [width, 38];
+            }
+        });
+
+        const infoWidget = node.widgets?.find(w => w.name === "mirror_info_display");
+
+        // Poll the connected LTXSequencer node and update the summary label
+        const pollInterval = setInterval(() => {
+            if (!node.graph) { clearInterval(pollInterval); return; }
+            const seqInfoInput = node.inputs?.find(inp => inp.name === "sequencer_info");
+            if (!seqInfoInput || !seqInfoInput.link) {
+                if (infoWidget) infoWidget._summary = "Not connected";
+                node.setDirtyCanvas(true, false);
+                return;
+            }
+            const link = node.graph.links[seqInfoInput.link];
+            if (!link) return;
+            const originNode = node.graph.getNodeById(link.origin_id);
+            if (!originNode) return;
+
+            // Read settings from the source LTXSequencer's properties
+            const props = originNode.properties || {};
+            const n = props["num_images"] || 0;
+            const mode = props["insert_mode"] || "frames";
+            const fps = props["frame_rate"] || 24;
+            if (infoWidget) {
+                infoWidget._summary = n === 0
+                    ? "0 images (check source)"
+                    : `${n} image${n !== 1 ? "s" : ""} \u00b7 ${mode} \u00b7 ${fps} fps`;
+            }
+            node.setDirtyCanvas(true, false);
+        }, 500);
+
+        const origOnRemoved = node.onRemoved;
+        node.onRemoved = function() {
+            clearInterval(pollInterval);
+            if (origOnRemoved) origOnRemoved.apply(this, arguments);
+        };
+    }
+});
+
+// ─── LTX Sequencer ───────────────────────────────────────────────────────────
 app.registerExtension({
     name: "Comfy.LTXSequencer.DynamicInputs",
     async nodeCreated(node) {

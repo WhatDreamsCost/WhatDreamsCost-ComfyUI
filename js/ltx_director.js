@@ -823,6 +823,60 @@ class TimelineEditor {
     }
   }
 
+  async _ensureThumbnails(seg) {
+    if (seg.thumbnails || seg._extractingThumbs) return;
+    seg._extractingThumbs = true;
+    seg.thumbnails = [];
+
+    const vidUrl = seg.videoEl ? seg.videoEl.src : null;
+    if (!vidUrl) return;
+
+    const bgVid = document.createElement('video');
+    bgVid.crossOrigin = "Anonymous";
+    bgVid.muted = true;
+    bgVid.src = vidUrl;
+
+    await new Promise(r => { bgVid.onloadeddata = r; bgVid.onerror = r; });
+    if (!bgVid.duration) {
+        seg._extractingThumbs = false;
+        return;
+    }
+
+    const duration = bgVid.duration;
+    const numFrames = Math.max(5, Math.min(60, Math.ceil(duration * 2))); 
+    const canvas = document.createElement('canvas');
+    let w = bgVid.videoWidth, h = bgVid.videoHeight;
+    if (w === 0 || h === 0) return;
+    
+    if (h > this.blockHeight) {
+        w = Math.round(w * (this.blockHeight / h));
+        h = this.blockHeight;
+    }
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+
+    for (let i = 0; i < numFrames; i++) {
+        if (!this.timeline.segments.find(s => s.id === seg.id)) break; 
+        const time = (i / numFrames) * duration;
+        bgVid.currentTime = time;
+        
+        await new Promise(r => {
+            let resolved = false;
+            const onSeek = () => { if(!resolved) { resolved = true; r(); } };
+            bgVid.onseeked = onSeek;
+            setTimeout(onSeek, 1000); 
+        });
+        
+        ctx.drawImage(bgVid, 0, 0, w, h);
+        const img = new Image();
+        img.src = canvas.toDataURL('image/jpeg', 0.5);
+        await new Promise(r => { img.onload = r; });
+        seg.thumbnails.push({ time, img });
+        this.render(); 
+    }
+    seg._extractingThumbs = false;
+  }
+
   loadMedia() {
     for (const seg of this.timeline.segments) {
       if (seg.type === "video" && seg.imageFile && !seg.videoEl) {
@@ -838,8 +892,23 @@ class TimelineEditor {
         
         vid.onloadeddata = () => {
             vid.currentTime = (seg.trimStart || 0) / this.getFrameRate() + 0.01;
+            this._ensureThumbnails(seg);
         };
-      } else if (seg.imageB64 && !seg.imgObj) {
+        vid.onseeked = () => {
+            if (!seg.imageB64 || !seg.imgObj) {
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.min(vid.videoWidth, 512);
+                canvas.height = Math.round((vid.videoHeight / vid.videoWidth) * canvas.width);
+                canvas.getContext('2d').drawImage(vid, 0, 0, canvas.width, canvas.height);
+                seg.imageB64 = canvas.toDataURL('image/jpeg');
+                const img = new Image();
+                img.onload = () => { seg.imgObj = img; this.render(); };
+                img.src = seg.imageB64;
+            }
+        };
+      }
+      
+      if (seg.imageB64 && !seg.imgObj) {
         seg.imgObj = new Image();
         seg.imgObj.onload = () => this.render();
         seg.imgObj.src = seg.imageB64;
@@ -1146,6 +1215,16 @@ class TimelineEditor {
         totalFrames,
         logicalWidth
       );
+      
+      for (let ps of this._previewSegments) {
+        const orig = arrToModify.find(s => s.id === ps.id);
+        if (orig) {
+            ps.videoEl = orig.videoEl;
+            ps.imgObj = orig.imgObj;
+            if (orig.thumbnails) ps.thumbnails = orig.thumbnails;
+        }
+      }
+
       this.render();
     });
 
@@ -1687,6 +1766,7 @@ class TimelineEditor {
                this.updateUIFromSelection();
                this.commitChanges(true);
                resolve();
+               this._ensureThumbnails(vidSeg);
             };
           };
 
@@ -2009,6 +2089,9 @@ class TimelineEditor {
 
       const originalSeg = this.timeline.segments.find(s => s.id === seg.id);
       const imgObj = originalSeg ? originalSeg.imgObj : seg.imgObj;
+      const videoEl = originalSeg ? originalSeg.videoEl : seg.videoEl;
+
+      const mediaToDraw = (videoEl && videoEl.readyState >= 2) ? videoEl : (imgObj && imgObj.complete ? imgObj : null);
 
       if ((this._isDragging && this.selectionType === "image" && seg.id === this._dragTargetId) || (this._ghostSegmentId && seg.id === this._ghostSegmentId)) {
         this.ctx.globalAlpha = 0.65;
@@ -2036,47 +2119,110 @@ class TimelineEditor {
         this.ctx.fillRect(startX, RULER_HEIGHT + 1, pxWidth, this.blockHeight - 2);
       }
 
-      if (imgObj && imgObj.complete && imgObj.naturalWidth > 0 && seg.type !== "ghost") {
-        const imgRatio = imgObj.naturalWidth / imgObj.naturalHeight;
+      if (seg.type === "video" && seg.thumbnails && seg.thumbnails.length > 0) {
+        const natW = seg.thumbnails[0].img.naturalWidth;
+        const natH = seg.thumbnails[0].img.naturalHeight;
+        const imgRatio = natW / natH;
         const boxRatio = pxWidth / this.blockHeight;
-        let drawW, drawH, drawX, drawY;
-        if (imgRatio > boxRatio) {
-          drawW = pxWidth; drawH = pxWidth / imgRatio;
-          drawX = startX; drawY = RULER_HEIGHT + (this.blockHeight - drawH) / 2;
-        } else {
-          drawH = this.blockHeight; drawW = this.blockHeight * imgRatio;
-          drawY = RULER_HEIGHT; drawX = startX + (pxWidth - drawW) / 2;
-        }
-
-        // Clip to segment bounds so tiled images don't bleed into adjacent segments
+        
         this.ctx.save();
         this.ctx.beginPath();
         this.ctx.rect(startX, RULER_HEIGHT + 1, pxWidth, this.blockHeight - 2);
         this.ctx.clip();
 
         if (imgRatio > boxRatio) {
-          // Fits width, vertical letterboxing (black bars top/bottom) — keep as is
-          this.ctx.drawImage(imgObj, drawX, drawY, drawW, drawH);
+            const drawW = pxWidth; 
+            const drawH = pxWidth / imgRatio;
+            const drawX = startX; 
+            const drawY = RULER_HEIGHT + (this.blockHeight - drawH) / 2;
+            
+            const midSec = ((seg.trimStart || 0) + seg.length / 2) / this.getFrameRate();
+            let nearestImg = seg.thumbnails[0].img;
+            let minDiff = Infinity;
+            for (const t of seg.thumbnails) {
+                const diff = Math.abs(t.time - midSec);
+                if (diff < minDiff) { minDiff = diff; nearestImg = t.img; }
+            }
+            this.ctx.drawImage(nearestImg, drawX, drawY, drawW, drawH);
         } else {
-          // Fits height, horizontal letterboxing (black bars left/right) — tile horizontally
-          this.ctx.drawImage(imgObj, drawX, drawY, drawW, drawH);
-
-          // Tile left
-          let leftX = drawX - drawW;
-          while (leftX + drawW > startX) {
-            this.ctx.drawImage(imgObj, leftX, drawY, drawW, drawH);
-            leftX -= drawW;
-          }
-
-          // Tile right
-          let rightX = drawX + drawW;
-          while (rightX < startX + pxWidth) {
-            this.ctx.drawImage(imgObj, rightX, drawY, drawW, drawH);
-            rightX += drawW;
-          }
+            const drawH = this.blockHeight;
+            const drawW = drawH * imgRatio;
+            const startSec = (seg.trimStart || 0) / this.getFrameRate();
+            const endSec = startSec + (seg.length / this.getFrameRate());
+            
+            let curX = startX;
+            while (curX < startX + pxWidth) {
+                const ratioX = (curX - startX + drawW/2) / pxWidth; 
+                const timeAtX = startSec + ratioX * (endSec - startSec);
+                
+                let nearestImg = seg.thumbnails[0].img;
+                let minDiff = Infinity;
+                for (const t of seg.thumbnails) {
+                    const diff = Math.abs(t.time - timeAtX);
+                    if (diff < minDiff) { minDiff = diff; nearestImg = t.img; }
+                }
+                
+                this.ctx.drawImage(nearestImg, curX, RULER_HEIGHT, drawW, drawH);
+                curX += drawW;
+            }
         }
         this.ctx.restore();
+      } else if (mediaToDraw && seg.type !== "ghost") {
+        const isVid = !!mediaToDraw.videoWidth;
+        const natW = isVid ? mediaToDraw.videoWidth : mediaToDraw.naturalWidth;
+        const natH = isVid ? mediaToDraw.videoHeight : mediaToDraw.naturalHeight;
 
+        if (natW > 0) {
+            const imgRatio = natW / natH;
+            const boxRatio = pxWidth / this.blockHeight;
+            let drawW, drawH, drawX, drawY;
+            if (imgRatio > boxRatio) {
+              drawW = pxWidth; drawH = pxWidth / imgRatio;
+              drawX = startX; drawY = RULER_HEIGHT + (this.blockHeight - drawH) / 2;
+            } else {
+              drawH = this.blockHeight; drawW = this.blockHeight * imgRatio;
+              drawY = RULER_HEIGHT; drawX = startX + (pxWidth - drawW) / 2;
+            }
+
+            // Clip to segment bounds so tiled images don't bleed into adjacent segments
+            this.ctx.save();
+            this.ctx.beginPath();
+            this.ctx.rect(startX, RULER_HEIGHT + 1, pxWidth, this.blockHeight - 2);
+            this.ctx.clip();
+
+            if (imgRatio > boxRatio) {
+              // Fits width, vertical letterboxing (black bars top/bottom) — keep as is
+              this.ctx.drawImage(mediaToDraw, drawX, drawY, drawW, drawH);
+            } else {
+              // Fits height, horizontal letterboxing (black bars left/right) — tile horizontally
+              this.ctx.drawImage(mediaToDraw, drawX, drawY, drawW, drawH);
+              // Tile left
+              let leftX = drawX - drawW;
+              while (leftX + drawW > startX) {
+                this.ctx.drawImage(mediaToDraw, leftX, drawY, drawW, drawH);
+                leftX -= drawW;
+              }
+              let rightX = drawX + drawW;
+              while (rightX < startX + pxWidth) {
+                this.ctx.drawImage(mediaToDraw, rightX, drawY, drawW, drawH);
+                rightX += drawW;
+              }
+            }
+            this.ctx.restore();
+        } 
+      }
+      
+      if ((seg.type === "video" || mediaToDraw) && seg.type !== "ghost") {
+        if (seg.type === "video") {
+          this.ctx.fillStyle = "rgba(0,0,0,0.6)";
+          this.ctx.fillRect(startX + 4, RULER_HEIGHT + 4, 30, 16);
+          this.ctx.fillStyle = "#fff";
+          this.ctx.font = "bold 10px sans-serif";
+          this.ctx.textAlign = "center";
+          this.ctx.textBaseline = "middle";
+          this.ctx.fillText("VID", startX + 19, RULER_HEIGHT + 12);
+        }
+        
         // --- Prompt subtitle overlay ---
         if (seg.prompt && seg.type !== "ghost" && pxWidth > 24) {
           const overlayH = Math.round(this.blockHeight * 0.20);
@@ -2389,8 +2535,17 @@ class TimelineEditor {
     if (this._isDragging && this._floatingPreviewSeg && this._floatingPreviewSeg.videoEl) {
       const vid = this._floatingPreviewSeg.videoEl;
       if (vid.readyState >= 2) {
-        const pw = 180;
-        const ph = Math.round((vid.videoHeight / vid.videoWidth) * pw);
+        const maxPh = Math.max(60, this.blockHeight - 20);
+        const maxPw = 240;
+        const videoRatio = (vid.videoWidth || 16) / (vid.videoHeight || 9);
+        
+        let ph = maxPh;
+        let pw = Math.round(ph * videoRatio);
+        
+        if (pw > maxPw) {
+            pw = maxPw;
+            ph = Math.round(pw / videoRatio);
+        }
         
         let drawX = 0;
         if (this._floatingPreviewEdge === "playhead") {
@@ -2823,13 +2978,16 @@ class TimelineEditor {
         let maxDeltaRight = origRight.length - MIN_SEGMENT_LENGTH;
         let maxDeltaLeft = origLeft.length - MIN_SEGMENT_LENGTH;
 
-        if (this.selectionType === "audio") {
+        if (this.selectionType === "audio" || origRight.type === "video") {
           // Drag LEFT: right clip extends left by un-trimming its head.
           // Can only un-trim as much as the right clip has been trimmed (trimStart >= 0).
           maxDeltaLeft = Math.min(maxDeltaLeft, origRight.trimStart || 0);
+        }
+        if (this.selectionType === "audio" || origLeft.type === "video") {
           // Drag RIGHT: left clip extends right by consuming its remaining tail audio.
           // Can only extend as far as the left clip's unplayed tail allows.
-          let availLeftTail = (origLeft.audioDurationFrames || origLeft.length) - ((origLeft.trimStart || 0) + origLeft.length);
+          let origDur = origLeft.audioDurationFrames || origLeft.videoDurationFrames || origLeft.length;
+          let availLeftTail = origDur - ((origLeft.trimStart || 0) + origLeft.length);
           maxDeltaRight = Math.min(maxDeltaRight, availLeftTail);
         }
 
@@ -2839,7 +2997,7 @@ class TimelineEditor {
         t[rightIdx].start = origRight.start + safeDelta;
         t[rightIdx].length = origRight.length - safeDelta;
 
-        if (this.selectionType === "audio") {
+        if (this.selectionType === "audio" || t[rightIdx].type === "video") {
           t[rightIdx].trimStart = origRight.trimStart + safeDelta;
         }
       }
@@ -2857,8 +3015,9 @@ class TimelineEditor {
           maxPossibleLength = nextSeg.start - t[targetIdx].start;
         }
 
-        if (this.selectionType === "audio") {
-          maxPossibleLength = Math.min(maxPossibleLength, (t[targetIdx].audioDurationFrames || t[targetIdx].length) - (t[targetIdx].trimStart || 0));
+        if (this.selectionType === "audio" || t[targetIdx].type === "video") {
+          const origDur = t[targetIdx].audioDurationFrames || t[targetIdx].videoDurationFrames || t[targetIdx].length;
+          maxPossibleLength = Math.min(maxPossibleLength, origDur - (t[targetIdx].trimStart || 0));
         }
 
         t[targetIdx].length = Math.max(MIN_SEGMENT_LENGTH, Math.min(newLen, maxPossibleLength));
@@ -2871,7 +3030,7 @@ class TimelineEditor {
           minPossibleStart = prevSeg.start + prevSeg.length;
         }
 
-        if (this.selectionType === "audio") {
+        if (this.selectionType === "audio" || t[targetIdx].type === "video") {
           minPossibleStart = Math.max(minPossibleStart, t[targetIdx].start - (t[targetIdx].trimStart || 0));
         }
 
@@ -2881,7 +3040,7 @@ class TimelineEditor {
         let diff = newStart - t[targetIdx].start;
         t[targetIdx].start = newStart;
         t[targetIdx].length -= diff;
-        if (this.selectionType === "audio") {
+        if (this.selectionType === "audio" || t[targetIdx].type === "video") {
           t[targetIdx].trimStart += diff;
         }
 
@@ -2904,6 +3063,7 @@ class TimelineEditor {
       if (orig) {
           ps.videoEl = orig.videoEl;
           ps.imgObj = orig.imgObj;
+          if (orig.thumbnails) ps.thumbnails = orig.thumbnails;
       }
     }
 
@@ -3033,6 +3193,9 @@ class TimelineEditor {
           let finalStart = ps.resolvedStart !== undefined ? ps.resolvedStart : ps.start;
           let newPs = { ...ps, start: finalStart };
           if (orig && orig.imgObj) newPs.imgObj = orig.imgObj;
+          if (orig && orig.videoEl) newPs.videoEl = orig.videoEl; 
+          if (orig && orig.thumbnails) newPs.thumbnails = orig.thumbnails;
+          if (orig && orig._extractingThumbs !== undefined) newPs._extractingThumbs = orig._extractingThumbs;
           delete newPs.resolvedStart;
           return newPs;
         });
@@ -3045,24 +3208,6 @@ class TimelineEditor {
           if (this._dragTargetId) this.selectedIndex = this.timeline.segments.findIndex(s => s.id === this._dragTargetId);
         }
 
-        if (this._dragType === "left" || this._dragType === "right" || this._dragType === "joint") {
-            for (let seg of mappedArray) {
-                if (seg.type === "video" && seg.videoEl) {
-                    seg.videoEl.currentTime = (seg.trimStart || 0) / this.getFrameRate() + 0.01;
-                    seg.videoEl.onseeked = () => {
-                        const canvas = document.createElement('canvas');
-                        canvas.width = Math.min(seg.videoEl.videoWidth, 512);
-                        canvas.height = Math.round((seg.videoEl.videoHeight / seg.videoEl.videoWidth) * canvas.width);
-                        canvas.getContext('2d').drawImage(seg.videoEl, 0, 0, canvas.width, canvas.height);
-                        seg.imageB64 = canvas.toDataURL('image/jpeg');
-                        const newImg = new Image();
-                        newImg.onload = () => { seg.imgObj = newImg; this.render(); };
-                        newImg.src = seg.imageB64;
-                        this.commitChanges(true);
-                    };
-                }
-            }
-        }
       }
 
       this._isDragging = false;
@@ -3119,7 +3264,7 @@ class TimelineEditor {
 
     const toSave = {
       segments: sortedSegments.map(s => {
-        const { imgObj, ...rest } = s;
+        const { imgObj, videoEl, _isSeeking, thumbnails, _extractingThumbs, ...rest } = s;
         return rest;
       }),
       audioSegments: (this.timeline.audioSegments || []).map(s => ({ ...s }))

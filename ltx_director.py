@@ -631,21 +631,26 @@ class LTXDirector(io.ComfyNode):
                         if latent_samples.numel() == 0:
                             raise ValueError("Encoded audio latent is empty (0 elements).")
                         
-                        # 2. Create solid mask with value 0.0 (0 means keep/use conditioning, 1 means generate noise)
-                        mask = torch.full(
-                            (1, latent_samples.shape[-2], latent_samples.shape[-1]), 
-                            0.0, 
-                            dtype=torch.float32, 
-                            device=comfy.model_management.intermediate_device()
-                        )
+                        # 2. Create mask starting with 1.0 (generate noise everywhere)
+                        mask = torch.ones_like(latent_samples)
                         
-                        # 3. Set Latent Noise Mask
+                        # 3. Punch holes (0.0) where custom audio segments exist to preserve them
+                        tdata = json.loads(timeline_data) if timeline_data else {}
+                        for seg in tdata.get("audioSegments", []):
+                            start_sec = float(seg.get("start", 0)) / float(frame_rate)
+                            len_sec = float(seg.get("length", 1)) / float(frame_rate)
+                            total_sec = ltxv_length / float(frame_rate)
+
+                            start_idx = int((start_sec / total_sec) * latent_samples.shape[2])
+                            end_idx = int(((start_sec + len_sec) / total_sec) * latent_samples.shape[2])
+                            mask[:, :, start_idx:end_idx, :] = 0.0
+                        
                         audio_latent = {
                             "samples": latent_samples,
                             "type": "audio",
-                            "noise_mask": mask.reshape((-1, 1, mask.shape[-2], mask.shape[-1]))
+                            "noise_mask": mask
                         }
-                        log.info("[PromptRelay] Generated custom audio latent with noise mask (value=0.0).")
+                        log.info("[PromptRelay] Generated custom audio latent with dynamic noise mask.")
                     else:
                         raise ValueError("No audio waveform to encode.")
                 except Exception as e:

@@ -6,6 +6,7 @@ import math
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 import av
 from PIL import Image
 
@@ -56,99 +57,158 @@ def _load_image_tensor(seg: dict) -> torch.Tensor:
     except:
         return torch.zeros((1, 512, 512, 3), dtype=torch.float32)
 
+def _load_video_tensor(seg: dict, frame_rate: float) -> torch.Tensor:
+    """Extracts a sequence of frames from a video file based on the segment's trim parameters,
+    and returns them as an [N, H, W, 3] float32 tensor."""
+    file_path = os.path.join(folder_paths.get_input_directory(), seg.get("imageFile", ""))
+    
+    if not os.path.exists(file_path):
+        return torch.zeros((1, 512, 512, 3), dtype=torch.float32)
+
+    trim_start_frames = float(seg.get("trimStart", 0))
+    length_frames = float(seg.get("length", 1))
+    start_sec = trim_start_frames / frame_rate
+    
+    frames = []
+    try:
+        with av.open(file_path) as container:
+            stream = container.streams.video[0]
+            stream.thread_type = "AUTO"
+            
+            # Seek slightly before target to hit a keyframe
+            if stream.time_base:
+                seek_pts = int((max(0, start_sec - 0.5)) / float(stream.time_base))
+            else:
+                seek_pts = int((max(0, start_sec - 0.5)) * av.time_base)
+            
+            container.seek(seek_pts, stream=stream, backward=True)
+            
+            for frame in container.decode(stream):
+                frame_time = frame.time
+                if frame_time is None and frame.pts is not None and stream.time_base:
+                    frame_time = float(frame.pts * stream.time_base)
+                    
+                if frame_time is None:
+                    frame_time = 0.0
+                    
+                if frame_time < start_sec - 0.01:
+                    continue
+                    
+                frames.append(frame.to_ndarray(format='rgb24'))
+                
+                if len(frames) >= int(length_frames):
+                    break
+    except Exception as e:
+        log.warning(f"[PromptRelay] Video extract error: {e}")
+        
+    if not frames:
+        return torch.zeros((1, 512, 512, 3), dtype=torch.float32)
+        
+    frames_np = np.array(frames, dtype=np.float32) / 255.0
+    return torch.from_numpy(frames_np)
 
 def _resize_image(tensor: torch.Tensor, target_w: int, target_h: int, method: str, divisible_by: int) -> torch.Tensor:
-    """Resize a [1, H, W, 3] float32 tensor to target dimensions using the given method,
+    """Resize an [N, H, W, 3] float32 tensor to target dimensions using the given method,
     then snap the final dimensions to be divisible by `divisible_by`."""
-    from PIL import Image as _PilImage
-    import torchvision.transforms.functional as TF
-
+    
     def snap(val, div):
         return max(div, (val // div) * div)
 
     tw = snap(target_w, divisible_by)
     th = snap(target_h, divisible_by)
 
-    img_np = (tensor[0].cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
-    pil = _PilImage.fromarray(img_np)
-    src_w, src_h = pil.size
+    N, H, W, C = tensor.shape
+    if H == th and W == tw:
+        return tensor
 
+    t_nchw = tensor.permute(0, 3, 1, 2)
+    
     if method == "stretch to fit":
-        resized = pil.resize((tw, th), _PilImage.LANCZOS)
-
+        resized = F.interpolate(t_nchw, size=(th, tw), mode="bilinear", align_corners=False)
+        
     elif method == "maintain aspect ratio":
-        ratio = min(tw / src_w, th / src_h)
-        new_w = int(src_w * ratio)
-        new_h = int(src_h * ratio)
-        new_w = snap(new_w, divisible_by)
-        new_h = snap(new_h, divisible_by)
-        resized = pil.resize((new_w, new_h), _PilImage.LANCZOS)
-
+        ratio = min(tw / W, th / H)
+        new_w = snap(int(W * ratio), divisible_by)
+        new_h = snap(int(H * ratio), divisible_by)
+        resized = F.interpolate(t_nchw, size=(new_h, new_w), mode="bilinear", align_corners=False)
+        
     elif method == "pad":
-        ratio = min(tw / src_w, th / src_h)
-        new_w = snap(int(src_w * ratio), divisible_by)
-        new_h = snap(int(src_h * ratio), divisible_by)
-        inner = pil.resize((new_w, new_h), _PilImage.LANCZOS)
-        resized = _PilImage.new("RGB", (tw, th), (0, 0, 0))
-        resized.paste(inner, ((tw - new_w) // 2, (th - new_h) // 2))
-
+        ratio = min(tw / W, th / H)
+        new_w = snap(int(W * ratio), divisible_by)
+        new_h = snap(int(H * ratio), divisible_by)
+        inner = F.interpolate(t_nchw, size=(new_h, new_w), mode="bilinear", align_corners=False)
+        
+        pad_l = (tw - new_w) // 2
+        pad_t = (th - new_h) // 2
+        resized = F.pad(inner, (pad_l, tw - new_w - pad_l, pad_t, th - new_h - pad_t), mode="constant", value=0)
+        
     elif method == "crop":
-        ratio = max(tw / src_w, th / src_h)
-        new_w = int(src_w * ratio)
-        new_h = int(src_h * ratio)
-        inner = pil.resize((new_w, new_h), _PilImage.LANCZOS)
+        ratio = max(tw / W, th / H)
+        new_w = int(W * ratio)
+        new_h = int(H * ratio)
+        inner = F.interpolate(t_nchw, size=(new_h, new_w), mode="bilinear", align_corners=False)
+        
         left = (new_w - tw) // 2
         top = (new_h - th) // 2
-        resized = inner.crop((left, top, left + tw, top + th))
-
+        resized = inner[:, :, top:top+th, left:left+tw]
+        
     else:
-        resized = pil.resize((tw, th), _PilImage.LANCZOS)
+        resized = F.interpolate(t_nchw, size=(th, tw), mode="bilinear", align_corners=False)
 
-    arr = np.array(resized, dtype=np.float32) / 255.0
-    return torch.from_numpy(arr).unsqueeze(0)
+    return resized.permute(0, 2, 3, 1)
 
 
 def _compress_image(tensor: torch.Tensor, crf: int) -> torch.Tensor:
-    """Apply H.264 compression artefacts to a [1, H, W, 3] float32 tensor (ComfyUI image format).
-    crf=0 means no compression. Uses PyAV to encode/decode a single frame in-memory."""
+    """Apply H.264 compression artefacts to an [N, H, W, 3] float32 tensor (ComfyUI image format).
+    crf=0 means no compression. Uses PyAV to encode/decode frames in-memory."""
     if crf == 0:
         return tensor
-    img = tensor[0]  # [H, W, 3]
+        
+    N, H, W, C = tensor.shape
+    
     # Dimensions must be even for H.264
-    h = (img.shape[0] // 2) * 2
-    w = (img.shape[1] // 2) * 2
-    img_np = (img[:h, :w] * 255.0).byte().cpu().numpy()  # uint8 [H, W, 3]
-
+    h = (H // 2) * 2
+    w = (W // 2) * 2
+    
+    # uint8 [N, H, W, 3]
+    tensor_bytes = (tensor[:, :h, :w, :] * 255.0).byte().cpu().numpy()
+    
     try:
         buf = _io.BytesIO()
         container = av.open(buf, mode="w", format="mp4")
-        stream = container.add_stream("libx264", rate=1)
+        stream = container.add_stream("libx264", rate=24)
         stream.width = w
         stream.height = h
         stream.pix_fmt = "yuv420p"
         stream.options = {"crf": str(crf), "preset": "ultrafast"}
-        frame = av.VideoFrame.from_ndarray(img_np, format="rgb24")
-        for pkt in stream.encode(frame):
-            container.mux(pkt)
+        
+        for i in range(N):
+            frame = av.VideoFrame.from_ndarray(tensor_bytes[i], format="rgb24")
+            for pkt in stream.encode(frame):
+                container.mux(pkt)
+                
         for pkt in stream.encode(None):
             container.mux(pkt)
+            
         container.close()
-
+        
         buf.seek(0)
         container_r = av.open(buf, mode="r")
-        decoded = None
-        for frame_r in container_r.decode(video=0):
-            decoded = frame_r.to_ndarray(format="rgb24")  # [H, W, 3]
-            break
+        decoded = [frame_r.to_ndarray(format="rgb24") for frame_r in container_r.decode(video=0)]
         container_r.close()
-
-        if decoded is None:
+        
+        if not decoded:
             return tensor
-        arr = torch.from_numpy(decoded.astype(np.float32) / 255.0).to(tensor.device, tensor.dtype)
+            
+        decoded_np = np.stack(decoded).astype(np.float32) / 255.0
+        
         # Re-embed into original tensor shape (may have been cropped by even-rounding)
         out = tensor.clone()
-        out[0, :h, :w] = arr
+        dec_N = min(N, len(decoded))
+        out[:dec_N, :h, :w] = torch.from_numpy(decoded_np[:dec_N]).to(tensor.device, tensor.dtype)
+        
         return out
+        
     except Exception as e:
         log.warning("[PromptRelay] img_compression encode/decode failed: %s", e)
         return tensor
@@ -483,7 +543,7 @@ class LTXDirector(io.ComfyNode):
             tdata = json.loads(timeline_data) if timeline_data else {}
             img_segs = [
                 s for s in tdata.get("segments", [])
-                if s.get("type", "image") == "image"
+                if s.get("type", "image") in ("image", "video")
                 and (s.get("imageFile") or s.get("imageB64"))
                 and int(s.get("start", 0)) < duration_frames  # exclude segments fully outside duration
             ]
@@ -494,7 +554,10 @@ class LTXDirector(io.ComfyNode):
                 strengths = [float(x.strip()) for x in guide_strength.split(",") if x.strip()]
 
             for idx, seg in enumerate(img_segs):
-                tensor = _load_image_tensor(seg)
+                if seg.get("type") == "video":
+                    tensor = _load_video_tensor(seg, float(frame_rate))
+                else:
+                    tensor = _load_image_tensor(seg)
 
                 # Apply resize
                 src_h, src_w = tensor.shape[1], tensor.shape[2]
@@ -536,11 +599,11 @@ class LTXDirector(io.ComfyNode):
             
             # If no images were loaded from the timeline, create a dummy image at strength 0
             # to prevent artifacts in text-to-video mode.
-            if not guide_data["images"]:
+            if not guide_data["images"] and optional_latent is None:
                 w = derived_w if derived_w > 0 else 768
                 h = derived_h if derived_h > 0 else 512
-                w = (w // 32) * 32
-                h = (h // 32) * 32
+                w = (w // divisible_by) * divisible_by
+                h = (h // divisible_by) * divisible_by
                 
                 dummy_image = torch.zeros((1, h, w, 3), dtype=torch.float32)
                 guide_data["images"].append(dummy_image)
@@ -620,21 +683,26 @@ class LTXDirector(io.ComfyNode):
                         if latent_samples.numel() == 0:
                             raise ValueError("Encoded audio latent is empty (0 elements).")
                         
-                        # 2. Create solid mask with value 0.0 (0 means keep/use conditioning, 1 means generate noise)
-                        mask = torch.full(
-                            (1, latent_samples.shape[-2], latent_samples.shape[-1]), 
-                            0.0, 
-                            dtype=torch.float32, 
-                            device=comfy.model_management.intermediate_device()
-                        )
+                        # 2. Create mask starting with 1.0 (generate noise everywhere)
+                        mask = torch.ones_like(latent_samples)
                         
-                        # 3. Set Latent Noise Mask
+                        # 3. Punch holes (0.0) where custom audio segments exist to preserve them
+                        tdata = json.loads(timeline_data) if timeline_data else {}
+                        for seg in tdata.get("audioSegments", []):
+                            start_sec = float(seg.get("start", 0)) / float(frame_rate)
+                            len_sec = float(seg.get("length", 1)) / float(frame_rate)
+                            total_sec = ltxv_length / float(frame_rate)
+
+                            start_idx = int((start_sec / total_sec) * latent_samples.shape[2])
+                            end_idx = int(((start_sec + len_sec) / total_sec) * latent_samples.shape[2])
+                            mask[:, :, start_idx:end_idx, :] = 0.0
+                        
                         audio_latent = {
                             "samples": latent_samples,
                             "type": "audio",
-                            "noise_mask": mask.reshape((-1, 1, mask.shape[-2], mask.shape[-1]))
+                            "noise_mask": mask
                         }
-                        log.info("[PromptRelay] Generated custom audio latent with noise mask (value=0.0).")
+                        log.info("[PromptRelay] Generated custom audio latent with dynamic noise mask.")
                     else:
                         raise ValueError("No audio waveform to encode.")
                 except Exception as e:

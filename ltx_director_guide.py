@@ -76,6 +76,18 @@ class LTXDirectorGuide(LTXVAddGuide):
             f_idx = insert_frames[idx] if idx < len(insert_frames) else 0
             strength = strengths[idx] if idx < len(strengths) else 1.0
 
+            # --- FIX: ALWAYS resize source to match exact latent dimensions ---
+            # This prevents center-cropping inside the VAE during any generation stage
+            B_img, H_img, W_img, C_img = img_tensor.shape
+            target_pix_w = int(latent_width * 32)
+            target_pix_h = int(latent_height * 32)
+            
+            if target_pix_w != W_img or target_pix_h != H_img:
+                img_nchw = img_tensor.permute(0, 3, 1, 2)
+                img_resized = comfy.utils.common_upscale(img_nchw, target_pix_w, target_pix_h, upscale_method, "disabled")
+                img_tensor = img_resized.permute(0, 2, 3, 1)
+            # ------------------------------------------------------------------------
+
             image_1, t = cls.encode(vae, latent_width, latent_height, img_tensor, scale_factors)
             frame_idx, latent_idx = cls.get_latent_index(positive, latent_length, len(image_1), f_idx, scale_factors)
 

@@ -6,6 +6,7 @@ import math
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 import av
 from PIL import Image
 
@@ -58,97 +59,107 @@ def _load_image_tensor(seg: dict) -> torch.Tensor:
 
 
 def _resize_image(tensor: torch.Tensor, target_w: int, target_h: int, method: str, divisible_by: int) -> torch.Tensor:
-    """Resize a [1, H, W, 3] float32 tensor to target dimensions using the given method,
+    """Resize an [N, H, W, 3] float32 tensor to target dimensions using the given method,
     then snap the final dimensions to be divisible by `divisible_by`."""
-    from PIL import Image as _PilImage
-    import torchvision.transforms.functional as TF
-
+    
     def snap(val, div):
         return max(div, (val // div) * div)
 
     tw = snap(target_w, divisible_by)
     th = snap(target_h, divisible_by)
 
-    img_np = (tensor[0].cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
-    pil = _PilImage.fromarray(img_np)
-    src_w, src_h = pil.size
+    N, H, W, C = tensor.shape
+    if H == th and W == tw:
+        return tensor
 
+    t_nchw = tensor.permute(0, 3, 1, 2)
+    
     if method == "stretch to fit":
-        resized = pil.resize((tw, th), _PilImage.LANCZOS)
-
+        resized = F.interpolate(t_nchw, size=(th, tw), mode="bilinear", align_corners=False)
+        
     elif method == "maintain aspect ratio":
-        ratio = min(tw / src_w, th / src_h)
-        new_w = int(src_w * ratio)
-        new_h = int(src_h * ratio)
-        new_w = snap(new_w, divisible_by)
-        new_h = snap(new_h, divisible_by)
-        resized = pil.resize((new_w, new_h), _PilImage.LANCZOS)
-
+        ratio = min(tw / W, th / H)
+        new_w = snap(int(W * ratio), divisible_by)
+        new_h = snap(int(H * ratio), divisible_by)
+        resized = F.interpolate(t_nchw, size=(new_h, new_w), mode="bilinear", align_corners=False)
+        
     elif method == "pad":
-        ratio = min(tw / src_w, th / src_h)
-        new_w = snap(int(src_w * ratio), divisible_by)
-        new_h = snap(int(src_h * ratio), divisible_by)
-        inner = pil.resize((new_w, new_h), _PilImage.LANCZOS)
-        resized = _PilImage.new("RGB", (tw, th), (0, 0, 0))
-        resized.paste(inner, ((tw - new_w) // 2, (th - new_h) // 2))
-
+        ratio = min(tw / W, th / H)
+        new_w = snap(int(W * ratio), divisible_by)
+        new_h = snap(int(H * ratio), divisible_by)
+        inner = F.interpolate(t_nchw, size=(new_h, new_w), mode="bilinear", align_corners=False)
+        
+        pad_l = (tw - new_w) // 2
+        pad_t = (th - new_h) // 2
+        resized = F.pad(inner, (pad_l, tw - new_w - pad_l, pad_t, th - new_h - pad_t), mode="constant", value=0)
+        
     elif method == "crop":
-        ratio = max(tw / src_w, th / src_h)
-        new_w = int(src_w * ratio)
-        new_h = int(src_h * ratio)
-        inner = pil.resize((new_w, new_h), _PilImage.LANCZOS)
+        ratio = max(tw / W, th / H)
+        new_w = int(W * ratio)
+        new_h = int(H * ratio)
+        inner = F.interpolate(t_nchw, size=(new_h, new_w), mode="bilinear", align_corners=False)
+        
         left = (new_w - tw) // 2
         top = (new_h - th) // 2
-        resized = inner.crop((left, top, left + tw, top + th))
-
+        resized = inner[:, :, top:top+th, left:left+tw]
+        
     else:
-        resized = pil.resize((tw, th), _PilImage.LANCZOS)
+        resized = F.interpolate(t_nchw, size=(th, tw), mode="bilinear", align_corners=False)
 
-    arr = np.array(resized, dtype=np.float32) / 255.0
-    return torch.from_numpy(arr).unsqueeze(0)
+    return resized.permute(0, 2, 3, 1)
 
 
 def _compress_image(tensor: torch.Tensor, crf: int) -> torch.Tensor:
-    """Apply H.264 compression artefacts to a [1, H, W, 3] float32 tensor (ComfyUI image format).
-    crf=0 means no compression. Uses PyAV to encode/decode a single frame in-memory."""
+    """Apply H.264 compression artefacts to an [N, H, W, 3] float32 tensor (ComfyUI image format).
+    crf=0 means no compression. Uses PyAV to encode/decode frames in-memory."""
     if crf == 0:
         return tensor
-    img = tensor[0]  # [H, W, 3]
+        
+    N, H, W, C = tensor.shape
+    
     # Dimensions must be even for H.264
-    h = (img.shape[0] // 2) * 2
-    w = (img.shape[1] // 2) * 2
-    img_np = (img[:h, :w] * 255.0).byte().cpu().numpy()  # uint8 [H, W, 3]
-
+    h = (H // 2) * 2
+    w = (W // 2) * 2
+    
+    # uint8 [N, H, W, 3]
+    tensor_bytes = (tensor[:, :h, :w, :] * 255.0).byte().cpu().numpy()
+    
     try:
         buf = _io.BytesIO()
         container = av.open(buf, mode="w", format="mp4")
-        stream = container.add_stream("libx264", rate=1)
+        stream = container.add_stream("libx264", rate=24)
         stream.width = w
         stream.height = h
         stream.pix_fmt = "yuv420p"
         stream.options = {"crf": str(crf), "preset": "ultrafast"}
-        frame = av.VideoFrame.from_ndarray(img_np, format="rgb24")
-        for pkt in stream.encode(frame):
-            container.mux(pkt)
+        
+        for i in range(N):
+            frame = av.VideoFrame.from_ndarray(tensor_bytes[i], format="rgb24")
+            for pkt in stream.encode(frame):
+                container.mux(pkt)
+                
         for pkt in stream.encode(None):
             container.mux(pkt)
+            
         container.close()
-
+        
         buf.seek(0)
         container_r = av.open(buf, mode="r")
-        decoded = None
-        for frame_r in container_r.decode(video=0):
-            decoded = frame_r.to_ndarray(format="rgb24")  # [H, W, 3]
-            break
+        decoded = [frame_r.to_ndarray(format="rgb24") for frame_r in container_r.decode(video=0)]
         container_r.close()
-
-        if decoded is None:
+        
+        if not decoded:
             return tensor
-        arr = torch.from_numpy(decoded.astype(np.float32) / 255.0).to(tensor.device, tensor.dtype)
+            
+        decoded_np = np.stack(decoded).astype(np.float32) / 255.0
+        
         # Re-embed into original tensor shape (may have been cropped by even-rounding)
         out = tensor.clone()
-        out[0, :h, :w] = arr
+        dec_N = min(N, len(decoded))
+        out[:dec_N, :h, :w] = torch.from_numpy(decoded_np[:dec_N]).to(tensor.device, tensor.dtype)
+        
         return out
+        
     except Exception as e:
         log.warning("[PromptRelay] img_compression encode/decode failed: %s", e)
         return tensor
@@ -536,11 +547,11 @@ class LTXDirector(io.ComfyNode):
             
             # If no images were loaded from the timeline, create a dummy image at strength 0
             # to prevent artifacts in text-to-video mode.
-            if not guide_data["images"]:
+            if not guide_data["images"] and optional_latent is None:
                 w = derived_w if derived_w > 0 else 768
                 h = derived_h if derived_h > 0 else 512
-                w = (w // 32) * 32
-                h = (h // 32) * 32
+                w = (w // divisible_by) * divisible_by
+                h = (h // divisible_by) * divisible_by
                 
                 dummy_image = torch.zeros((1, h, w, 3), dtype=torch.float32)
                 guide_data["images"].append(dummy_image)

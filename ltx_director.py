@@ -57,6 +57,55 @@ def _load_image_tensor(seg: dict) -> torch.Tensor:
     except:
         return torch.zeros((1, 512, 512, 3), dtype=torch.float32)
 
+def _load_video_tensor(seg: dict, frame_rate: float) -> torch.Tensor:
+    """Extracts a sequence of frames from a video file based on the segment's trim parameters,
+    and returns them as an [N, H, W, 3] float32 tensor."""
+    file_path = os.path.join(folder_paths.get_input_directory(), seg.get("imageFile", ""))
+    
+    if not os.path.exists(file_path):
+        return torch.zeros((1, 512, 512, 3), dtype=torch.float32)
+
+    trim_start_frames = float(seg.get("trimStart", 0))
+    length_frames = float(seg.get("length", 1))
+    start_sec = trim_start_frames / frame_rate
+    
+    frames = []
+    try:
+        with av.open(file_path) as container:
+            stream = container.streams.video[0]
+            stream.thread_type = "AUTO"
+            
+            # Seek slightly before target to hit a keyframe
+            if stream.time_base:
+                seek_pts = int((max(0, start_sec - 0.5)) / float(stream.time_base))
+            else:
+                seek_pts = int((max(0, start_sec - 0.5)) * av.time_base)
+            
+            container.seek(seek_pts, stream=stream, backward=True)
+            
+            for frame in container.decode(stream):
+                frame_time = frame.time
+                if frame_time is None and frame.pts is not None and stream.time_base:
+                    frame_time = float(frame.pts * stream.time_base)
+                    
+                if frame_time is None:
+                    frame_time = 0.0
+                    
+                if frame_time < start_sec - 0.01:
+                    continue
+                    
+                frames.append(frame.to_ndarray(format='rgb24'))
+                
+                if len(frames) >= int(length_frames):
+                    break
+    except Exception as e:
+        log.warning(f"[PromptRelay] Video extract error: {e}")
+        
+    if not frames:
+        return torch.zeros((1, 512, 512, 3), dtype=torch.float32)
+        
+    frames_np = np.array(frames, dtype=np.float32) / 255.0
+    return torch.from_numpy(frames_np)
 
 def _resize_image(tensor: torch.Tensor, target_w: int, target_h: int, method: str, divisible_by: int) -> torch.Tensor:
     """Resize an [N, H, W, 3] float32 tensor to target dimensions using the given method,
@@ -494,7 +543,7 @@ class LTXDirector(io.ComfyNode):
             tdata = json.loads(timeline_data) if timeline_data else {}
             img_segs = [
                 s for s in tdata.get("segments", [])
-                if s.get("type", "image") == "image"
+                if s.get("type", "image") in ("image", "video")
                 and (s.get("imageFile") or s.get("imageB64"))
                 and int(s.get("start", 0)) < duration_frames  # exclude segments fully outside duration
             ]
@@ -505,7 +554,10 @@ class LTXDirector(io.ComfyNode):
                 strengths = [float(x.strip()) for x in guide_strength.split(",") if x.strip()]
 
             for idx, seg in enumerate(img_segs):
-                tensor = _load_image_tensor(seg)
+                if seg.get("type") == "video":
+                    tensor = _load_video_tensor(seg, float(frame_rate))
+                else:
+                    tensor = _load_image_tensor(seg)
 
                 # Apply resize
                 src_h, src_w = tensor.shape[1], tensor.shape[2]

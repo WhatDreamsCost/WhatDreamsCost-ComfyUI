@@ -636,7 +636,7 @@ class TimelineEditor {
     this.displayModeWidget = this.node.widgets.find(w => w.name === "display_mode");
 
     this.timeline = parseInitial(this.timelineDataWidget?.value);
-    this.loadImages();
+    this.loadMedia();
 
     this.createDOM();
     if (this.timeline.segments.length > 0) {
@@ -790,9 +790,23 @@ class TimelineEditor {
     }
   }
 
-  loadImages() {
+  loadMedia() {
     for (const seg of this.timeline.segments) {
-      if (seg.imageB64 && !seg.imgObj) {
+      if (seg.type === "video" && seg.imageFile && !seg.videoEl) {
+        const filename = seg.imageFile.split('/').pop();
+        const subfolder = seg.imageFile.includes('/') ? seg.imageFile.split('/').slice(0, -1).join('/') : '';
+        const vidUrl = api.apiURL(`/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}`);
+        
+        const vid = document.createElement('video');
+        vid.crossOrigin = "Anonymous";
+        vid.muted = true;
+        vid.src = vidUrl;
+        seg.videoEl = vid;
+        
+        vid.onloadeddata = () => {
+            vid.currentTime = (seg.trimStart || 0) / this.getFrameRate() + 0.01;
+        };
+      } else if (seg.imageB64 && !seg.imgObj) {
         seg.imgObj = new Image();
         seg.imgObj.onload = () => this.render();
         seg.imgObj.src = seg.imageB64;
@@ -863,6 +877,13 @@ class TimelineEditor {
     this.audioFileInput.style.display = "none";
     this.audioFileInput.addEventListener("change", (e) => this.handleAudioUpload(e.target.files));
 
+    this.videoFileInput = document.createElement("input");
+    this.videoFileInput.type = "file";
+    this.videoFileInput.accept = "video/*";
+    this.videoFileInput.multiple = true;
+    this.videoFileInput.style.display = "none";
+    this.videoFileInput.addEventListener("change", (e) => this.handleVideoUpload(e.target.files));
+
     const uploadBtn = document.createElement("button");
     uploadBtn.className = "pr-btn";
     uploadBtn.innerHTML = `${ICONS.upload} Add Image`;
@@ -872,6 +893,11 @@ class TimelineEditor {
     uploadAudioBtn.className = "pr-btn";
     uploadAudioBtn.innerHTML = `${ICONS.audio} Add Audio`;
     uploadAudioBtn.addEventListener("click", () => this.audioFileInput.click());
+
+    const uploadVideoBtn = document.createElement("button");
+    uploadVideoBtn.className = "pr-btn";
+    uploadVideoBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg> Add Video`;
+    uploadVideoBtn.addEventListener("click", () => this.videoFileInput.click());
 
     const addTextBtn = document.createElement("button");
     addTextBtn.className = "pr-btn";
@@ -885,9 +911,11 @@ class TimelineEditor {
 
     actionGroup.appendChild(this.fileInput);
     actionGroup.appendChild(this.audioFileInput);
+    actionGroup.appendChild(this.videoFileInput);
     actionGroup.appendChild(uploadBtn);
     actionGroup.appendChild(addTextBtn);
     actionGroup.appendChild(uploadAudioBtn);
+    actionGroup.appendChild(uploadVideoBtn);
     actionGroup.appendChild(deleteBtn);
     toolbar.appendChild(actionGroup);
 
@@ -1124,14 +1152,18 @@ class TimelineEditor {
       if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
         const imageFiles = [];
         const audioFiles = [];
+        const videoFiles = []; 
         for (let file of e.dataTransfer.files) {
-          if (file.type.startsWith("audio/")) audioFiles.push(file);
-          if (file.type.startsWith("image/")) imageFiles.push(file);
+          if (file.type.startsWith("video/")) videoFiles.push(file);
+          else if (file.type.startsWith("audio/")) audioFiles.push(file);
+          else if (file.type.startsWith("image/")) imageFiles.push(file);
         }
 
         // Let implicit intent handle mixing drops: use the track we hovered over
         // for the first type we process, or fallback.
-        if (audioFiles.length > 0 && (targetTrack === "audio" || imageFiles.length === 0)) {
+        if (videoFiles.length > 0) {
+          this.handleVideoUpload(videoFiles, targetFrameStart);
+        } else if (audioFiles.length > 0 && (targetTrack === "audio" || imageFiles.length === 0)) {
           this.handleAudioUpload(audioFiles, targetFrameStart);
         } else if (imageFiles.length > 0) {
           this.handleImageUpload(imageFiles, targetFrameStart);
@@ -1506,6 +1538,142 @@ class TimelineEditor {
       });
     }
     this.fileInput.value = "";
+  }
+
+  async handleVideoUpload(files, targetFrameStart = null) {
+    const frameRate = this.getFrameRate();
+
+    for (let file of files) {
+      if (!file.type.startsWith("video/")) continue;
+
+      await new Promise(async (resolve) => {
+        try {
+          const body = new FormData();
+          body.append("image", file); 
+          const resp = await api.fetchApi("/upload/image", { method: "POST", body });
+          
+          if (resp.status !== 200) { 
+            resolve(); 
+            return; 
+          }
+
+          const data = await resp.json();
+          const filename = data.name;
+          const subfolder = data.subfolder || "";
+          const filePath = subfolder ? subfolder + "/" + filename : filename;
+
+          const vidUrl = api.apiURL(`/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}`);
+
+          const vid = document.createElement('video');
+          vid.crossOrigin = "Anonymous"; 
+          vid.preload = 'auto';
+          
+          vid.onloadeddata = async () => {
+            const clipDurationSecs = vid.duration;
+            const clipFrames = Math.max(1, Math.ceil(clipDurationSecs * frameRate));
+            
+            let newStart = targetFrameStart !== null ? targetFrameStart : 0;
+            let newLength = clipFrames;
+
+            const sharedId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+
+            // Create linked video segment
+            const vidSeg = {
+              id: sharedId + "_v",
+              type: "video",
+              start: newStart,
+              length: newLength,
+              trimStart: 0,
+              videoDurationFrames: clipFrames,
+              imageFile: filePath,
+              fileName: file.name,
+              prompt: "",
+              videoEl: vid
+            };
+            
+            // And linked audio segment
+            const audSeg = {
+              id: sharedId + "_a",
+              type: "audio",
+              start: newStart,
+              length: newLength,
+              trimStart: 0,
+              audioDurationFrames: clipFrames,
+              audioFile: filePath,
+              fileName: file.name,
+              waveformPeaks: []
+            };
+
+            // Attempt to extract audio from video for waveform generation
+            try {
+              const arrayBuffer = await file.arrayBuffer();
+              const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+              const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+              const channelData = audioBuffer.getChannelData(0);
+              const peaks = [];
+              const numPeaks = 200;
+              const step = Math.floor(channelData.length / numPeaks);
+              for (let i = 0; i < numPeaks; i++) {
+                let max = 0;
+                for (let j = 0; j < step; j++) {
+                  const val = Math.abs(channelData[i * step + j]);
+                  if (val > max) max = val;
+                }
+                peaks.push(max);
+              }
+              audSeg.waveformPeaks = peaks;
+            } catch(e) { 
+              console.warn("No audio in video or decode failed"); 
+            }
+
+            // Extract a single frame for the static fallback thumbnail
+            vid.currentTime = 0.01; 
+            vid.onseeked = () => {
+               const canvas = document.createElement('canvas');
+               canvas.width = Math.min(vid.videoWidth, 512);
+               canvas.height = Math.round((vid.videoHeight / vid.videoWidth) * canvas.width);
+               const ctx = canvas.getContext('2d');
+               ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
+               vidSeg.imageB64 = canvas.toDataURL('image/jpeg');
+               
+               const imgObj = new Image();
+               imgObj.onload = () => {
+                  vidSeg.imgObj = imgObj;
+                  this.render();
+               };
+               imgObj.src = vidSeg.imageB64;
+               
+               this.timeline.segments.push(vidSeg);
+               this.timeline.audioSegments.push(audSeg);
+               this.timeline.segments.sort((a, b) => a.start - b.start);
+               this.timeline.audioSegments.sort((a, b) => a.start - b.start);
+               
+               this.selectionType = "image";
+               this.selectedIndex = this.timeline.segments.findIndex(s => s.id === vidSeg.id);
+               
+               this.updateUIFromSelection();
+               this.commitChanges(true);
+               resolve();
+            };
+          };
+
+          vid.onerror = (e) => {
+              console.error("Video load error", e);
+              resolve(); 
+          };
+
+          vid.src = vidUrl; 
+
+        } catch (err) {
+          console.error("Video upload failed", err);
+          resolve();
+        }
+      });
+    }
+    
+    if (this.videoFileInput) {
+      this.videoFileInput.value = "";
+    }
   }
 
   // --- Async Audio Upload Logic ---
@@ -3163,8 +3331,24 @@ class TimelineEditor {
       fi.click();
     });
 
+    const vidBtn = document.createElement("button");
+    vidBtn.className = "pr-gap-menu-btn";
+    vidBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg> Video Segment`;
+    vidBtn.addEventListener("click", () => {
+      this.dismissGapMenu();
+      const fi = document.createElement("input");
+      fi.type = "file"; fi.accept = "video/*";
+      fi.addEventListener("change", (ev) => {
+        if (ev.target.files?.[0]) {
+          this.handleVideoUpload([ev.target.files[0]], gap.frameStart);
+        }
+      });
+      fi.click();
+    });
+
     menu.appendChild(textBtn);
     menu.appendChild(imgBtn);
+    menu.appendChild(vidBtn);
     const currentTrack = gap.track === "audio" ? "audio" : "image";
     if (this._copiedSegment && this._copiedSegmentTrack === currentTrack) {
       const pasteBtn = document.createElement("button");
@@ -3858,7 +4042,7 @@ app.registerExtension({
         setTimeout(() => {
           if (this._timelineEditor) {
             this._timelineEditor.timeline = parseInitial(this._timelineEditor.timelineDataWidget?.value);
-            this._timelineEditor.loadImages();
+            this._timelineEditor.loadMedia();
             this._timelineEditor.selectionType = "image";
             this._timelineEditor.selectedIndex = clamp(
               this._timelineEditor.selectedIndex, -1,

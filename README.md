@@ -11,7 +11,7 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 <table>
   <tr>
     <td>
-      <p align="center">Overview Video</p>
+      <p align="center">LTX Sequencer Overview Video</p>
       <a href="https://www.youtube.com/watch?v=aXDIr8eNovI">
         <img src="https://img.youtube.com/vi/aXDIr8eNovI/0.jpg" alt="Overview Video" width="400">
       </a>

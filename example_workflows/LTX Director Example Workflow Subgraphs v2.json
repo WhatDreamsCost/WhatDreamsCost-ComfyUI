@@ -2,7 +2,7 @@
   "id": "c92620ea-60b4-4f41-a78f-621383a62c2a",
   "revision": 0,
   "last_node_id": 96,
-  "last_link_id": 249,
+  "last_link_id": 250,
   "nodes": [
     {
       "id": 46,
@@ -13,7 +13,7 @@
       ],
       "size": [
         1120,
-        777
+        801
       ],
       "flags": {},
       "order": 2,
@@ -156,28 +156,148 @@
       "bgcolor": "#000"
     },
     {
-      "id": 92,
-      "type": "MarkdownNote",
+      "id": 96,
+      "type": "739520a4-718f-490f-87d1-34ffbca98e3f",
+      "pos": [
+        3000,
+        4620
+      ],
+      "size": [
+        210,
+        130
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "audio_latent",
+          "name": "samples",
+          "type": "LATENT",
+          "link": 244
+        },
+        {
+          "label": "audio_vae",
+          "name": "audio_vae",
+          "type": "VAE",
+          "link": 245
+        },
+        {
+          "label": "video_latent",
+          "name": "samples_1",
+          "type": "LATENT",
+          "link": 246
+        },
+        {
+          "label": "video_vae",
+          "name": "vae",
+          "type": "VAE",
+          "link": 247
+        },
+        {
+          "name": "fps",
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": 248
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            249
+          ]
+        }
+      ],
+      "properties": {
+        "proxyWidgets": [],
+        "cnr_id": "comfy-core",
+        "ver": "0.19.3"
+      },
+      "widgets_values": [],
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 93,
+      "type": "dc399e64-01cd-40b2-9337-972428cc66de",
       "pos": [
         1430,
-        4220
+        3970
       ],
       "size": [
         400,
-        530
+        190
       ],
       "flags": {},
       "order": 0,
       "mode": 0,
       "inputs": [],
-      "outputs": [],
-      "title": "FAQ",
-      "properties": {},
-      "widgets_values": [
-        "# FAQ\n\n**How do I use this??**\n\nI'll be posting tutorials on my YouTube channel soon!\n<https://www.youtube.com/@WhatDreamsCost/>\n\n**Where do I download these models??**\n\nThere is a good list of models and download links here: <https://github.com/wildminder/awesome-ltx2?tab=readme-ov-file>\n\nAlso the latest v1.1 spatial upscaler can be found here: <https://huggingface.co/Lightricks/LTX-2.3/tree/main>\n\nThe tiny vae (taeltx2_3.safetensors) is found here:\n<https://huggingface.co/Kijai/LTX2.3_comfy/blob/main/vae/taeltx2_3.safetensors>\n\n**I'm getting errors when running this workflow!**\n\nDouble check that you have all of the correct models loaded. This is using the newest version of 2x upscaler (v1.1). You can change it to the older one under the Model Loader.\n\n**How can I support you??**\n\nHelp me get a job. I'm unemployed and literally broke. (seriously, i'll even scrub toilets for minimum wage)\n\nOr follow me on my socials :)\n\n<https://x.com/WhatDreamsCost>\n\n<https://www.instagram.com/whatdreamscost/>\n\n<https://www.youtube.com/@WhatDreamsCost/>\n"
+      "outputs": [
+        {
+          "label": "model",
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            212
+          ]
+        },
+        {
+          "label": "clip",
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            213
+          ]
+        },
+        {
+          "label": "audio_vae",
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            215,
+            245
+          ]
+        },
+        {
+          "label": "video_vae",
+          "name": "VAE_1",
+          "type": "VAE",
+          "links": [
+            222,
+            237,
+            247
+          ]
+        }
       ],
-      "color": "#322",
-      "bgcolor": "#533"
+      "properties": {
+        "proxyWidgets": [
+          [
+            "77",
+            "ckpt_name"
+          ],
+          [
+            "84",
+            "clip_name1"
+          ],
+          [
+            "4",
+            "vae_name"
+          ],
+          [
+            "3",
+            "vae_name"
+          ]
+        ],
+        "cnr_id": "comfy-core",
+        "ver": "0.19.3"
+      },
+      "widgets_values": [],
+      "color": "#222",
+      "bgcolor": "#000"
     },
     {
       "id": 94,
@@ -274,14 +394,16 @@
       "properties": {
         "proxyWidgets": [
           [
-            "5",
-            "frame_rate"
+            "-1",
+            "noise_seed"
           ]
         ],
         "cnr_id": "comfy-core",
         "ver": "0.19.3"
       },
-      "widgets_values": [],
+      "widgets_values": [
+        12
+      ],
       "color": "#222",
       "bgcolor": "#000"
     },
@@ -369,153 +491,28 @@
       "bgcolor": "#000"
     },
     {
-      "id": 96,
-      "type": "739520a4-718f-490f-87d1-34ffbca98e3f",
-      "pos": [
-        3000,
-        4620
-      ],
-      "size": [
-        210,
-        130
-      ],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [
-        {
-          "label": "audio_latent",
-          "name": "samples",
-          "type": "LATENT",
-          "link": 244
-        },
-        {
-          "label": "audio_vae",
-          "name": "audio_vae",
-          "type": "VAE",
-          "link": 245
-        },
-        {
-          "label": "video_latent",
-          "name": "samples_1",
-          "type": "LATENT",
-          "link": 246
-        },
-        {
-          "label": "video_vae",
-          "name": "vae",
-          "type": "VAE",
-          "link": 247
-        },
-        {
-          "name": "fps",
-          "type": "FLOAT",
-          "widget": {
-            "name": "fps"
-          },
-          "link": 248
-        }
-      ],
-      "outputs": [
-        {
-          "name": "VIDEO",
-          "type": "VIDEO",
-          "links": [
-            249
-          ]
-        }
-      ],
-      "properties": {
-        "proxyWidgets": [
-          [
-            "17",
-            "fps"
-          ]
-        ],
-        "cnr_id": "comfy-core",
-        "ver": "0.19.3"
-      },
-      "widgets_values": [],
-      "color": "#222",
-      "bgcolor": "#000"
-    },
-    {
-      "id": 93,
-      "type": "dc399e64-01cd-40b2-9337-972428cc66de",
+      "id": 92,
+      "type": "MarkdownNote",
       "pos": [
         1430,
-        3970
+        4220
       ],
       "size": [
         400,
-        190
+        530
       ],
       "flags": {},
       "order": 1,
       "mode": 0,
       "inputs": [],
-      "outputs": [
-        {
-          "label": "model",
-          "name": "MODEL",
-          "type": "MODEL",
-          "links": [
-            212
-          ]
-        },
-        {
-          "label": "clip",
-          "name": "CLIP",
-          "type": "CLIP",
-          "links": [
-            213
-          ]
-        },
-        {
-          "label": "audio_vae",
-          "name": "VAE",
-          "type": "VAE",
-          "links": [
-            215,
-            245
-          ]
-        },
-        {
-          "label": "video_vae",
-          "name": "VAE_1",
-          "type": "VAE",
-          "links": [
-            222,
-            237,
-            247
-          ]
-        }
+      "outputs": [],
+      "title": "FAQ",
+      "properties": {},
+      "widgets_values": [
+        "# FAQ\n\n**How do I use this??**\n\nI'll be posting tutorials on my YouTube channel soon!\n<https://www.youtube.com/@WhatDreamsCost/>\n\n**Where do I download these models??**\n\nThere is a good list of models and download links here: <https://github.com/wildminder/awesome-ltx2?tab=readme-ov-file>\n\nAlso the latest v1.1 spatial upscaler can be found here: <https://huggingface.co/Lightricks/LTX-2.3/tree/main>\n\nThe tiny vae (taeltx2_3.safetensors) is found here:\n<https://huggingface.co/Kijai/LTX2.3_comfy/blob/main/vae/taeltx2_3.safetensors>\n\n**I'm getting errors when running this workflow!**\n\nDouble check that you have all of the correct models loaded. This is using the newest version of 2x upscaler (v1.1). You can change it to the older one under the Model Loader.\n\n**How can I support you??**\n\nHelp me get a job. I'm unemployed and literally broke. (seriously, i'll even scrub toilets for minimum wage)\n\nOr follow me on my socials :)\n\n<https://x.com/WhatDreamsCost>\n\n<https://www.youtube.com/@WhatDreamsCost/>\n\n<https://www.instagram.com/whatdreamscost/>"
       ],
-      "properties": {
-        "proxyWidgets": [
-          [
-            "77",
-            "ckpt_name"
-          ],
-          [
-            "84",
-            "clip_name1"
-          ],
-          [
-            "4",
-            "vae_name"
-          ],
-          [
-            "3",
-            "vae_name"
-          ]
-        ],
-        "cnr_id": "comfy-core",
-        "ver": "0.19.3"
-      },
-      "widgets_values": [],
-      "color": "#222",
-      "bgcolor": "#000"
+      "color": "#322",
+      "bgcolor": "#533"
     }
   ],
   "links": [
@@ -721,7 +718,7 @@
         "state": {
           "lastGroupId": 6,
           "lastNodeId": 96,
-          "lastLinkId": 249,
+          "lastLinkId": 250,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -1233,7 +1230,9 @@
             "type": "VAE"
           }
         ],
-        "extra": {}
+        "extra": {
+          "workflowRendererVersion": "LG"
+        }
       },
       {
         "id": "4b017e47-bf16-441b-ad03-edce978b3be3",
@@ -1241,7 +1240,7 @@
         "state": {
           "lastGroupId": 6,
           "lastNodeId": 96,
-          "lastLinkId": 249,
+          "lastLinkId": 250,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -1253,7 +1252,7 @@
             2860,
             4380,
             120,
-            180
+            200
           ]
         },
         "outputNode": {
@@ -1358,6 +1357,18 @@
             "pos": [
               2960,
               4520
+            ]
+          },
+          {
+            "id": "f8636f26-27cb-4c55-972e-e5d1f6f39fff",
+            "name": "noise_seed",
+            "type": "INT",
+            "linkIds": [
+              250
+            ],
+            "pos": [
+              2960,
+              4540
             ]
           }
         ],
@@ -1795,55 +1806,6 @@
             "bgcolor": "#000"
           },
           {
-            "id": 28,
-            "type": "RandomNoise",
-            "pos": [
-              3740,
-              4390
-            ],
-            "size": [
-              210,
-              90
-            ],
-            "flags": {},
-            "order": 1,
-            "mode": 0,
-            "inputs": [
-              {
-                "label": "noise_seed",
-                "localized_name": "noise_seed",
-                "name": "noise_seed",
-                "type": "INT",
-                "widget": {
-                  "name": "noise_seed"
-                },
-                "link": null
-              }
-            ],
-            "outputs": [
-              {
-                "localized_name": "NOISE",
-                "name": "NOISE",
-                "type": "NOISE",
-                "links": [
-                  51,
-                  157
-                ]
-              }
-            ],
-            "properties": {
-              "cnr_id": "comfy-core",
-              "ver": "0.19.3",
-              "Node name for S&R": "RandomNoise"
-            },
-            "widgets_values": [
-              12,
-              "fixed"
-            ],
-            "color": "#222",
-            "bgcolor": "#000"
-          },
-          {
             "id": 5,
             "type": "LTXVConditioning",
             "pos": [
@@ -2003,6 +1965,55 @@
               "Node name for S&R": "LTXVSeparateAVLatent"
             },
             "widgets_values": [],
+            "color": "#222",
+            "bgcolor": "#000"
+          },
+          {
+            "id": 28,
+            "type": "RandomNoise",
+            "pos": [
+              3740,
+              4390
+            ],
+            "size": [
+              210,
+              90
+            ],
+            "flags": {},
+            "order": 1,
+            "mode": 0,
+            "inputs": [
+              {
+                "label": "noise_seed",
+                "localized_name": "noise_seed",
+                "name": "noise_seed",
+                "type": "INT",
+                "widget": {
+                  "name": "noise_seed"
+                },
+                "link": 250
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "NOISE",
+                "name": "NOISE",
+                "type": "NOISE",
+                "links": [
+                  51,
+                  157
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.19.3",
+              "Node name for S&R": "RandomNoise"
+            },
+            "widgets_values": [
+              12,
+              "fixed"
+            ],
             "color": "#222",
             "bgcolor": "#000"
           }
@@ -2216,9 +2227,19 @@
             "target_id": -20,
             "target_slot": 4,
             "type": "LATENT"
+          },
+          {
+            "id": 250,
+            "origin_id": -10,
+            "origin_slot": 7,
+            "target_id": 28,
+            "target_slot": 0,
+            "type": "INT"
           }
         ],
-        "extra": {}
+        "extra": {
+          "workflowRendererVersion": "LG"
+        }
       },
       {
         "id": "7cf6430b-4784-4af1-8cde-9268e9465c62",
@@ -2226,7 +2247,7 @@
         "state": {
           "lastGroupId": 6,
           "lastNodeId": 96,
-          "lastLinkId": 249,
+          "lastLinkId": 250,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -3273,7 +3294,9 @@
             "type": "LATENT"
           }
         ],
-        "extra": {}
+        "extra": {
+          "workflowRendererVersion": "LG"
+        }
       },
       {
         "id": "739520a4-718f-490f-87d1-34ffbca98e3f",
@@ -3281,7 +3304,7 @@
         "state": {
           "lastGroupId": 6,
           "lastNodeId": 96,
-          "lastLinkId": 249,
+          "lastLinkId": 250,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -3615,24 +3638,27 @@
             "type": "VIDEO"
           }
         ],
-        "extra": {}
+        "extra": {
+          "workflowRendererVersion": "LG"
+        }
       }
     ]
   },
   "config": {},
   "extra": {
-    "frontendVersion": "1.42.14",
+    "frontendVersion": "1.40.0",
     "VHS_latentpreview": false,
     "VHS_latentpreviewrate": 0,
     "VHS_MetadataImage": true,
     "VHS_KeepIntermediate": true,
     "ds": {
-      "scale": 0.38016718211916745,
+      "scale": 0.8964143292718684,
       "offset": [
-        -15.98656997397939,
-        -3169.400636838179
+        -1084.7781214353931,
+        -3754.5892800523366
       ]
-    }
+    },
+    "workflowRendererVersion": "LG"
   },
   "version": 0.4
 }

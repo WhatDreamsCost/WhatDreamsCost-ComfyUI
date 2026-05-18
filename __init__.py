@@ -6,6 +6,7 @@ from .load_audio_ui import LoadAudioUI
 from .load_video_ui import LoadVideoUI
 from .ltx_director import LTXDirector
 from .ltx_director_guide import LTXDirectorGuide
+from .audio_sequencer import AudioSequencer
 from comfy_api.latest import ComfyExtension, io
 from typing_extensions import override
 
@@ -30,7 +31,8 @@ NODE_CLASS_MAPPINGS = {
     "LTXDirector": LTXDirector,
     "LTXDirectorGuide": LTXDirectorGuide,
     "LTXSequencerMirror": LTXSequencerMirror,
-    "SpeechLengthCalculator": SpeechLengthCalculator
+    "SpeechLengthCalculator": SpeechLengthCalculator,
+    "AudioSequencer": AudioSequencer,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -43,7 +45,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LTXDirector": "LTX Director",
     "LTXDirectorGuide": "LTX Director Guide",
     "LTXSequencerMirror": "LTX Sequencer Mirror",
-    "SpeechLengthCalculator": "Speech Length Calculator"
+    "SpeechLengthCalculator": "Speech Length Calculator",
+    "AudioSequencer": "Audio Sequencer",
 }
 
 WEB_DIRECTORY = "./js"

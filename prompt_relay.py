@@ -121,7 +121,7 @@ def build_segments(token_ranges, segment_lengths, epsilon=1e-3, relay_options=No
             frame_cursor += L
             continue
         midpoint = (2 * frame_cursor + L) // 2
-        base_window = max(L // 2 - 2, 0)
+        base_window = L // 2
         q_token_idx.append({
             "local_token_idx": torch.arange(tok_start, tok_end),
             "midpoint": midpoint,

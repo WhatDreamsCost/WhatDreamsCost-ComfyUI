@@ -531,7 +531,8 @@ class LTXDirector(io.ComfyNode):
 
                 strength = strengths[idx] if idx < len(strengths) else 1.0
                 guide_data["images"].append(tensor)
-                guide_data["insert_frames"].append(int(seg["start"]))
+                anchor_frame = int(seg["start"]) + int(seg.get("anchorOffset", 0))
+                guide_data["insert_frames"].append(anchor_frame)
                 guide_data["strengths"].append(float(strength))
             
             # If no images were loaded from the timeline, create a dummy image at strength 0
@@ -619,22 +620,42 @@ class LTXDirector(io.ComfyNode):
                         
                         if latent_samples.numel() == 0:
                             raise ValueError("Encoded audio latent is empty (0 elements).")
-                        
-                        # 2. Create solid mask with value 0.0 (0 means keep/use conditioning, 1 means generate noise)
-                        mask = torch.full(
-                            (1, latent_samples.shape[-2], latent_samples.shape[-1]), 
-                            0.0, 
-                            dtype=torch.float32, 
-                            device=comfy.model_management.intermediate_device()
+
+                        # 2. Per-temporal-frame occupancy mask.
+                        # mask=0.0 → audio present (keep conditioning), 1.0 → silence (inpaint from context)
+                        waveform_2d = waveform[0]  # [2, total_samples]
+                        total_waveform_samples = waveform_2d.shape[1]
+                        num_latent_t = latent_samples.shape[-2]
+                        audio_freq = latent_samples.shape[-1]
+
+                        t_mask = torch.ones(num_latent_t, dtype=torch.float32)
+                        for _i in range(num_latent_t):
+                            _s = int(round(_i * total_waveform_samples / num_latent_t))
+                            _e = int(round((_i + 1) * total_waveform_samples / num_latent_t))
+                            _e = min(_e, total_waveform_samples)
+                            if _e > _s and waveform_2d[:, _s:_e].abs().max().item() > 1e-6:
+                                t_mask[_i] = 0.0  # audio present
+
+                        noise_mask = (
+                            t_mask.view(1, 1, num_latent_t, 1)
+                                  .expand(1, 1, num_latent_t, audio_freq)
+                                  .clone()
+                                  .to(dtype=torch.float32,
+                                      device=comfy.model_management.intermediate_device())
                         )
-                        
+
                         # 3. Set Latent Noise Mask
                         audio_latent = {
                             "samples": latent_samples,
                             "type": "audio",
-                            "noise_mask": mask.reshape((-1, 1, mask.shape[-2], mask.shape[-1]))
+                            "noise_mask": noise_mask,
                         }
-                        log.info("[PromptRelay] Generated custom audio latent with noise mask (value=0.0).")
+                        _filled = int((t_mask == 0.0).sum().item())
+                        log.info(
+                            "[PromptRelay] Audio latent: %d/%d frames have audio (mask=0.0), "
+                            "%d silent frames will be inpainted (mask=1.0).",
+                            _filled, num_latent_t, num_latent_t - _filled,
+                        )
                     else:
                         raise ValueError("No audio waveform to encode.")
                 except Exception as e:

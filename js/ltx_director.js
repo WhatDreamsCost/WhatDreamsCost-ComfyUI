@@ -1136,6 +1136,7 @@ class TimelineEditor {
           targetFrameStart = ghost.resolvedStart !== undefined ? ghost.resolvedStart : ghost.start;
         }
       }
+
       this._ghostSegmentId = null;
       this._ghostTrack = null;
       this._ghostInitialTimeline = null;
@@ -1143,26 +1144,37 @@ class TimelineEditor {
       this._dropReplaceSegmentId = null;
       this.render();
 
+      let imageFiles = [];
+      let audioFiles = [];
+
       if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        const imageFiles = [];
-        const audioFiles = [];
         for (let file of e.dataTransfer.files) {
           if (file.type.startsWith("audio/")) audioFiles.push(file);
           if (file.type.startsWith("image/")) imageFiles.push(file);
         }
+      }
 
-        if (replaceSegmentId && imageFiles.length > 0) {
-          await this.replaceSegmentImage(replaceSegmentId, imageFiles[0]);
+      const draggedPath = e.dataTransfer.getData("text/plain");
+
+      if (draggedPath) {
+        if (replaceSegmentId) {
+          await this.replaceSegmentImageFromExistingPath(replaceSegmentId, draggedPath);
           return;
         }
 
-        // Let implicit intent handle mixing drops: use the track we hovered over
-        // for the first type we process, or fallback.
-        if (audioFiles.length > 0 && (targetTrack === "audio" || imageFiles.length === 0)) {
-          this.handleAudioUpload(audioFiles, targetFrameStart);
-        } else if (imageFiles.length > 0) {
-          this.handleImageUpload(imageFiles, targetFrameStart);
-        }
+        await this.createSegmentFromExistingImagePath(draggedPath, targetFrameStart);
+        return;
+      }
+
+      if (replaceSegmentId && imageFiles.length > 0) {
+        await this.replaceSegmentImage(replaceSegmentId, imageFiles[0]);
+        return;
+      }
+
+      if (audioFiles.length > 0 && (targetTrack === "audio" || imageFiles.length === 0)) {
+        this.handleAudioUpload(audioFiles, targetFrameStart);
+      } else if (imageFiles.length > 0) {
+        this.handleImageUpload(imageFiles, targetFrameStart);
       }
     });
 
@@ -1457,15 +1469,11 @@ class TimelineEditor {
     await new Promise((resolve) => {
       const displayImg = new Image();
       displayImg.onload = () => {
-        // Enforce the segment type is correctly marked as image so the backend accepts it
         seg.type = "image";
         seg.imageFile = imageFile;
         seg.imageB64 = imgUrl;
         seg.imgObj = displayImg;
-
-        // Save the updated segment back to the timeline JSON payload
         this.commitChanges();
-
         resolve();
       };
       displayImg.src = imgUrl;
@@ -1570,6 +1578,113 @@ class TimelineEditor {
     }
     this.fileInput.value = "";
   }
+
+  async createSegmentFromExistingImagePath(path, targetFrameStart = null, explicitLength = null) {
+    if (!path) return;
+
+    const frameRate = this.getFrameRate();
+    const newLength = explicitLength !== null ? explicitLength : frameRate * 1;
+
+    const normalizedPath = String(path).split("\\").join("/");
+    const filename = normalizedPath.split("/").pop();
+    const subfolder = normalizedPath.includes("/") ? normalizedPath.split("/").slice(0, -1).join("/") : "";
+    const imgUrl = `/api/view?filename=${encodeURIComponent(normalizedPath)}&type=input`;
+
+    await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        let newStart = targetFrameStart;
+
+        if (newStart === null) {
+          newStart = 0;
+          this.timeline.segments.sort((a, b) => a.start - b.start);
+          for (let i = 0; i < this.timeline.segments.length; i++) {
+            let seg = this.timeline.segments[i];
+            if (newStart + newLength <= seg.start) break;
+            newStart = Math.max(newStart, seg.start + seg.length);
+          }
+        }
+
+        const currentDuration = this.getVisualDurationFrames();
+
+        if (targetFrameStart !== null) {
+          let tempId = "TEMP_" + Date.now();
+          this.timeline.segments.push({ id: tempId, start: newStart, length: newLength, type: "temp" });
+          let result = this._applyCenterDragPhysics(
+            this.timeline.segments,
+            tempId,
+            newStart,
+            newStart + newLength / 2,
+            currentDuration,
+            currentDuration,
+            1
+          );
+
+          for (let shiftedSeg of result) {
+            let original = this.timeline.segments.find(s => s.id === shiftedSeg.id);
+            if (original) {
+              original.start = shiftedSeg.resolvedStart !== undefined ? shiftedSeg.resolvedStart : shiftedSeg.start;
+            }
+          }
+
+          let tempSeg = this.timeline.segments.find(s => s.id === tempId);
+          newStart = tempSeg.start;
+          this.timeline.segments = this.timeline.segments.filter(s => s.id !== tempId);
+        }
+
+        const seg = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          start: newStart,
+          length: newLength,
+          prompt: "",
+          type: "image",
+          imageFile: normalizedPath,
+          imageB64: imgUrl
+        };
+
+        const displayImg = new Image();
+        displayImg.onload = () => {
+          seg.imgObj = displayImg;
+          this.timeline.segments.push(seg);
+          this.timeline.segments.sort((a, b) => a.start - b.start);
+          this.selectionType = "image";
+          this.selectedIndex = this.timeline.segments.findIndex(s => s.id === seg.id);
+          this.updateUIFromSelection();
+          this.commitChanges(true);
+          resolve();
+        };
+        displayImg.src = imgUrl;
+      };
+
+      img.onerror = () => resolve();
+      img.src = imgUrl;
+    });
+  }
+
+  async replaceSegmentImageFromExistingPath(segmentId, path) {
+    if (!path) return;
+
+    const seg = this.timeline.segments.find(s => s.id === segmentId);
+    if (!seg) return;
+
+    const normalizedPath = String(path).split("\\").join("/");
+    const imgUrl = `/api/view?filename=${encodeURIComponent(normalizedPath)}&type=input`;
+
+    await new Promise((resolve) => {
+      const displayImg = new Image();
+      displayImg.onload = () => {
+        seg.type = "image";
+        seg.imageFile = normalizedPath;
+        seg.imageB64 = imgUrl;
+        seg.imgObj = displayImg;
+        this.commitChanges();
+        resolve();
+      };
+      displayImg.onerror = () => resolve();
+      displayImg.src = imgUrl;
+    });
+  }
+
 
   // --- Async Audio Upload Logic ---
   async handleAudioUpload(files, targetFrameStart = null) {

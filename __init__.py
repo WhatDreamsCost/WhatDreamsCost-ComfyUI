@@ -6,6 +6,8 @@ from .load_audio_ui import LoadAudioUI
 from .load_video_ui import LoadVideoUI
 from .ltx_director import LTXDirector
 from .ltx_director_guide import LTXDirectorGuide
+from .ltx_prompt_writer import register_routes
+register_routes()
 from comfy_api.latest import ComfyExtension, io
 from typing_extensions import override
 

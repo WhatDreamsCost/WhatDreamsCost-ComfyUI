@@ -1457,10 +1457,15 @@ class TimelineEditor {
     await new Promise((resolve) => {
       const displayImg = new Image();
       displayImg.onload = () => {
+        // Enforce the segment type is correctly marked as image so the backend accepts it
+        seg.type = "image";
         seg.imageFile = imageFile;
         seg.imageB64 = imgUrl;
         seg.imgObj = displayImg;
-        this.render();
+
+        // Save the updated segment back to the timeline JSON payload
+        this.commitChanges();
+
         resolve();
       };
       displayImg.src = imgUrl;

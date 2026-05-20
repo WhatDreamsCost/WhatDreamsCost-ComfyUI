@@ -47,6 +47,9 @@ VISION_SYSTEM_PROMPT = (
 # Each entry: "Preset name": "Full style instruction injected into the prompt."
 # Add new presets here — the JS dropdown is populated automatically via the
 # /whatdreamscost/style_presets endpoint; no JS edits needed.
+#
+# Style preset texts adapted from landon2022/LTX2EasyPrompt-LD
+# https://github.com/landon2022/LTX2EasyPrompt-LD
 # ---------------------------------------------------------------------------
 
 _NONE_STYLE_LABEL = "None — let VLM decide"

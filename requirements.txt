@@ -1,0 +1,17 @@
+# WhatDreamsCost-ComfyUI — Python dependencies
+#
+# Core dependencies (already present in any ComfyUI installation):
+#   torch, numpy, Pillow, aiohttp
+#
+# Optional — AI Prompt Writer (ltx_prompt_writer.py):
+#   All backends use lazy imports and degrade gracefully if not installed.
+#
+# GGUF backend (recommended — works with local .gguf models):
+#   Requires the llama-cpp_vllm custom node OR a manual install:
+#   pip install llama-cpp-python
+#
+# HuggingFace Transformers backend (Qwen2.5-VL):
+#   pip install transformers>=4.45.0
+#   pip install qwen-vl-utils   # optional, improves image handling
+#
+# If neither backend is installed, the ✨ Prompts button will return an error.

@@ -2015,6 +2015,30 @@ class TimelineEditor {
         this.ctx.lineWidth = 1.5;
         this.ctx.strokeRect(startX, RULER_HEIGHT + 1, pxWidth, this.blockHeight - 2);
       }
+
+      // --- Replace overlay (drag & drop) ---
+      if (this._dropReplaceSegmentId === seg.id) {
+        this.ctx.save();
+        this.ctx.fillStyle = "rgba(42, 126, 255, 0.4)"; // Blue tint
+        this.ctx.fillRect(startX, RULER_HEIGHT + 1, pxWidth, this.blockHeight - 2);
+
+        this.ctx.strokeStyle = "#4da6ff";
+        this.ctx.lineWidth = 3;
+        this.ctx.setLineDash([6, 6]);
+        this.ctx.strokeRect(startX + 2, RULER_HEIGHT + 2, pxWidth - 4, this.blockHeight - 4);
+
+        this.ctx.fillStyle = "#fff";
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.font = "bold 16px sans-serif";
+
+        // Drop shadow for text readability
+        this.ctx.shadowColor = "rgba(0,0,0,0.8)";
+        this.ctx.shadowBlur = 4;
+        this.ctx.fillText("Replace Image", startX + pxWidth / 2, RULER_HEIGHT + this.blockHeight / 2);
+        this.ctx.restore();
+      }
+
       this.ctx.globalAlpha = 1.0;
     }
 

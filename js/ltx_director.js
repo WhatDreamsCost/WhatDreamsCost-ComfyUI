@@ -79,6 +79,28 @@ const STYLES = `
     border-color: #cc4444;
     color: #ffaaaa;
   }
+  .pr-btn-vlm {
+    background: #1a1a2e;
+    border-color: #3a3a6e;
+    color: #b0b0ff;
+  }
+  .pr-btn-vlm:hover {
+    background: #2a2a4e;
+    border-color: #6060cc;
+    color: #d0d0ff;
+  }
+  .pr-btn-vlm:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .pr-vlm-section-title {
+    font-size: 10px;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    padding: 4px 0 2px 0;
+  }
   .pr-canvas {
     border-radius: 6px;
     border: 1px solid #111;
@@ -883,11 +905,30 @@ class TimelineEditor {
     deleteBtn.innerHTML = `${ICONS.trash} Delete`;
     deleteBtn.addEventListener("click", () => this.deleteSelectedSegment());
 
+    const generatePromptsBtn = document.createElement("button");
+    generatePromptsBtn.className = "pr-btn pr-btn-vlm";
+    generatePromptsBtn.innerHTML = "✨ Prompts";
+    generatePromptsBtn.title = "Generate prompts for all image segments using Qwen2.5-VL. Configure in Settings (⚙️).";
+    generatePromptsBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.generatePrompts(generatePromptsBtn);
+    });
+    this._generatePromptsBtn = generatePromptsBtn;
+    // Sync disabled state from saved config
+    setTimeout(() => {
+      const vlmInitCfg = this._getVlmConfig();
+      if (!vlmInitCfg.enabled) {
+        generatePromptsBtn.disabled = true;
+        generatePromptsBtn.title = "Prompt Writer is disabled. Enable it in Settings (⚙️).";
+      }
+    }, 0);
+
     actionGroup.appendChild(this.fileInput);
     actionGroup.appendChild(this.audioFileInput);
     actionGroup.appendChild(uploadBtn);
     actionGroup.appendChild(addTextBtn);
     actionGroup.appendChild(uploadAudioBtn);
+    actionGroup.appendChild(generatePromptsBtn);
     actionGroup.appendChild(deleteBtn);
     toolbar.appendChild(actionGroup);
 
@@ -3522,6 +3563,101 @@ class TimelineEditor {
     }
 
 
+    // --- VLM Prompt Writer Config ---
+    const vlmDivider = document.createElement("hr");
+    vlmDivider.className = "pr-settings-divider";
+    menu.appendChild(vlmDivider);
+
+    const vlmTitle = document.createElement("div");
+    vlmTitle.className = "pr-vlm-section-title";
+    vlmTitle.textContent = "Prompt Writer (Qwen2.5-VL)";
+    menu.appendChild(vlmTitle);
+
+    const vlmCfg = this._getVlmConfig();
+
+    // Enable toggle
+    const enabledCb = document.createElement("input");
+    enabledCb.type = "checkbox";
+    enabledCb.checked = vlmCfg.enabled;
+    enabledCb.style.cursor = "pointer";
+    enabledCb.addEventListener("change", () => {
+      const c = this._getVlmConfig();
+      c.enabled = enabledCb.checked;
+      this._setVlmConfig(c);
+      if (this._generatePromptsBtn) {
+        this._generatePromptsBtn.disabled = !c.enabled;
+        this._generatePromptsBtn.title = c.enabled
+          ? "Generate prompts for all image segments using Qwen2.5-VL. Configure in Settings (⚙️)."
+          : "Prompt Writer is disabled. Enable it in Settings (⚙️).";
+      }
+    });
+    menu.appendChild(this._makeSettingRow("Enable Prompt Writer", enabledCb));
+
+    // Vision model dropdown
+    const modelSel = document.createElement("select");
+    modelSel.className = "pr-settings-input";
+    modelSel.style.width = "100%";
+    const vlmModelOptions = [
+      "Qwen2.5-VL-3B — Fast",
+      "Qwen2.5-VL-7B — Best quality",
+    ];
+    vlmModelOptions.forEach(opt => {
+      const o = document.createElement("option");
+      o.value = opt; o.textContent = opt;
+      if (opt === vlmCfg.model_name) o.selected = true;
+      modelSel.appendChild(o);
+    });
+    modelSel.addEventListener("change", () => {
+      const c = this._getVlmConfig(); c.model_name = modelSel.value; this._setVlmConfig(c);
+    });
+    menu.appendChild(this._makeSettingRow("Vision Model", modelSel));
+
+    // Temperature
+    const tempInput = document.createElement("input");
+    tempInput.type = "number";
+    tempInput.className = "pr-settings-input";
+    tempInput.min = 0; tempInput.max = 2; tempInput.step = 0.05;
+    tempInput.value = vlmCfg.temperature;
+    tempInput.style.width = "70px";
+    tempInput.addEventListener("change", () => {
+      const c = this._getVlmConfig(); c.temperature = parseFloat(tempInput.value) ?? 0.3; this._setVlmConfig(c);
+    });
+    menu.appendChild(this._makeSettingRow("Temperature", tempInput));
+
+    // Max tokens
+    const maxTokInput = document.createElement("input");
+    maxTokInput.type = "number";
+    maxTokInput.className = "pr-settings-input";
+    maxTokInput.min = 32; maxTokInput.max = 512; maxTokInput.step = 1;
+    maxTokInput.value = vlmCfg.max_tokens;
+    maxTokInput.style.width = "70px";
+    maxTokInput.addEventListener("change", () => {
+      const c = this._getVlmConfig(); c.max_tokens = parseInt(maxTokInput.value) || 180; this._setVlmConfig(c);
+    });
+    menu.appendChild(this._makeSettingRow("Max Tokens", maxTokInput));
+
+    // Offline mode
+    const offlineCb = document.createElement("input");
+    offlineCb.type = "checkbox";
+    offlineCb.checked = vlmCfg.offline_mode;
+    offlineCb.style.cursor = "pointer";
+    offlineCb.addEventListener("change", () => {
+      const c = this._getVlmConfig(); c.offline_mode = offlineCb.checked; this._setVlmConfig(c);
+    });
+    menu.appendChild(this._makeSettingRow("Offline Mode", offlineCb));
+
+    // Local model path
+    const localPathInput = document.createElement("input");
+    localPathInput.type = "text";
+    localPathInput.className = "pr-settings-input";
+    localPathInput.style.width = "100%";
+    localPathInput.value = vlmCfg.local_path;
+    localPathInput.placeholder = "Optional: path to local model snapshot";
+    localPathInput.addEventListener("change", () => {
+      const c = this._getVlmConfig(); c.local_path = localPathInput.value.trim(); this._setVlmConfig(c);
+    });
+    menu.appendChild(this._makeSettingRow("Local Path", localPathInput));
+
     // --- Show/Hide on Node Toggle ---
     const toggleBtn = document.createElement("button");
     toggleBtn.className = "pr-settings-toggle-btn";
@@ -3566,6 +3702,99 @@ class TimelineEditor {
   dismissSettingsMenu() {
     if (this._settingsMenu) { this._settingsMenu.remove(); this._settingsMenu = null; }
     if (this._settingsDismisser) { document.removeEventListener("mousedown", this._settingsDismisser); this._settingsDismisser = null; }
+  }
+
+  _getVlmConfig() {
+    let raw = {};
+    try { raw = JSON.parse(localStorage.getItem("wdc_vlm_config") || "{}"); } catch {}
+    return {
+      enabled:      raw.enabled      ?? true,
+      model_name:   raw.model_name   ?? "Qwen2.5-VL-3B — Fast",
+      temperature:  raw.temperature  ?? 0.3,
+      max_tokens:   raw.max_tokens   ?? 180,
+      offline_mode: raw.offline_mode ?? false,
+      local_path:   raw.local_path   ?? "",
+    };
+  }
+
+  _setVlmConfig(cfg) {
+    localStorage.setItem("wdc_vlm_config", JSON.stringify(cfg));
+  }
+
+  async generatePrompts(btn) {
+    const cfg = this._getVlmConfig();
+
+    if (!cfg.enabled) {
+      alert("Prompt Writer is disabled.\nEnable it in Settings (⚙️) → Prompt Writer section.");
+      return;
+    }
+
+    const imageSections = this.timeline.segments.filter(
+      s => s.type !== "text" && (s.imageB64 || s.imageFile)
+    );
+    if (imageSections.length === 0) {
+      alert("No image segments found on the timeline.\nAdd images first, then click Generate Prompts.");
+      return;
+    }
+
+    const origHTML = btn.innerHTML;
+    const setBtn = (html, disabled) => { btn.innerHTML = html; btn.disabled = disabled; };
+    setBtn(`⏳ 0/${imageSections.length}…`, true);
+
+    try {
+      const globalPromptWidget = this.node.widgets?.find(w => w.name === "global_prompt");
+      const globalPrompt = globalPromptWidget?.value || "";
+
+      const payload = {
+        segments: this.timeline.segments.map(s => ({
+          imageB64:  s.imageB64  || null,
+          imageFile: s.imageFile || null,
+          prompt:    s.prompt    || "",
+          type:      s.type      || "image",
+        })),
+        global_prompt: globalPrompt,
+        model_name:    cfg.model_name,
+        temperature:   cfg.temperature,
+        max_tokens:    cfg.max_tokens,
+        offline_mode:  cfg.offline_mode,
+        local_path:    cfg.local_path,
+      };
+
+      const resp = await api.fetchApi("/whatdreamscost/generate_prompts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || `Server error ${resp.status}`);
+
+      const prompts = data.prompts || [];
+      let filled = 0;
+      prompts.forEach((p, i) => {
+        if (i < this.timeline.segments.length && p) {
+          this.timeline.segments[i].prompt = p;
+          if (this.timeline.segments[i].type !== "text" && (this.timeline.segments[i].imageB64 || this.timeline.segments[i].imageFile)) {
+            filled++;
+          }
+        }
+      });
+
+      if (this.selectionType === "image" && this.selectedIndex >= 0
+          && this.selectedIndex < this.timeline.segments.length) {
+        this.promptInput.value = this.timeline.segments[this.selectedIndex].prompt || "";
+      }
+
+      this.commitChanges();
+      this.render();
+
+      setBtn(`✓ ${filled} done`, true);
+      setTimeout(() => { setBtn(origHTML, false); }, 2500);
+    } catch (e) {
+      setBtn("✗ Error", true);
+      setTimeout(() => { setBtn(origHTML, false); }, 3000);
+      alert(`Prompt generation failed:\n\n${e.message}`);
+    }
   }
 
 

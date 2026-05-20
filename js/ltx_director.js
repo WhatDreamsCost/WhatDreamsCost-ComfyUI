@@ -1049,6 +1049,24 @@ class TimelineEditor {
       const totalFrames = this.getVisualDurationFrames();
       if (!logicalWidth || totalFrames <= 0) return;
 
+      const hit = this.getHitTest(x, y);
+      const isImageCenterHit = hit && hit.track === "image" && hit.type === "center";
+
+      if (isImageCenterHit) {
+        const seg = this.timeline.segments[hit.index];
+        this._dropReplaceSegmentId = seg ? seg.id : null;
+
+        this._ghostSegmentId = null;
+        this._ghostTrack = null;
+        this._ghostInitialTimeline = null;
+        this._previewSegments = null;
+
+        this.render();
+        return;
+      }
+
+      this._dropReplaceSegmentId = null;
+
       const isAudioTrack = y > RULER_HEIGHT + this.blockHeight;
       const trackType = isAudioTrack ? "audio" : "image";
       const arrToModify = isAudioTrack ? this.timeline.audioSegments : this.timeline.segments;
@@ -1097,14 +1115,17 @@ class TimelineEditor {
         this._ghostTrack = null;
         this._ghostInitialTimeline = null;
         this._previewSegments = null;
+        this._dropReplaceSegmentId = null;
         this.render();
       }
     });
 
-    this.wrapper.addEventListener("drop", (e) => {
+    this.wrapper.addEventListener("drop", async (e) => {
       e.preventDefault();
       e.stopPropagation();
       this.wrapper.classList.remove("drag-active");
+
+      const replaceSegmentId = this._dropReplaceSegmentId;
 
       let targetFrameStart = null;
       let targetTrack = this._ghostTrack || "image";
@@ -1119,6 +1140,7 @@ class TimelineEditor {
       this._ghostTrack = null;
       this._ghostInitialTimeline = null;
       this._previewSegments = null;
+      this._dropReplaceSegmentId = null;
       this.render();
 
       if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
@@ -1127,6 +1149,11 @@ class TimelineEditor {
         for (let file of e.dataTransfer.files) {
           if (file.type.startsWith("audio/")) audioFiles.push(file);
           if (file.type.startsWith("image/")) imageFiles.push(file);
+        }
+
+        if (replaceSegmentId && imageFiles.length > 0) {
+          await this.replaceSegmentImage(replaceSegmentId, imageFiles[0]);
+          return;
         }
 
         // Let implicit intent handle mixing drops: use the track we hovered over
@@ -1409,6 +1436,37 @@ class TimelineEditor {
   }
 
   // --- Async Image Upload Logic (Handles multiple images simultaneously) ---
+  async replaceSegmentImage(segmentId, file) {
+    if (!file || !file.type.startsWith("image/")) return;
+
+    const seg = this.timeline.segments.find(s => s.id === segmentId);
+    if (!seg) return;
+
+    const body = new FormData();
+    body.append("image", file);
+
+    const resp = await api.fetchApi("/upload/image", { method: "POST", body });
+    if (resp.status !== 200) return;
+
+    const data = await resp.json();
+    const filename = data.name;
+    const subfolder = data.subfolder || "";
+    const imageFile = subfolder ? subfolder + "/" + filename : filename;
+    const imgUrl = api.apiURL(`/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}`);
+
+    await new Promise((resolve) => {
+      const displayImg = new Image();
+      displayImg.onload = () => {
+        seg.imageFile = imageFile;
+        seg.imageB64 = imgUrl;
+        seg.imgObj = displayImg;
+        this.render();
+        resolve();
+      };
+      displayImg.src = imgUrl;
+    });
+  }
+
   async handleImageUpload(files, targetFrameStart = null, explicitLength = null) {
     const frameRate = this.getFrameRate();
     const durationFrames = this.getDurationFrames();

@@ -116,6 +116,43 @@ const STYLES = `
     width: 100%;
     flex-grow: 1; /* Automatically scales to fill node height */
     min-height: 40px;
+    gap: 4px;
+  }
+  .pr-hint-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    width: 100%;
+    flex-shrink: 0;
+  }
+  .pr-hint-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #888;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+  }
+  .pr-hint-input {
+    flex: 1;
+    background: #1a1a2e;
+    color: #b0b0ff;
+    border: 1px solid #3a3a6e;
+    border-radius: 4px;
+    padding: 3px 7px;
+    font-size: 11px;
+    outline: none;
+    box-sizing: border-box;
+    font-style: italic;
+  }
+  .pr-hint-input:focus {
+    border-color: #6060cc;
+    color: #d0d0ff;
+  }
+  .pr-hint-input::placeholder {
+    color: #5a5a8a;
+    font-style: italic;
   }
   .pr-prompt-area {
     width: 100%;
@@ -384,25 +421,28 @@ const STYLES = `
   }
   .pr-settings-menu {
     position: fixed;
-    background: #1e1e1e;
-    border: 1px solid #444;
+    background: #1e1e1e !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #555 !important;
     border-radius: 6px;
     padding: 10px;
     display: flex;
     flex-direction: column;
     gap: 8px;
     z-index: 9999;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.7);
-    min-width: 220px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.85);
+    min-width: 260px;
+    max-height: 85vh;
+    overflow-y: auto;
   }
   .pr-settings-title {
     font-size: 11px;
     font-weight: 600;
-    color: #888;
+    color: #aaa !important;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     padding-bottom: 4px;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid #3a3a3a;
     margin-bottom: 2px;
   }
   .pr-settings-row {
@@ -413,9 +453,27 @@ const STYLES = `
   }
   .pr-settings-label {
     font-size: 12px;
-    color: #bbb;
+    color: #ccc !important;
     flex: 1;
     white-space: nowrap;
+  }
+  .pr-settings-field {
+    background: #2c2c2c !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #4a4a4a !important;
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 12px;
+    outline: none;
+    cursor: pointer;
+    box-sizing: border-box;
+  }
+  .pr-settings-field:focus {
+    border-color: #6a6aaa !important;
+  }
+  .pr-settings-field option {
+    background: #2c2c2c;
+    color: #e0e0e0;
   }
   .pr-number-control {
     display: flex;
@@ -1063,10 +1121,33 @@ class TimelineEditor {
     const propContainer = document.createElement("div");
     propContainer.className = "pr-prop-container";
 
+    // --- Hint row (persists across generations — VLM instruction per segment) ---
+    const hintRow = document.createElement("div");
+    hintRow.className = "pr-hint-row";
+
+    const hintLabel = document.createElement("span");
+    hintLabel.className = "pr-hint-label";
+    hintLabel.textContent = "✨ Hint";
+    hintLabel.title = "Stays intact after generation. Guides each image differently (e.g. 'balletto', 'lotta').";
+
+    this.hintInput = document.createElement("input");
+    this.hintInput.type = "text";
+    this.hintInput.className = "pr-hint-input";
+    this.hintInput.placeholder = "scene hint for ✨ generation (e.g. balletto, lotta, slow sunset walk)…";
+    this.hintInput.addEventListener("input", () => {
+      if (this.selectionType === "image" && this.timeline.segments[this.selectedIndex]) {
+        this.timeline.segments[this.selectedIndex].hint = this.hintInput.value;
+        this.commitChanges();
+      }
+    });
+
+    hintRow.appendChild(hintLabel);
+    hintRow.appendChild(this.hintInput);
+
     // --- Text Area (Image/Text) ---
     this.promptInput = document.createElement("textarea");
     this.promptInput.className = "pr-prompt-area";
-    this.promptInput.placeholder = "Enter prompt for selected segment...";
+    this.promptInput.placeholder = "Generated prompt — edit freely. Fill ✨ Hint above to guide the next generation.";
     this.promptInput.addEventListener("input", () => {
       if (this.selectionType === "image" && this.timeline.segments[this.selectedIndex]) {
         this.timeline.segments[this.selectedIndex].prompt = this.promptInput.value;
@@ -1078,6 +1159,7 @@ class TimelineEditor {
     this.audioInfoArea = document.createElement("div");
     this.audioInfoArea.className = "pr-audio-info";
 
+    propContainer.appendChild(hintRow);
     propContainer.appendChild(this.promptInput);
     propContainer.appendChild(this.audioInfoArea);
 
@@ -1750,6 +1832,9 @@ class TimelineEditor {
       if (seg) {
         this.promptInput.value = seg.prompt || "";
         this.promptInput.disabled = false;
+        this.hintInput.value = seg.hint || "";
+        this.hintInput.disabled = false;
+        this.hintInput.closest(".pr-hint-row").style.display = "flex";
 
         const isImage = seg.type !== "text";
         const strength = isImage ? (seg.guideStrength ?? 1.0) : 1.0;
@@ -1758,6 +1843,9 @@ class TimelineEditor {
       } else {
         this.promptInput.value = "";
         this.promptInput.disabled = true;
+        this.hintInput.value = "";
+        this.hintInput.disabled = true;
+        this.hintInput.closest(".pr-hint-row").style.display = "none";
         this.strengthValue.value = "1.00";
         this.strengthValue.disabled = true;
       }
@@ -3595,7 +3683,7 @@ class TimelineEditor {
 
     // Vision model dropdown
     const modelSel = document.createElement("select");
-    modelSel.className = "pr-settings-input";
+    modelSel.className = "pr-settings-field";
     modelSel.style.width = "100%";
     const vlmModelOptions = [
       "Qwen2.5-VL-3B — Fast",
@@ -3615,10 +3703,11 @@ class TimelineEditor {
     // Temperature
     const tempInput = document.createElement("input");
     tempInput.type = "number";
-    tempInput.className = "pr-settings-input";
+    tempInput.className = "pr-settings-field";
     tempInput.min = 0; tempInput.max = 2; tempInput.step = 0.05;
     tempInput.value = vlmCfg.temperature;
     tempInput.style.width = "70px";
+    tempInput.style.textAlign = "center";
     tempInput.addEventListener("change", () => {
       const c = this._getVlmConfig(); c.temperature = parseFloat(tempInput.value) ?? 0.3; this._setVlmConfig(c);
     });
@@ -3627,10 +3716,11 @@ class TimelineEditor {
     // Max tokens
     const maxTokInput = document.createElement("input");
     maxTokInput.type = "number";
-    maxTokInput.className = "pr-settings-input";
+    maxTokInput.className = "pr-settings-field";
     maxTokInput.min = 32; maxTokInput.max = 512; maxTokInput.step = 1;
     maxTokInput.value = vlmCfg.max_tokens;
     maxTokInput.style.width = "70px";
+    maxTokInput.style.textAlign = "center";
     maxTokInput.addEventListener("change", () => {
       const c = this._getVlmConfig(); c.max_tokens = parseInt(maxTokInput.value) || 180; this._setVlmConfig(c);
     });
@@ -3649,14 +3739,116 @@ class TimelineEditor {
     // Local model path
     const localPathInput = document.createElement("input");
     localPathInput.type = "text";
-    localPathInput.className = "pr-settings-input";
+    localPathInput.className = "pr-settings-field";
     localPathInput.style.width = "100%";
     localPathInput.value = vlmCfg.local_path;
-    localPathInput.placeholder = "Optional: path to local model snapshot";
+    localPathInput.placeholder = "Dir with config.json (HF), dir with .gguf, or .gguf file path";
     localPathInput.addEventListener("change", () => {
       const c = this._getVlmConfig(); c.local_path = localPathInput.value.trim(); this._setVlmConfig(c);
     });
     menu.appendChild(this._makeSettingRow("Local Path", localPathInput));
+
+    // mmproj path (for GGUF vision models — auto-detected if left empty)
+    const mmProjInput = document.createElement("input");
+    mmProjInput.type = "text";
+    mmProjInput.className = "pr-settings-field";
+    mmProjInput.style.width = "100%";
+    mmProjInput.value = vlmCfg.mmproj_path;
+    mmProjInput.placeholder = "mmproj .gguf — auto-detected from Local Path dir";
+    mmProjInput.addEventListener("change", () => {
+      const c = this._getVlmConfig(); c.mmproj_path = mmProjInput.value.trim(); this._setVlmConfig(c);
+    });
+    menu.appendChild(this._makeSettingRow("mmproj Path", mmProjInput));
+
+    // --- Style Directives ---
+    const styleDivider = document.createElement("hr");
+    styleDivider.className = "pr-settings-divider";
+    menu.appendChild(styleDivider);
+
+    const styleTitle = document.createElement("div");
+    styleTitle.className = "pr-vlm-section-title";
+    styleTitle.textContent = "Style Directives";
+    menu.appendChild(styleTitle);
+
+    const _makeVlmSelect = (options, currentVal, key) => {
+      const sel = document.createElement("select");
+      sel.className = "pr-settings-field";
+      sel.style.width = "100%";
+      options.forEach(opt => {
+        const o = document.createElement("option");
+        o.value = opt; o.textContent = opt;
+        if (opt === currentVal) o.selected = true;
+        sel.appendChild(o);
+      });
+      sel.addEventListener("change", () => {
+        const c = this._getVlmConfig(); c[key] = sel.value; this._setVlmConfig(c);
+      });
+      return sel;
+    };
+
+    // Style Preset — options loaded dynamically from Python STYLE_PRESETS dict
+    const presetRow = this._makeSettingRow("Style Preset", (() => {
+      const sel = document.createElement("select");
+      sel.className = "pr-settings-field";
+      sel.style.width = "100%";
+      const _fillPresetSel = (names) => {
+        sel.innerHTML = "";
+        names.forEach(opt => {
+          const o = document.createElement("option");
+          o.value = opt; o.textContent = opt;
+          if (opt === vlmCfg.style_preset) o.selected = true;
+          sel.appendChild(o);
+        });
+      };
+      // Populate from server; fall back to a minimal list on error
+      api.fetchApi("/whatdreamscost/style_presets")
+        .then(r => r.json())
+        .then(d => { if (d.presets?.length) _fillPresetSel(d.presets); })
+        .catch(() => _fillPresetSel(["None — let VLM decide"]));
+      sel.addEventListener("change", () => {
+        const c = this._getVlmConfig(); c.style_preset = sel.value; this._setVlmConfig(c);
+      });
+      return sel;
+    })());
+    menu.appendChild(presetRow);
+
+    menu.appendChild(this._makeSettingRow("Shot Angle", _makeVlmSelect([
+      "None — let VLM decide",
+      "Wide shot",
+      "Medium shot",
+      "Close-up",
+      "Extreme close-up",
+      "Aerial / Bird's eye",
+      "Low angle",
+      "Over the shoulder",
+      "POV",
+    ], vlmCfg.shot_angle, "shot_angle")));
+
+    menu.appendChild(this._makeSettingRow("Camera Movement", _makeVlmSelect([
+      "None — let VLM decide",
+      "Static",
+      "Slow dolly in",
+      "Slow dolly out",
+      "Gentle pan left",
+      "Gentle pan right",
+      "Tilt up",
+      "Tilt down",
+      "Tracking shot",
+      "Handheld",
+      "Crane / Boom up",
+      "Circular orbit",
+    ], vlmCfg.camera_move, "camera_move")));
+
+    const styleExtraInput = document.createElement("input");
+    styleExtraInput.type = "text";
+    styleExtraInput.className = "pr-settings-field";
+    styleExtraInput.style.width = "100%";
+    styleExtraInput.value = vlmCfg.style_extra;
+    styleExtraInput.placeholder = "e.g. warm golden light, shallow DOF";
+    styleExtraInput.addEventListener("change", () => {
+      const c = this._getVlmConfig(); c.style_extra = styleExtraInput.value.trim(); this._setVlmConfig(c);
+    });
+    menu.appendChild(this._makeSettingRow("Extra Instruction", styleExtraInput));
 
     // --- Show/Hide on Node Toggle ---
     const toggleBtn = document.createElement("button");
@@ -3714,6 +3906,11 @@ class TimelineEditor {
       max_tokens:   raw.max_tokens   ?? 180,
       offline_mode: raw.offline_mode ?? false,
       local_path:   raw.local_path   ?? "",
+      mmproj_path:  raw.mmproj_path  ?? "",
+      style_preset: raw.style_preset ?? "None — let VLM decide",
+      shot_angle:   raw.shot_angle   ?? "None — let VLM decide",
+      camera_move:  raw.camera_move  ?? "None — let VLM decide",
+      style_extra:  raw.style_extra  ?? "",
     };
   }
 
@@ -3749,6 +3946,7 @@ class TimelineEditor {
         segments: this.timeline.segments.map(s => ({
           imageB64:  s.imageB64  || null,
           imageFile: s.imageFile || null,
+          hint:      s.hint      || "",
           prompt:    s.prompt    || "",
           type:      s.type      || "image",
         })),
@@ -3758,6 +3956,11 @@ class TimelineEditor {
         max_tokens:    cfg.max_tokens,
         offline_mode:  cfg.offline_mode,
         local_path:    cfg.local_path,
+        mmproj_path:   cfg.mmproj_path,
+        style_preset:  cfg.style_preset,
+        shot_angle:    cfg.shot_angle,
+        camera_move:   cfg.camera_move,
+        style_extra:   cfg.style_extra,
       };
 
       const resp = await api.fetchApi("/whatdreamscost/generate_prompts", {

@@ -4,8 +4,9 @@ const { api } = window.comfyAPI.api;
 // --- UI Constants & Configuration ---
 const RULER_HEIGHT = 24;
 const BLOCK_HEIGHT = 160; // Increased to make the image timeline area much taller
+const PROMPT_TRACK_HEIGHT = 36; // Dedicated prompt text row between keyframes and audio
 const AUDIO_TRACK_HEIGHT = 80;
-const CANVAS_HEIGHT = RULER_HEIGHT + BLOCK_HEIGHT + AUDIO_TRACK_HEIGHT;
+const CANVAS_HEIGHT = RULER_HEIGHT + BLOCK_HEIGHT + PROMPT_TRACK_HEIGHT + AUDIO_TRACK_HEIGHT;
 const HANDLE_HIT_PX = 14;
 const MIN_SEGMENT_LENGTH = 6;
 const MAX_THUMBNAIL_DIM = 512; // Increased to maintain quality for taller images
@@ -543,12 +544,13 @@ const ICONS = {
 
 // --- Data Models ---
 function parseInitial(jsonStr) {
-  let parsed = { segments: [], audioSegments: [] };
+  let parsed = { segments: [], audioSegments: [], promptSegments: null };
   try {
     if (jsonStr) {
       const p = JSON.parse(jsonStr);
       if (Array.isArray(p.segments)) parsed.segments = p.segments;
       if (Array.isArray(p.audioSegments)) parsed.audioSegments = p.audioSegments;
+      if (Array.isArray(p.promptSegments)) parsed.promptSegments = p.promptSegments;
     }
   } catch (e) { }
 
@@ -571,6 +573,23 @@ function parseInitial(jsonStr) {
     if (seg.trimStart === undefined) seg.trimStart = 0;
   }
 
+  // Migrate: seed promptSegments from image segment prompts if not present in saved data
+  if (!parsed.promptSegments) {
+    parsed.promptSegments = parsed.segments
+      .filter(s => s.type !== "ghost")
+      .map(s => ({
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+        start: s.start,
+        length: s.length,
+        prompt: s.prompt || ""
+      }));
+  }
+  for (let seg of parsed.promptSegments) {
+    if (!seg.id) {
+      seg.id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    }
+  }
+
   return parsed;
 }
 
@@ -583,6 +602,7 @@ class TimelineEditor {
     // Track heights (dynamic)
     this.rulerHeight = RULER_HEIGHT;
     this.blockHeight = BLOCK_HEIGHT;
+    this.promptTrackHeight = PROMPT_TRACK_HEIGHT;
     this.audioTrackHeight = AUDIO_TRACK_HEIGHT;
     this.canvasHeight = CANVAS_HEIGHT;
 
@@ -888,6 +908,7 @@ class TimelineEditor {
     actionGroup.appendChild(uploadBtn);
     actionGroup.appendChild(addTextBtn);
     actionGroup.appendChild(uploadAudioBtn);
+
     actionGroup.appendChild(deleteBtn);
     toolbar.appendChild(actionGroup);
 
@@ -1016,7 +1037,7 @@ class TimelineEditor {
 
     this.canvas.addEventListener("mousedown", this.onMouseDown.bind(this));
     this.canvas.addEventListener("contextmenu", this.onContextMenu.bind(this));
-    this.canvas.style.height = `${CANVAS_HEIGHT}px`;
+    this.canvas.style.height = `${this.canvasHeight}px`;
 
     // --- Content Area Container ---
     const propContainer = document.createElement("div");
@@ -1027,7 +1048,10 @@ class TimelineEditor {
     this.promptInput.className = "pr-prompt-area";
     this.promptInput.placeholder = "Enter prompt for selected segment...";
     this.promptInput.addEventListener("input", () => {
-      if (this.selectionType === "image" && this.timeline.segments[this.selectedIndex]) {
+      if (this.selectionType === "prompt") {
+        const seg = (this.timeline.promptSegments || [])[this.selectedIndex];
+        if (seg) { seg.prompt = this.promptInput.value; this.commitChanges(); }
+      } else if (this.selectionType === "image" && this.timeline.segments[this.selectedIndex]) {
         this.timeline.segments[this.selectedIndex].prompt = this.promptInput.value;
         this.commitChanges();
       }
@@ -1049,7 +1073,7 @@ class TimelineEditor {
       const totalFrames = this.getVisualDurationFrames();
       if (!logicalWidth || totalFrames <= 0) return;
 
-      const isAudioTrack = y > RULER_HEIGHT + this.blockHeight;
+      const isAudioTrack = y > RULER_HEIGHT + this.blockHeight + this.promptTrackHeight;
       const trackType = isAudioTrack ? "audio" : "image";
       const arrToModify = isAudioTrack ? this.timeline.audioSegments : this.timeline.segments;
 
@@ -1619,6 +1643,11 @@ class TimelineEditor {
       if (this.timeline.audioSegments.length === 0 || this.selectedIndex === -1) return;
       this.timeline.audioSegments.splice(this.selectedIndex, 1);
       this.selectedIndex = Math.max(-1, this.selectedIndex - 1);
+    } else if (this.selectionType === "prompt") {
+      const prompts = this.timeline.promptSegments || [];
+      if (prompts.length === 0 || this.selectedIndex === -1) return;
+      prompts.splice(this.selectedIndex, 1);
+      this.selectedIndex = Math.max(-1, this.selectedIndex - 1);
     } else {
       if (this.timeline.segments.length === 0 || this.selectedIndex === -1) return;
       this.timeline.segments.splice(this.selectedIndex, 1);
@@ -1680,6 +1709,12 @@ class TimelineEditor {
           const arr = (this._previewSegments && previewIsAudio) ? this._previewSegments : this.timeline.audioSegments;
           seg = arr.find(s => s.id === origSeg.id) || origSeg;
         }
+      } else if (this.selectionType === "prompt") {
+        const origSeg = (this.timeline.promptSegments || [])[this.selectedIndex];
+        if (origSeg) {
+          const arr = (this._previewSegments && this.selectionType === 'prompt') ? this._previewSegments : (this.timeline.promptSegments || []);
+          seg = arr.find(s => s.id === origSeg.id) || origSeg;
+        }
       } else {
         const origSeg = this.timeline.segments[this.selectedIndex];
         if (origSeg) {
@@ -1701,6 +1736,17 @@ class TimelineEditor {
       `;
       this.strengthValue.value = "1.00";
       this.strengthValue.disabled = true;
+    } else if (this.selectionType === "prompt") {
+      this.audioInfoArea.style.display = "none";
+      this.promptInput.style.display = "block";
+      this.strengthRow.style.display = "none";
+      if (seg) {
+        this.promptInput.value = seg.prompt || "";
+        this.promptInput.disabled = false;
+      } else {
+        this.promptInput.value = "";
+        this.promptInput.disabled = true;
+      }
     } else {
       this.audioInfoArea.style.display = "none";
       this.promptInput.style.display = "block";
@@ -1748,8 +1794,10 @@ class TimelineEditor {
     // Render Track Backgrounds
     this.ctx.fillStyle = "#111"; // Image track bg
     this.ctx.fillRect(0, RULER_HEIGHT, width, this.blockHeight);
+    this.ctx.fillStyle = "#0d1018"; // Prompt track bg
+    this.ctx.fillRect(0, RULER_HEIGHT + this.blockHeight, width, this.promptTrackHeight);
     this.ctx.fillStyle = "#111"; // Audio track bg
-    this.ctx.fillRect(0, RULER_HEIGHT + this.blockHeight, width, this.audioTrackHeight);
+    this.ctx.fillRect(0, RULER_HEIGHT + this.blockHeight + this.promptTrackHeight, width, this.audioTrackHeight);
 
 
 
@@ -1782,6 +1830,16 @@ class TimelineEditor {
     const sortedAudioSegments = [...renderAudioSegments].sort((a, b) => {
       const aSel = isAudioSelection && a.id === activeAudioSegId;
       const bSel = isAudioSelection && b.id === activeAudioSegId;
+      return aSel - bSel;
+    });
+
+    const previewIsPrompt = this._previewSegments && this._ghostTrack === null && this.selectionType === 'prompt';
+    const renderPromptSegments = previewIsPrompt ? this._previewSegments : (this.timeline.promptSegments || []);
+    const activePromptSegId = (this.timeline.promptSegments || [])[this.selectedIndex]?.id;
+    const isPromptSelection = this.selectionType === "prompt";
+    const sortedPromptSegments = [...renderPromptSegments].sort((a, b) => {
+      const aSel = isPromptSelection && a.id === activePromptSegId;
+      const bSel = isPromptSelection && b.id === activePromptSegId;
       return aSel - bSel;
     });
 
@@ -1861,41 +1919,6 @@ class TimelineEditor {
           }
         }
         this.ctx.restore();
-
-        // --- Prompt subtitle overlay ---
-        if (seg.prompt && seg.type !== "ghost" && pxWidth > 24) {
-          const overlayH = Math.round(this.blockHeight * 0.20);
-          const overlayY = RULER_HEIGHT + this.blockHeight - overlayH;
-
-          this.ctx.save();
-          this.ctx.beginPath();
-          this.ctx.rect(startX, overlayY, pxWidth, overlayH);
-          this.ctx.clip();
-
-          // Translucent background
-          this.ctx.fillStyle = "rgba(0, 0, 0, 0.60)";
-          this.ctx.fillRect(startX, overlayY, pxWidth, overlayH);
-
-          // Text
-          const fontSize = Math.min(11, overlayH * 0.58);
-          this.ctx.font = `${fontSize}px sans-serif`;
-          this.ctx.fillStyle = "#e0e3ed";
-          this.ctx.textAlign = "center";
-          this.ctx.textBaseline = "middle";
-
-          // Measure and truncate to single line
-          const maxTextW = pxWidth - 10;
-          let label = seg.prompt;
-          if (this.ctx.measureText(label).width > maxTextW) {
-            while (label.length > 0 && this.ctx.measureText(label + "…").width > maxTextW) {
-              label = label.slice(0, -1);
-            }
-            label += "…";
-          }
-
-          this.ctx.fillText(label, startX + pxWidth / 2, overlayY + overlayH / 2);
-          this.ctx.restore();
-        }
       } else if (seg.type === "text") {
         const pad = 8;
         const boxW = pxWidth - pad * 2;
@@ -1957,6 +1980,114 @@ class TimelineEditor {
         this.ctx.lineWidth = 1.5;
         this.ctx.strokeRect(startX, RULER_HEIGHT + 1, pxWidth, this.blockHeight - 2);
       }
+
+      // --- Anchor Marker (image segments only) ---
+      if (seg.type !== "ghost" && seg.type !== "text" && pxWidth > 10) {
+        const anchorOffset = seg.anchorOffset || 0;
+        const anchorX = startX + (anchorOffset / totalFrames) * width;
+        const isAnchorActive = this._dragType === "anchor" && this._dragTargetId === seg.id;
+        const anchorColor = isAnchorActive ? "#00e5ff" : "#00bcd4";
+        this.ctx.save();
+        this.ctx.beginPath();
+        this.ctx.rect(startX + 1, RULER_HEIGHT, pxWidth - 2, this.blockHeight);
+        this.ctx.clip();
+        // Vertical line
+        this.ctx.strokeStyle = anchorColor;
+        this.ctx.lineWidth = 1.5;
+        this.ctx.globalAlpha = 0.75;
+        this.ctx.beginPath();
+        this.ctx.moveTo(anchorX, RULER_HEIGHT + 14);
+        this.ctx.lineTo(anchorX, RULER_HEIGHT + this.blockHeight - 4);
+        this.ctx.stroke();
+        // Downward-pointing triangle at top
+        this.ctx.fillStyle = anchorColor;
+        this.ctx.globalAlpha = 1;
+        this.ctx.beginPath();
+        this.ctx.moveTo(anchorX - 5, RULER_HEIGHT + 4);
+        this.ctx.lineTo(anchorX + 5, RULER_HEIGHT + 4);
+        this.ctx.lineTo(anchorX, RULER_HEIGHT + 13);
+        this.ctx.closePath();
+        this.ctx.fill();
+        // Time label inside block near anchor
+        const anchorSec = ((seg.start + anchorOffset) / this.getFrameRate()).toFixed(1);
+        this.ctx.globalAlpha = 0.9;
+        this.ctx.fillStyle = anchorColor;
+        this.ctx.font = "bold 10px sans-serif";
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "bottom";
+        this.ctx.fillText(`@${anchorSec}s`, anchorX, RULER_HEIGHT + this.blockHeight - 4);
+        this.ctx.restore();
+        this.ctx.globalAlpha = 1;
+      }
+
+      this.ctx.globalAlpha = 1.0;
+    }
+
+    // --- Draw Prompt Track ---
+    const promptY = RULER_HEIGHT + this.blockHeight;
+    for (let i = 0; i < sortedPromptSegments.length; i++) {
+      const seg = sortedPromptSegments[i];
+      const startX = (seg.start / totalFrames) * width;
+      const pxWidth = (seg.length / totalFrames) * width;
+      const isSelected = (this.selectionType === "prompt" && seg.id === activePromptSegId);
+
+      if (this._isDragging && this.selectionType === "prompt" && seg.id === this._dragTargetId) {
+        this.ctx.globalAlpha = 0.65;
+      } else {
+        this.ctx.globalAlpha = 1.0;
+      }
+
+      // Block background
+      this.ctx.fillStyle = isSelected ? "#1a2030" : "#111520";
+      this.ctx.fillRect(startX, promptY + 1, pxWidth, this.promptTrackHeight - 2);
+
+      // Block border
+      this.ctx.strokeStyle = isSelected ? "#4a5a8a" : "#222533";
+      this.ctx.lineWidth = 1;
+      this.ctx.strokeRect(startX, promptY + 1, pxWidth, this.promptTrackHeight - 2);
+
+      const promptText = seg.prompt && seg.prompt.trim();
+      if (pxWidth > 16) {
+        this.ctx.save();
+        this.ctx.beginPath();
+        this.ctx.rect(startX + 5, promptY + 1, pxWidth - 10, this.promptTrackHeight - 2);
+        this.ctx.clip();
+
+        if (promptText) {
+          this.ctx.fillStyle = isSelected ? "#b0c0f0" : "#8898b8";
+          this.ctx.font = "11px sans-serif";
+          this.ctx.textAlign = "left";
+          this.ctx.textBaseline = "middle";
+          let label = seg.prompt.replace(/\n/g, " ");
+          const maxW = pxWidth - 12;
+          if (this.ctx.measureText(label).width > maxW) {
+            while (label.length > 0 && this.ctx.measureText(label + "…").width > maxW) {
+              label = label.slice(0, -1);
+            }
+            label += "…";
+          }
+          this.ctx.fillText(label, startX + 6, promptY + this.promptTrackHeight / 2);
+        } else if (pxWidth > 40) {
+          this.ctx.fillStyle = "#333444";
+          this.ctx.font = "10px sans-serif";
+          this.ctx.textAlign = "center";
+          this.ctx.textBaseline = "middle";
+          this.ctx.fillText("prompt…", startX + pxWidth / 2, promptY + this.promptTrackHeight / 2);
+        }
+        this.ctx.restore();
+      }
+
+      // Selection handles on prompt blocks
+      if (isSelected) {
+        this.ctx.strokeStyle = "#6688cc";
+        this.ctx.lineWidth = 1.5;
+        this.ctx.strokeRect(startX, promptY + 1, pxWidth, this.promptTrackHeight - 2);
+        // Left handle
+        this.ctx.fillStyle = "#6688cc";
+        this.ctx.fillRect(startX, promptY + 2, 3, this.promptTrackHeight - 4);
+        // Right handle
+        this.ctx.fillRect(startX + pxWidth - 3, promptY + 2, 3, this.promptTrackHeight - 4);
+      }
       this.ctx.globalAlpha = 1.0;
     }
 
@@ -1966,7 +2097,7 @@ class TimelineEditor {
       const startX = (seg.start / totalFrames) * width;
       const pxWidth = (seg.length / totalFrames) * width;
       const isSelected = (this.selectionType === "audio" && seg.id === activeAudioSegId);
-      const trackY = RULER_HEIGHT + this.blockHeight;
+      const trackY = RULER_HEIGHT + this.blockHeight + this.promptTrackHeight;
 
       if ((this._isDragging && this.selectionType === "audio" && seg.id === this._dragTargetId) || (this._ghostSegmentId && seg.id === this._ghostSegmentId)) {
         this.ctx.globalAlpha = 0.65;
@@ -2075,9 +2206,10 @@ class TimelineEditor {
     const zeroLabel = mode === "seconds" ? "0" : this.formatTime(0, true);
     this.ctx.fillText(zeroLabel, 4, RULER_HEIGHT / 2);
 
-    // Divider
-    this.ctx.fillStyle = "#333";
+    // Dividers
+    this.ctx.fillStyle = "#222";
     this.ctx.fillRect(0, RULER_HEIGHT + this.blockHeight, width, 1);
+    this.ctx.fillRect(0, RULER_HEIGHT + this.blockHeight + this.promptTrackHeight, width, 1);
 
     // Draw gap "+" buttons
     if (!this._isDragging) {
@@ -2107,9 +2239,9 @@ class TimelineEditor {
     const outputFrames = this.getDurationFrames();
     if (outputFrames < totalFrames) {
       const cutoffX = (outputFrames / totalFrames) * width;
-      // Semi-transparent black overlay on both tracks
+      // Semi-transparent black overlay on all tracks
       this.ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
-      this.ctx.fillRect(cutoffX, RULER_HEIGHT, width - cutoffX, this.blockHeight + this.audioTrackHeight);
+      this.ctx.fillRect(cutoffX, RULER_HEIGHT, width - cutoffX, this.blockHeight + this.promptTrackHeight + this.audioTrackHeight);
       // Subtle tinted ruler overlay
       this.ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
       this.ctx.fillRect(cutoffX, 0, width - cutoffX, RULER_HEIGHT);
@@ -2153,7 +2285,7 @@ class TimelineEditor {
     const grabBarW = 4;
     const grabBarH = 50;
     const grabBarX = this.viewport.scrollLeft + this.viewport.clientWidth - grabBarW - 3;
-    const grabBarY = RULER_HEIGHT + (this.blockHeight + this.audioTrackHeight - grabBarH) / 2;
+    const grabBarY = RULER_HEIGHT + (this.blockHeight + this.promptTrackHeight + this.audioTrackHeight - grabBarH) / 2;
     
     this.ctx.fillStyle = "rgba(40, 40, 40, 0.6)";
     this.ctx.beginPath();
@@ -2253,9 +2385,12 @@ class TimelineEditor {
 
     if (mouseY < RULER_HEIGHT || mouseY > this.canvasHeight) return null;
 
-    const isAudioTrack = mouseY > RULER_HEIGHT + this.blockHeight;
-    const trackSegments = isAudioTrack ? this.timeline.audioSegments : this.timeline.segments;
-    const trackType = isAudioTrack ? "audio" : "image";
+    // Clicks on the prompt track row are handled as the prompt track
+    const isAudioTrack = mouseY > RULER_HEIGHT + this.blockHeight + this.promptTrackHeight;
+    const isPromptTrack = !isAudioTrack && mouseY > RULER_HEIGHT + this.blockHeight;
+    const trackSegments = isAudioTrack ? this.timeline.audioSegments
+      : (isPromptTrack ? (this.timeline.promptSegments || []) : this.timeline.segments);
+    const trackType = isAudioTrack ? "audio" : (isPromptTrack ? "prompt" : "image");
 
     if (trackSegments.length === 0) return null;
 
@@ -2272,6 +2407,19 @@ class TimelineEditor {
       const startX = (seg.start / totalFrames) * width;
       const pxWidth = (seg.length / totalFrames) * width;
       const endX = startX + pxWidth;
+
+      // Check anchor hit BEFORE edge checks so it wins even when anchorOffset=0 (at startX).
+      // Use a 10px hit radius, but only outside the outermost 4px of each edge to avoid
+      // fighting with the resize handles at the block boundaries.
+      if (!isAudioTrack && !isPromptTrack && seg.type !== "ghost" && seg.type !== "text") {
+        const anchorOffset = seg.anchorOffset || 0;
+        const anchorX = startX + (anchorOffset / totalFrames) * width;
+        const innerLeft = startX + 4;
+        const innerRight = endX - 4;
+        if (mouseX >= innerLeft && mouseX < innerRight && Math.abs(mouseX - anchorX) <= 10) {
+          return { type: "anchor", index: seg.originalIndex, track: trackType };
+        }
+      }
 
       const prevSeg = sortedSegments[i - 1];
       const nextSeg = sortedSegments[i + 1];
@@ -2362,6 +2510,8 @@ class TimelineEditor {
           if (gap.track === "audio") {
             // Direct to audio upload
             this.promptAddAudioInGap(gap.frameStart, gap.frameEnd);
+          } else if (gap.track === "prompt") {
+            this._addPromptSegmentInGap(gap.frameStart, gap.frameEnd);
           } else {
             this.showGapMenu(e.clientX, e.clientY, gap);
           }
@@ -2373,7 +2523,8 @@ class TimelineEditor {
     const hit = this.getHitTest(x, y);
     if (!hit) {
       // Only deselect if they clicked the same track but hit empty space
-      const clickedTrack = y > RULER_HEIGHT + this.blockHeight ? "audio" : "image";
+      const clickedTrack = y > RULER_HEIGHT + this.blockHeight + this.promptTrackHeight ? "audio"
+        : (y > RULER_HEIGHT + this.blockHeight ? "prompt" : "image");
       if (this.selectionType === clickedTrack) {
         this.selectedIndex = -1;
         this.updateUIFromSelection();
@@ -2396,8 +2547,21 @@ class TimelineEditor {
       return;
     }
 
+    if (hit.type === "anchor") {
+      this.selectedIndex = hit.index;
+      this.selectionType = "image";
+      this.updateUIFromSelection();
+      this._isDragging = true;
+      this._dragType = "anchor";
+      this._dragTargetId = this.timeline.segments[hit.index].id;
+      this._dragStartX = x;
+      this.render();
+      return;
+    }
+
     this.selectionType = hit.track;
-    const targetArray = hit.track === "audio" ? this.timeline.audioSegments : this.timeline.segments;
+    const targetArray = hit.track === "audio" ? this.timeline.audioSegments
+      : (hit.track === "prompt" ? (this.timeline.promptSegments || []) : this.timeline.segments);
 
     if (hit.type === "joint") {
       this.selectedIndex = hit.leftIndex;
@@ -2457,6 +2621,8 @@ class TimelineEditor {
         this.canvas.style.cursor = "ew-resize";
       } else if (newHoveredGapIdx >= 0) {
         this.canvas.style.cursor = "pointer";
+      } else if (hit?.type === "anchor") {
+        this.canvas.style.cursor = "ew-resize";
       } else if (hit?.type === "edge") {
         this.canvas.style.cursor = "ew-resize";
       } else if (hit?.type === "joint") {
@@ -2502,7 +2668,7 @@ class TimelineEditor {
       const deltaY = mouseY - this._startY;
 
       this.blockHeight = Math.max(100, this._startBlockHeight + deltaY);
-      this.canvasHeight = this.rulerHeight + this.blockHeight + this.audioTrackHeight;
+      this.canvasHeight = this.rulerHeight + this.blockHeight + this.promptTrackHeight + this.audioTrackHeight;
 
       this.canvas.style.height = `${this.canvasHeight}px`;
 
@@ -2540,6 +2706,19 @@ class TimelineEditor {
       this.render();
       if (this.isPlaying) {
         this.playAudio(); // Scrub (restart from new position)
+      }
+      return;
+    }
+
+    if (this._dragType === "anchor") {
+      this.canvas.style.cursor = "ew-resize";
+      const logicalWidth = this.canvas.offsetWidth;
+      const totalFrames = this.getVisualDurationFrames();
+      const seg = this.timeline.segments.find(s => s.id === this._dragTargetId);
+      if (seg) {
+        const absoluteFrame = Math.round(mouseX * (totalFrames / logicalWidth));
+        seg.anchorOffset = clamp(absoluteFrame - seg.start, 0, seg.length);
+        this.render();
       }
       return;
     }
@@ -2729,7 +2908,8 @@ class TimelineEditor {
     document.body.style.userSelect = "";
     if (this._isDragging) {
       if (this._previewSegments) {
-        const targetArray = this.selectionType === "audio" ? this.timeline.audioSegments : this.timeline.segments;
+        const targetArray = this.selectionType === "audio" ? this.timeline.audioSegments
+          : (this.selectionType === "prompt" ? (this.timeline.promptSegments || []) : this.timeline.segments);
 
         const mappedArray = this._previewSegments.map(ps => {
           const orig = targetArray.find(s => s.id === ps.id);
@@ -2743,6 +2923,9 @@ class TimelineEditor {
         if (this.selectionType === "audio") {
           this.timeline.audioSegments = mappedArray;
           if (this._dragTargetId) this.selectedIndex = this.timeline.audioSegments.findIndex(s => s.id === this._dragTargetId);
+        } else if (this.selectionType === "prompt") {
+          this.timeline.promptSegments = mappedArray;
+          if (this._dragTargetId) this.selectedIndex = this.timeline.promptSegments.findIndex(s => s.id === this._dragTargetId);
         } else {
           this.timeline.segments = mappedArray;
           if (this._dragTargetId) this.selectedIndex = this.timeline.segments.findIndex(s => s.id === this._dragTargetId);
@@ -2760,23 +2943,22 @@ class TimelineEditor {
   // --- Backend Data Sync ---
   commitChanges(skipRender = false) {
     let sortedSegments = [...this.timeline.segments].sort((a, b) => a.start - b.start);
+    let sortedPromptSegs = [...(this.timeline.promptSegments || [])].sort((a, b) => a.start - b.start);
     let contiguousLengths = [];
     let contiguousPrompts = [];
     let currentCursor = 0;
     const durationFrames = this.getDurationFrames();
 
-    // Build segment lengths clipped at the duration cutoff.
-    // - Gaps before the first segment, or between segments, are absorbed into the adjacent
-    //   segment's length (same as before), but are also clipped at durationFrames.
+    // Build segment lengths/prompts from the independent prompt track.
+    // Gaps are absorbed into the neighboring prompt segment's length.
     // - Segments that start at or past the cutoff are excluded entirely.
     // - Segments that cross the cutoff are trimmed so their end = durationFrames exactly.
     let pendingGap = 0;
-    for (let seg of sortedSegments) {
+    for (let seg of sortedPromptSegs) {
       // Skip segments entirely outside the duration.
       if (seg.start >= durationFrames) break;
 
       if (seg.start > currentCursor) {
-        // Gap between the cursor and this segment — clip it at the cutoff too.
         const gapLength = Math.min(seg.start, durationFrames) - currentCursor;
         if (contiguousLengths.length > 0) {
           contiguousLengths[contiguousLengths.length - 1] += gapLength;
@@ -2785,17 +2967,15 @@ class TimelineEditor {
         }
       }
 
-      // Clip segment end at the duration cutoff.
       const clippedEnd = Math.min(seg.start + seg.length, durationFrames);
       const clippedLength = clippedEnd - seg.start;
 
       contiguousLengths.push(clippedLength + pendingGap);
       contiguousPrompts.push(seg.prompt || "");
       pendingGap = 0;
-      currentCursor = seg.start + seg.length; // advance by the real (unclipped) end for gap detection
+      currentCursor = seg.start + seg.length;
     }
 
-    // If segments don't fill to the end of the duration, pad the last segment to reach it.
     const clampedCursor = Math.min(currentCursor, durationFrames);
     if (contiguousLengths.length > 0 && clampedCursor < durationFrames) {
       contiguousLengths[contiguousLengths.length - 1] += durationFrames - clampedCursor;
@@ -2806,7 +2986,8 @@ class TimelineEditor {
         const { imgObj, ...rest } = s;
         return rest;
       }),
-      audioSegments: (this.timeline.audioSegments || []).map(s => ({ ...s }))
+      audioSegments: (this.timeline.audioSegments || []).map(s => ({ ...s })),
+      promptSegments: (this.timeline.promptSegments || []).map(s => ({ ...s }))
     };
 
     const jsonStr = JSON.stringify(toSave);
@@ -2872,14 +3053,31 @@ class TimelineEditor {
       if (seg.start > cursor) {
         const x0 = (cursor / totalFrames) * width;
         const x1 = (seg.start / totalFrames) * width;
-        gaps.push({ track: 'audio', frameStart: cursor, frameEnd: seg.start, centerX: (x0 + x1) / 2, centerY: RULER_HEIGHT + this.blockHeight + this.audioTrackHeight / 2, widthPx: x1 - x0 });
+        gaps.push({ track: 'audio', frameStart: cursor, frameEnd: seg.start, centerX: (x0 + x1) / 2, centerY: RULER_HEIGHT + this.blockHeight + this.promptTrackHeight + this.audioTrackHeight / 2, widthPx: x1 - x0 });
       }
       cursor = seg.start + seg.length;
     }
     if (cursor < outputFrames) {
       const x0 = (cursor / totalFrames) * width;
       const x1 = (outputFrames / totalFrames) * width;
-      gaps.push({ track: 'audio', frameStart: cursor, frameEnd: outputFrames, centerX: (x0 + x1) / 2, centerY: RULER_HEIGHT + this.blockHeight + this.audioTrackHeight / 2, widthPx: x1 - x0 });
+      gaps.push({ track: 'audio', frameStart: cursor, frameEnd: outputFrames, centerX: (x0 + x1) / 2, centerY: RULER_HEIGHT + this.blockHeight + this.promptTrackHeight + this.audioTrackHeight / 2, widthPx: x1 - x0 });
+    }
+
+    // Prompt track gaps
+    cursor = 0;
+    const sortedPrmt = [...(this.timeline.promptSegments || [])].sort((a, b) => a.start - b.start);
+    for (const seg of sortedPrmt) {
+      if (seg.start > cursor) {
+        const x0 = (cursor / totalFrames) * width;
+        const x1 = (seg.start / totalFrames) * width;
+        gaps.push({ track: 'prompt', frameStart: cursor, frameEnd: seg.start, centerX: (x0 + x1) / 2, centerY: RULER_HEIGHT + this.blockHeight + this.promptTrackHeight / 2, widthPx: x1 - x0 });
+      }
+      cursor = seg.start + seg.length;
+    }
+    if (cursor < outputFrames) {
+      const x0 = (cursor / totalFrames) * width;
+      const x1 = (outputFrames / totalFrames) * width;
+      gaps.push({ track: 'prompt', frameStart: cursor, frameEnd: outputFrames, centerX: (x0 + x1) / 2, centerY: RULER_HEIGHT + this.blockHeight + this.promptTrackHeight / 2, widthPx: x1 - x0 });
     }
 
     return gaps;
@@ -2895,14 +3093,32 @@ class TimelineEditor {
     fi.click();
   }
 
+  _addPromptSegmentInGap(frameStart, frameEnd) {
+    this.timeline.promptSegments = this.timeline.promptSegments || [];
+    const newSeg = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      start: frameStart,
+      length: Math.max(1, frameEnd - frameStart),
+      prompt: ""
+    };
+    this.timeline.promptSegments.push(newSeg);
+    this.timeline.promptSegments.sort((a, b) => a.start - b.start);
+    this.selectedIndex = this.timeline.promptSegments.findIndex(s => s.id === newSeg.id);
+    this.selectionType = "prompt";
+    this.commitChanges();
+    this.updateUIFromSelection();
+    setTimeout(() => { if (this.promptInput) { this.promptInput.focus(); } }, 50);
+  }
+
   // --- Context Menu ---
   onContextMenu(e) {
     e.preventDefault();
     const { x: mouseX, y: mouseY } = this.getMousePos(e);
 
     const trackHeight = this.blockHeight;
-    const isAudioTrack = mouseY >= RULER_HEIGHT + trackHeight && mouseY <= RULER_HEIGHT + trackHeight + this.audioTrackHeight;
+    const isAudioTrack = mouseY >= RULER_HEIGHT + trackHeight + this.promptTrackHeight && mouseY <= RULER_HEIGHT + trackHeight + this.promptTrackHeight + this.audioTrackHeight;
     const isImageTrack = mouseY >= RULER_HEIGHT && mouseY <= RULER_HEIGHT + trackHeight;
+    const isPromptTrack = mouseY >= RULER_HEIGHT + trackHeight && mouseY <= RULER_HEIGHT + trackHeight + this.promptTrackHeight;
 
     const logicalWidth = this.canvas.offsetWidth || 1;
     const totalFrames = this.getVisualDurationFrames();
@@ -2914,6 +3130,9 @@ class TimelineEditor {
     if (isAudioTrack) {
       clickedSeg = this.timeline.audioSegments.find(s => cursor >= s.start && cursor <= s.start + s.length);
       trackType = "audio";
+    } else if (isPromptTrack) {
+      clickedSeg = (this.timeline.promptSegments || []).find(s => cursor >= s.start && cursor <= s.start + s.length);
+      trackType = "prompt";
     } else if (isImageTrack) {
       clickedSeg = this.timeline.segments.find(s => cursor >= s.start && cursor <= s.start + s.length);
       trackType = clickedSeg ? clickedSeg.type : "";
@@ -2921,9 +3140,9 @@ class TimelineEditor {
 
     if (clickedSeg) {
       this.showContextMenu(e.clientX, e.clientY, clickedSeg, trackType);
-    } else if (isAudioTrack || isImageTrack) {
+    } else if (isAudioTrack || isImageTrack || isPromptTrack) {
       const gapRegions = this.getGapRegions();
-      const currentTrack = isAudioTrack ? "audio" : "image";
+      const currentTrack = isAudioTrack ? "audio" : (isPromptTrack ? "prompt" : "image");
       let gap = gapRegions.find(g => cursor >= g.frameStart && cursor <= g.frameEnd && g.track === currentTrack);
 
       if (!gap) {
@@ -2946,6 +3165,18 @@ class TimelineEditor {
     menu.className = "pr-gap-menu";
     menu.style.left = `${clientX + 6}px`;
     menu.style.top = `${clientY - 10}px`;
+
+    // Prompt segment: select it so the toolbar Delete button can be used
+    if (trackType === "prompt") {
+      const idx = (this.timeline.promptSegments || []).findIndex(s => s.id === seg.id);
+      if (idx !== -1) {
+        this.selectionType = "prompt";
+        this.selectedIndex = idx;
+        this.updateUIFromSelection();
+        this.render();
+      }
+      return;
+    }
 
     const isImage = trackType !== "audio" && trackType !== "text" && seg.imageB64;
 
@@ -2989,6 +3220,26 @@ class TimelineEditor {
         this.dismissContextMenu();
       };
       menu.appendChild(openBtn);
+    }
+
+    if (trackType !== "audio" && trackType !== "text" && seg.type !== "ghost") {
+      const anchorSep = document.createElement("div");
+      anchorSep.style.cssText = "padding: 4px 8px 2px; font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; border-top: 1px solid #333; margin-top: 4px;";
+      anchorSep.textContent = "Set Keyframe Anchor";
+      menu.appendChild(anchorSep);
+
+      const anchorSnaps = [["Start", 0], ["Middle", Math.round(seg.length / 2)], ["End", seg.length]];
+      for (const [label, offset] of anchorSnaps) {
+        const aBtn = document.createElement("button");
+        aBtn.className = "pr-gap-menu-btn";
+        aBtn.innerHTML = `&#x2316; ${label}`;
+        aBtn.onclick = () => {
+          seg.anchorOffset = offset;
+          this.commitChanges();
+          this.dismissContextMenu();
+        };
+        menu.appendChild(aBtn);
+      }
     }
 
     if (trackType !== "audio") {
@@ -3606,6 +3857,7 @@ class TimelineEditor {
     this.updateUIFromSelection();
     this.commitChanges();
   }
+
 
   // --- Audio Player Engine ---
   updatePlayerUI() {

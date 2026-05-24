@@ -82,6 +82,24 @@ class LTXSoftHintLatent:
                         ),
                     },
                 ),
+                "motion_freedom": (
+                    "FLOAT",
+                    {
+                        "default": 0.0,
+                        "min": 0.0,
+                        "max": 1.0,
+                        "step": 0.01,
+                        "tooltip": (
+                            "Suppresses conditioning on pixels that change between frames "
+                            "(high temporal variance = motion). "
+                            "0 = pure spatial conditioning (current behaviour); "
+                            "1 = static pixels (rocks, banks) are conditioned at hint_strength, "
+                            "moving pixels (water, fire) are freed to hole_strength so the "
+                            "model generates real motion. "
+                            "Start at 0.6–0.8 for fluid/flowing subjects."
+                        ),
+                    },
+                ),
             },
             "optional": {
                 "validity_mask": (
@@ -110,6 +128,7 @@ class LTXSoftHintLatent:
         hole_strength: float,
         hard_start_frames: int,
         black_threshold: float,
+        motion_freedom: float = 0.0,
         validity_mask=None,
     ):
         # images: [N, H, W, 3] float32, values in [0, 1], ComfyUI format
@@ -139,6 +158,31 @@ class LTXSoftHintLatent:
             luminance = 0.299 * r + 0.587 * g + 0.114 * b  # [N, H, W]
             band = max(black_threshold * 0.5, 0.02)
             validity_pixel = ((luminance - black_threshold) / band).clamp(0.0, 1.0)
+
+        # ── 2b. Motion-aware validity suppression ─────────────────────────────────
+        # Pixels that vary a lot across frames are motion regions (water, fire, cloth).
+        # Reduce their validity so the model is freed to generate real motion there,
+        # while static pixels (rocks, walls) stay conditioned at hint_strength.
+        #
+        # motion_pixel [H, W]: 0 = static, 1 = lots of motion in the renders.
+        # With motion_freedom=1, a fully-moving pixel's validity → 0 → mask = hole_strength.
+        if motion_freedom > 0.0 and images.shape[0] > 1:
+            lum = (
+                0.299 * images[:, :, :, 0]
+                + 0.587 * images[:, :, :, 1]
+                + 0.114 * images[:, :, :, 2]
+            )  # [N, H, W]
+            temporal_std = lum.std(dim=0)  # [H, W]
+            max_std = temporal_std.max()
+            if max_std > 1e-6:
+                motion_pixel = (temporal_std / max_std).clamp(0.0, 1.0)  # [H, W]
+                motion_pixel = motion_pixel.unsqueeze(0).expand(N, -1, -1)  # [N, H, W]
+                validity_pixel = (validity_pixel * (1.0 - motion_freedom * motion_pixel)).clamp(0.0, 1.0)
+                log.info(
+                    "[LTXSoftHintLatent] motion_freedom=%.2f: mean motion coverage %.1f%% "
+                    "(high = lots of moving pixels detected).",
+                    motion_freedom, motion_pixel[0].mean().item() * 100.0,
+                )
 
         # ── 3. Resample validity to latent resolution ─────────────────────────────
         # [N, H, W] → [1, 1, N, H, W] → trilinear → [1, 1, lat_T, lat_h, lat_w]

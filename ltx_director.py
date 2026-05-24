@@ -311,7 +311,7 @@ def _convert_to_latent_lengths(pixel_lengths, temporal_stride, latent_frames):
     return result
 
 
-def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon):
+def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon, frame_offset=0):
     for name, val in (("global_prompt", global_prompt),
                       ("local_prompts", local_prompts),
                       ("segment_lengths", segment_lengths)):
@@ -337,13 +337,14 @@ def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_len
     arch, patch_size, temporal_stride = detect_model_type(model)
 
     samples = latent["samples"]
-    latent_frames = samples.shape[2]
+    total_latent_frames = samples.shape[2]
+    new_latent_frames = total_latent_frames - frame_offset
     tokens_per_frame = (samples.shape[3] // patch_size[1]) * (samples.shape[4] // patch_size[2])
 
     parsed_lengths = None
     if segment_lengths.strip():
         pixel_lengths = [int(float(x.strip())) for x in segment_lengths.split(",") if x.strip()]
-        parsed_lengths = _convert_to_latent_lengths(pixel_lengths, temporal_stride, latent_frames)
+        parsed_lengths = _convert_to_latent_lengths(pixel_lengths, temporal_stride, new_latent_frames)
 
     raw_tokenizer = get_raw_tokenizer(clip)
     full_prompt, token_ranges = map_token_indices(raw_tokenizer, global_prompt, locals_list)
@@ -354,15 +355,15 @@ def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_len
 
     conditioning = clip.encode_from_tokens_scheduled(clip.tokenize(full_prompt))
 
-    effective_lengths = distribute_segment_lengths(len(locals_list), latent_frames, parsed_lengths)
+    effective_lengths = distribute_segment_lengths(len(locals_list), new_latent_frames, parsed_lengths)
 
     log.info(
-        "[PromptRelay] Latent: %d frames, %d tokens/frame, segments: %s",
-        latent_frames, tokens_per_frame, effective_lengths,
+        "[PromptRelay] Latent: %d total frames (%d prior + %d new), %d tokens/frame, segments: %s",
+        total_latent_frames, frame_offset, new_latent_frames, tokens_per_frame, effective_lengths,
     )
 
-    q_token_idx = build_segments(token_ranges, effective_lengths, epsilon, None)
-    mask_fn = create_mask_fn(q_token_idx, tokens_per_frame, latent_frames)
+    q_token_idx = build_segments(token_ranges, effective_lengths, epsilon, None, frame_offset=frame_offset)
+    mask_fn = create_mask_fn(q_token_idx, tokens_per_frame, total_latent_frames)
 
     patched = model.clone()
     apply_patches(patched, arch, mask_fn)
@@ -388,7 +389,9 @@ class LTXDirector(io.ComfyNode):
                 io.Model.Input("model"),
                 io.Clip.Input("clip"),
                 io.Vae.Input("audio_vae", optional=True, tooltip="Optional. Connect an Audio VAE to generate audio latents."),
-                io.Latent.Input("optional_latent", optional=True, tooltip="Optional. Connect a latent to override the auto-generated one."),
+                io.Latent.Input("optional_latent", optional=True, tooltip="Optional. Connect a prior-generation video latent as a prefix (e.g. for seamless continuation). Prior frames are locked (noise_mask=0); new frames are generated after them."),
+                io.Latent.Input("optional_audio_latent", optional=True, tooltip="Optional. Connect a pre-built audio latent directly (e.g. from LTX Audio Mask for audio continuation). Bypasses internal audio latent generation."),
+                io.Latent.Input("hint_latent", optional=True, tooltip="Optional. Connect a soft-hint latent (e.g. from LTX Soft Hint Latent) to use as per-pixel soft conditioning for the new frames. The hint's noise_mask is used as-is — unlike optional_latent, this is NOT treated as a prior-frame prefix."),
                 io.String.Input(
                     "global_prompt", multiline=True, default="",
                     tooltip="Conditions the entire video. Anchors persistent characters, objects, and scene context.",
@@ -474,7 +477,20 @@ class LTXDirector(io.ComfyNode):
                 frame_rate=24, display_mode="seconds",
                 custom_width=768, custom_height=512, resize_method="maintain aspect ratio",
                 divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
-                use_custom_audio=False) -> io.NodeOutput:
+                optional_audio_latent=None, hint_latent=None, use_custom_audio=False) -> io.NodeOutput:
+
+        # Pre-compute how many prior latent frames are being prepended.
+        # Used to offset guide_data insert_frames so LTXDirectorGuide places keyframes
+        # in the new-segment region, not the prior region.
+        prior_latent_t_hint = optional_latent["samples"].shape[2] if optional_latent is not None else 0
+        if prior_latent_t_hint > 0:
+            try:
+                _, _, _temporal_stride = detect_model_type(model)
+            except Exception:
+                _temporal_stride = 8  # LTX default
+            _guide_frame_offset = prior_latent_t_hint * _temporal_stride
+        else:
+            _guide_frame_offset = 0
 
         # --- Build guide_data from image segments FIRST (to derive output dimensions) ---
         guide_data = {"images": [], "insert_frames": [], "strengths": [], "frame_rate": frame_rate}
@@ -553,27 +569,100 @@ class LTXDirector(io.ComfyNode):
         except Exception as e:
             log.warning("[PromptRelay] Could not build guide_data: %s", e)
 
-        # --- Auto-generate LTXV latent if none was provided ---
+        # Shift all guide keyframe positions by the prior-frame pixel offset so that
+        # LTXDirectorGuide maps them to the correct region of the combined latent.
+        if _guide_frame_offset > 0 and guide_data["insert_frames"]:
+            guide_data["insert_frames"] = [f + _guide_frame_offset for f in guide_data["insert_frames"]]
+            log.info(
+                "[PromptRelay] Guide insert_frames shifted by %d px (%d prior latent frames).",
+                _guide_frame_offset, prior_latent_t_hint,
+            )
+
+        # --- Build LTXV video latent ---
         ltxv_length = duration_frames + 1
-        if optional_latent is None:
+        new_latent_t = ((ltxv_length - 1) // 8) + 1
+        dev = comfy.model_management.intermediate_device()
+
+        if hint_latent is not None:
+            # hint_latent provides per-pixel soft conditioning (e.g. from LTXSoftHintLatent).
+            # Use its samples/noise_mask directly for the new-frame region; do NOT prepend as prior.
+            hint_samples = hint_latent["samples"].to(device=dev)  # [1, 128, hint_T, lat_h, lat_w]
+            hint_T = hint_samples.shape[2]
+            lat_h, lat_w = hint_samples.shape[3], hint_samples.shape[4]
+            if hint_T != new_latent_t:
+                log.warning(
+                    "[PromptRelay] hint_latent T=%d != expected new_latent_t=%d; "
+                    "conditioning may be misaligned. Ensure the point cloud images span "
+                    "exactly the same duration as the timeline.",
+                    hint_T, new_latent_t,
+                )
+            # Use hint's noise_mask; fall back to all-ones (fully generate) if absent.
+            if "noise_mask" in hint_latent:
+                hint_mask = hint_latent["noise_mask"].to(device=dev)  # [1, 1, hint_T, lat_h, lat_w]
+            else:
+                hint_mask = torch.ones([1, 1, hint_T, lat_h, lat_w], dtype=torch.float32, device=dev)
+
+            if optional_latent is not None:
+                # Prepend prior frames in front of the hint latent.
+                prior_samples = optional_latent["samples"].to(device=dev)
+                prior_latent_t = prior_samples.shape[2]
+                combined_samples = torch.cat([prior_samples, hint_samples], dim=2)
+                # prior_mask must share H/W with hint_mask so cat on T-dim works.
+                prior_mask = torch.zeros([1, 1, prior_latent_t, lat_h, lat_w], dtype=torch.float32, device=dev)
+                noise_mask = torch.cat([prior_mask, hint_mask], dim=2)
+                latent = {"samples": combined_samples, "noise_mask": noise_mask}
+                log.info(
+                    "[PromptRelay] Hint latent (T=%d) with prior prefix (T=%d); total T=%d, spatial: latent %dx%d",
+                    hint_T, prior_latent_t, hint_T + prior_latent_t, lat_w, lat_h,
+                )
+            else:
+                prior_latent_t = 0
+                latent = {"samples": hint_samples, "noise_mask": hint_mask}
+                log.info(
+                    "[PromptRelay] Hint latent: T=%d, spatial: latent %dx%d",
+                    hint_T, lat_w, lat_h,
+                )
+
+        elif optional_latent is None:
+            prior_latent_t = 0
             latent_w = max(32, (derived_w // 32) * 32)
             latent_h = max(32, (derived_h // 32) * 32)
-            # LTXV temporal: ((length - 1) // 8) + 1 latent frames; invert to get pixel frames -> length
-            latent_t = ((ltxv_length - 1) // 8) + 1
             samples = torch.zeros(
-                [1, 128, latent_t, latent_h // 32, latent_w // 32],
-                device=comfy.model_management.intermediate_device(),
+                [1, 128, new_latent_t, latent_h // 32, latent_w // 32],
+                device=dev,
             )
             latent = {"samples": samples}
             log.info(
                 "[PromptRelay] Auto-generated LTXV latent: %dx%d, %d pixel frames (%d latent frames)",
-                latent_w, latent_h, ltxv_length, latent_t,
+                latent_w, latent_h, ltxv_length, new_latent_t,
             )
         else:
-            latent = optional_latent
+            # Treat optional_latent as prior-frame prefix; concatenate with new-frame zeros + mask.
+            prior_samples = optional_latent["samples"]
+            prior_latent_t = prior_samples.shape[2]
+            lat_h = prior_samples.shape[3]
+            lat_w = prior_samples.shape[4]
+            new_samples = torch.zeros(
+                [1, 128, new_latent_t, lat_h, lat_w],
+                device=dev,
+            )
+            combined_samples = torch.cat([prior_samples, new_samples], dim=2)
+            # noise_mask: 0=conditioning (prior frames), 1=generate (new frames)
+            # Shape [1, 1, T, 1, 1] broadcasts over channels, H, W
+            noise_mask = torch.cat([
+                torch.zeros([1, 1, prior_latent_t, 1, 1], dtype=torch.float32, device=dev),
+                torch.ones([1, 1, new_latent_t, 1, 1], dtype=torch.float32, device=dev),
+            ], dim=2)
+            latent = {"samples": combined_samples, "noise_mask": noise_mask}
+            log.info(
+                "[PromptRelay] Prior video latent: %d frames prepended; new: %d frames; "
+                "total: %d, spatial: latent %dx%d",
+                prior_latent_t, new_latent_t, prior_latent_t + new_latent_t, lat_w, lat_h,
+            )
 
         patched, conditioning = _encode_relay(
             model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon,
+            frame_offset=prior_latent_t,
         )
 
         # --- Build Audio Output ---
@@ -669,6 +758,64 @@ class LTXDirector(io.ComfyNode):
                 except Exception as e:
                     log.error("[PromptRelay] Could not generate empty audio latent: %s", e)
                     raise e
+
+        # If prior audio was provided, prepend it to the new-segment audio latent.
+        # prior frames get mask=0 (conditioning), new frames keep their existing mask (or mask=1).
+        if optional_audio_latent is not None:
+            prior_a = optional_audio_latent["samples"]
+            prior_audio_t = prior_a.shape[2]
+            audio_freq_dim = prior_a.shape[-1]
+            prior_a_mask = torch.zeros(
+                [1, 1, prior_audio_t, audio_freq_dim], dtype=torch.float32,
+                device=comfy.model_management.intermediate_device(),
+            )
+
+            if audio_vae is not None and isinstance(audio_latent, dict) and "samples" in audio_latent:
+                # Concatenate [prior | new_segment] along the time dimension
+                new_a = audio_latent["samples"]
+                new_audio_t = new_a.shape[2]
+                if "noise_mask" in audio_latent:
+                    new_a_mask = audio_latent["noise_mask"]
+                else:
+                    new_a_mask = torch.ones(
+                        [1, 1, new_audio_t, audio_freq_dim], dtype=torch.float32,
+                        device=comfy.model_management.intermediate_device(),
+                    )
+                combined_mask = torch.cat([prior_a_mask, new_a_mask], dim=2)
+                audio_latent = {
+                    "samples": torch.cat([prior_a, new_a], dim=2),
+                    "type": "audio",
+                    "noise_mask": combined_mask,
+                }
+                log.info(
+                    "[PromptRelay] Prepended prior audio latent: %d prior + %d new = %d total audio frames.",
+                    prior_audio_t, new_audio_t, prior_audio_t + new_audio_t,
+                )
+            else:
+                # No audio VAE — build empty new frames from prior dims using temporal ratio
+                z_ch = prior_a.shape[1]
+                if prior_latent_t > 0:
+                    new_audio_t = max(1, round(prior_audio_t * new_latent_t / prior_latent_t))
+                else:
+                    new_audio_t = prior_audio_t
+                new_a = torch.zeros(
+                    [1, z_ch, new_audio_t, audio_freq_dim], dtype=torch.float32,
+                    device=comfy.model_management.intermediate_device(),
+                )
+                new_a_mask = torch.ones(
+                    [1, 1, new_audio_t, audio_freq_dim], dtype=torch.float32,
+                    device=comfy.model_management.intermediate_device(),
+                )
+                combined_mask = torch.cat([prior_a_mask, new_a_mask], dim=2)
+                audio_latent = {
+                    "samples": torch.cat([prior_a, new_a], dim=2),
+                    "type": "audio",
+                    "noise_mask": combined_mask,
+                }
+                log.info(
+                    "[PromptRelay] No audio VAE; prepended prior audio (%d frames) + empty new frames (%d).",
+                    prior_audio_t, new_audio_t,
+                )
 
         return io.NodeOutput(patched, conditioning, latent, audio_latent, guide_data, float(frame_rate), audio_out)
 

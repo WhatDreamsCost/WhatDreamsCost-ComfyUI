@@ -1,4 +1,6 @@
 from .ltx_keyframer import LTXKeyframer
+from .ltx_soft_hint_latent import LTXSoftHintLatent
+from .ltx_prepend_start_frame import LTXPrependStartFrame
 from .multi_image_loader import MultiImageLoader
 from .ltx_sequencer import LTXSequencer, LTXSequencerMirror
 from .speech_length_calculator import SpeechLengthCalculator
@@ -33,6 +35,8 @@ NODE_CLASS_MAPPINGS = {
     "LTXSequencerMirror": LTXSequencerMirror,
     "SpeechLengthCalculator": SpeechLengthCalculator,
     "AudioSequencer": AudioSequencer,
+    "LTXSoftHintLatent": LTXSoftHintLatent,
+    "LTXPrependStartFrame": LTXPrependStartFrame,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -47,6 +51,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LTXSequencerMirror": "LTX Sequencer Mirror",
     "SpeechLengthCalculator": "Speech Length Calculator",
     "AudioSequencer": "Audio Sequencer",
+    "LTXSoftHintLatent": "LTX Soft Hint Latent",
+    "LTXPrependStartFrame": "LTX Prepend Start Frame",
 }
 
 WEB_DIRECTORY = "./js"

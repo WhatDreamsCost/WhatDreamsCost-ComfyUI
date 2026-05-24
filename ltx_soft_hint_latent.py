@@ -112,6 +112,19 @@ class LTXSoftHintLatent:
                         ),
                     },
                 ),
+                "motion_mask": (
+                    "MASK",
+                    {
+                        "tooltip": (
+                            "Optional per-pixel motion map [H, W] or [N, H, W], "
+                            "values in [0, 1] where 1 = region should move freely "
+                            "(e.g. water, fire, cloth) and 0 = static (rock, wall). "
+                            "When provided, this is used instead of auto-detecting motion "
+                            "from temporal variance — required when you only have 1 input frame. "
+                            "Only active when motion_freedom > 0."
+                        ),
+                    },
+                ),
             },
         }
 
@@ -130,6 +143,7 @@ class LTXSoftHintLatent:
         black_threshold: float,
         motion_freedom: float = 0.0,
         validity_mask=None,
+        motion_mask=None,
     ):
         # images: [N, H, W, 3] float32, values in [0, 1], ComfyUI format
         N, H, W, _C = images.shape
@@ -164,24 +178,46 @@ class LTXSoftHintLatent:
         # Reduce their validity so the model is freed to generate real motion there,
         # while static pixels (rocks, walls) stay conditioned at hint_strength.
         #
-        # motion_pixel [H, W]: 0 = static, 1 = lots of motion in the renders.
-        # With motion_freedom=1, a fully-moving pixel's validity → 0 → mask = hole_strength.
-        if motion_freedom > 0.0 and images.shape[0] > 1:
-            lum = (
-                0.299 * images[:, :, :, 0]
-                + 0.587 * images[:, :, :, 1]
-                + 0.114 * images[:, :, :, 2]
-            )  # [N, H, W]
-            temporal_std = lum.std(dim=0)  # [H, W]
-            max_std = temporal_std.max()
-            if max_std > 1e-6:
-                motion_pixel = (temporal_std / max_std).clamp(0.0, 1.0)  # [H, W]
-                motion_pixel = motion_pixel.unsqueeze(0).expand(N, -1, -1)  # [N, H, W]
-                validity_pixel = (validity_pixel * (1.0 - motion_freedom * motion_pixel)).clamp(0.0, 1.0)
+        # motion_pixel [N, H, W]: 0 = static, 1 = lots of motion. With motion_freedom=1,
+        # a fully-moving pixel's validity → 0 → mask = hole_strength.
+        if motion_freedom > 0.0:
+            if motion_mask is not None:
+                # Explicit mask — works with N=1 or any frame count.
+                mm = motion_mask.float()
+                if mm.ndim == 2:
+                    mm = mm.unsqueeze(0).expand(N, -1, -1)
+                elif mm.ndim == 3 and mm.shape[0] == 1 and N > 1:
+                    mm = mm.expand(N, -1, -1)
+                motion_pixel = mm[:N].clamp(0.0, 1.0)  # [N, H, W]
                 log.info(
-                    "[LTXSoftHintLatent] motion_freedom=%.2f: mean motion coverage %.1f%% "
-                    "(high = lots of moving pixels detected).",
-                    motion_freedom, motion_pixel[0].mean().item() * 100.0,
+                    "[LTXSoftHintLatent] motion_freedom=%.2f using explicit motion_mask "
+                    "(mean motion coverage %.1f%%).",
+                    motion_freedom, motion_pixel.mean().item() * 100.0,
+                )
+                validity_pixel = (validity_pixel * (1.0 - motion_freedom * motion_pixel)).clamp(0.0, 1.0)
+            elif images.shape[0] > 1:
+                # Auto-detect from temporal variance across input frames.
+                lum = (
+                    0.299 * images[:, :, :, 0]
+                    + 0.587 * images[:, :, :, 1]
+                    + 0.114 * images[:, :, :, 2]
+                )  # [N, H, W]
+                temporal_std = lum.std(dim=0)  # [H, W]
+                max_std = temporal_std.max()
+                if max_std > 1e-6:
+                    motion_pixel = (temporal_std / max_std).clamp(0.0, 1.0)
+                    motion_pixel = motion_pixel.unsqueeze(0).expand(N, -1, -1)  # [N, H, W]
+                    validity_pixel = (validity_pixel * (1.0 - motion_freedom * motion_pixel)).clamp(0.0, 1.0)
+                    log.info(
+                        "[LTXSoftHintLatent] motion_freedom=%.2f auto-detected from temporal "
+                        "variance (mean motion coverage %.1f%%).",
+                        motion_freedom, motion_pixel[0].mean().item() * 100.0,
+                    )
+            else:
+                log.warning(
+                    "[LTXSoftHintLatent] motion_freedom=%.2f has no effect: only 1 input frame "
+                    "and no motion_mask connected. Connect a motion_mask to define motion regions.",
+                    motion_freedom,
                 )
 
         # ── 3. Resample validity to latent resolution ─────────────────────────────

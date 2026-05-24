@@ -246,7 +246,7 @@ app.registerExtension({
 
                 addSyncedWidget("number", `insert_frame_${i}`, 0, { min: -9999, max: 9999, step: 10, precision: 0 });
                 addSyncedWidget("number", `insert_second_${i}`, 0.0, { min: 0.0, max: 9999.0, step: 0.1, precision: 2 });
-                addSyncedWidget("number", `strength_${i}`, 1.0, { min: 0.0, max: 1.0, step: 0.01 });
+                addSyncedWidget("number", `strength_${i}`, 1.0, { min: 0.0, max: 1.0, step: 0.01, precision: 2 });
             }
 
             this._updateVisibility();

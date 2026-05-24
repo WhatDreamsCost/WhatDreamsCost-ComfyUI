@@ -391,7 +391,6 @@ class LTXDirector(io.ComfyNode):
                 io.Vae.Input("audio_vae", optional=True, tooltip="Optional. Connect an Audio VAE to generate audio latents."),
                 io.Latent.Input("optional_latent", optional=True, tooltip="Optional. Connect a prior-generation video latent as a prefix (e.g. for seamless continuation). Prior frames are locked (noise_mask=0); new frames are generated after them."),
                 io.Latent.Input("optional_audio_latent", optional=True, tooltip="Optional. Connect a pre-built audio latent directly (e.g. from LTX Audio Mask for audio continuation). Bypasses internal audio latent generation."),
-                io.Latent.Input("hint_latent", optional=True, tooltip="Optional. Connect a soft-hint latent (e.g. from LTX Soft Hint Latent) to use as per-pixel soft conditioning for the new frames. The hint's noise_mask is used as-is — unlike optional_latent, this is NOT treated as a prior-frame prefix."),
                 io.String.Input(
                     "global_prompt", multiline=True, default="",
                     tooltip="Conditions the entire video. Anchors persistent characters, objects, and scene context.",
@@ -477,7 +476,7 @@ class LTXDirector(io.ComfyNode):
                 frame_rate=24, display_mode="seconds",
                 custom_width=768, custom_height=512, resize_method="maintain aspect ratio",
                 divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
-                optional_audio_latent=None, hint_latent=None, use_custom_audio=False) -> io.NodeOutput:
+                optional_audio_latent=None, use_custom_audio=False) -> io.NodeOutput:
 
         # Pre-compute how many prior latent frames are being prepended.
         # Used to offset guide_data insert_frames so LTXDirectorGuide places keyframes
@@ -583,47 +582,7 @@ class LTXDirector(io.ComfyNode):
         new_latent_t = ((ltxv_length - 1) // 8) + 1
         dev = comfy.model_management.intermediate_device()
 
-        if hint_latent is not None:
-            # hint_latent provides per-pixel soft conditioning (e.g. from LTXSoftHintLatent).
-            # Use its samples/noise_mask directly for the new-frame region; do NOT prepend as prior.
-            hint_samples = hint_latent["samples"].to(device=dev)  # [1, 128, hint_T, lat_h, lat_w]
-            hint_T = hint_samples.shape[2]
-            lat_h, lat_w = hint_samples.shape[3], hint_samples.shape[4]
-            if hint_T != new_latent_t:
-                log.warning(
-                    "[PromptRelay] hint_latent T=%d != expected new_latent_t=%d; "
-                    "conditioning may be misaligned. Ensure the point cloud images span "
-                    "exactly the same duration as the timeline.",
-                    hint_T, new_latent_t,
-                )
-            # Use hint's noise_mask; fall back to all-ones (fully generate) if absent.
-            if "noise_mask" in hint_latent:
-                hint_mask = hint_latent["noise_mask"].to(device=dev)  # [1, 1, hint_T, lat_h, lat_w]
-            else:
-                hint_mask = torch.ones([1, 1, hint_T, lat_h, lat_w], dtype=torch.float32, device=dev)
-
-            if optional_latent is not None:
-                # Prepend prior frames in front of the hint latent.
-                prior_samples = optional_latent["samples"].to(device=dev)
-                prior_latent_t = prior_samples.shape[2]
-                combined_samples = torch.cat([prior_samples, hint_samples], dim=2)
-                # prior_mask must share H/W with hint_mask so cat on T-dim works.
-                prior_mask = torch.zeros([1, 1, prior_latent_t, lat_h, lat_w], dtype=torch.float32, device=dev)
-                noise_mask = torch.cat([prior_mask, hint_mask], dim=2)
-                latent = {"samples": combined_samples, "noise_mask": noise_mask}
-                log.info(
-                    "[PromptRelay] Hint latent (T=%d) with prior prefix (T=%d); total T=%d, spatial: latent %dx%d",
-                    hint_T, prior_latent_t, hint_T + prior_latent_t, lat_w, lat_h,
-                )
-            else:
-                prior_latent_t = 0
-                latent = {"samples": hint_samples, "noise_mask": hint_mask}
-                log.info(
-                    "[PromptRelay] Hint latent: T=%d, spatial: latent %dx%d",
-                    hint_T, lat_w, lat_h,
-                )
-
-        elif optional_latent is None:
+        if optional_latent is None:
             prior_latent_t = 0
             latent_w = max(32, (derived_w // 32) * 32)
             latent_h = max(32, (derived_h // 32) * 32)

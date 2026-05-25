@@ -6,33 +6,28 @@ log = logging.getLogger(__name__)
 
 
 class LTXPrependStartFrame:
-    """Overwrites the first latent frame(s) of a hint latent with a clean start image.
+    """Overwrites the first latent frame(s) of any video latent with a clean start image.
 
-    This keeps the latent T dimension unchanged (critical — prepending extra frames
-    would produce a longer video and break conditioning alignment).
-
-    The hint latent's LTXSoftHintLatent node already sets noise_mask=0 for
-    hard_start_frames. This node replaces the *content* of those frames with a
-    proper reference image instead of the sparse point-cloud render, so the model
-    anchors to clean start-frame visuals rather than an incomplete render.
+    Encodes the start image with the VAE and writes its content into the leading
+    latent frame(s), locking them with noise_mask=0. The rest of the latent retains
+    its existing noise_mask (or defaults to all-ones if none is present).
 
     Typical wiring:
-        [start image]         → ──────────────────────────────────────┐
-        [point cloud renders] → LTXSoftHintLatent (hard_start_frames=1) → LTXPrependStartFrame → KSampler
+        [start image] → ─────────────────────────────────────────┐
+        LTX Director → video_latent → LTXPrependStartFrame → KSampler
     """
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "hint_latent": ("LATENT",),
+                "latent": ("LATENT",),
                 "start_image": (
                     "IMAGE",
                     {
                         "tooltip": (
                             "Image to encode and write into the first latent frame(s). "
-                            "Should be the same resolution as the point cloud renders. "
-                            "Must match the spatial dimensions of hint_latent."
+                            "Should match the spatial resolution of the latent."
                         ),
                     },
                 ),
@@ -44,10 +39,7 @@ class LTXPrependStartFrame:
                         "min": 1,
                         "max": 16,
                         "step": 1,
-                        "tooltip": (
-                            "How many leading latent frames to overwrite with the start image. "
-                            "Should match hard_start_frames in LTXSoftHintLatent."
-                        ),
+                        "tooltip": "How many leading latent frames to overwrite with the start image.",
                     },
                 ),
             },
@@ -58,8 +50,8 @@ class LTXPrependStartFrame:
     FUNCTION = "write_start"
     CATEGORY = "WhatDreamsCost"
 
-    def write_start(self, hint_latent, start_image, vae, num_frames: int):
-        hint_samples = hint_latent["samples"].clone()  # [1, 128, T, lat_h, lat_w]
+    def write_start(self, latent, start_image, vae, num_frames: int):
+        hint_samples = latent["samples"].clone()  # [1, 128, T, lat_h, lat_w]
         dev = hint_samples.device
         T = hint_samples.shape[2]
         lat_h, lat_w = hint_samples.shape[3], hint_samples.shape[4]
@@ -92,8 +84,8 @@ class LTXPrependStartFrame:
         hint_samples[:, :, :n, :, :] = start_content
 
         # ── 3. Build / update noise_mask ─────────────────────────────────────────
-        if "noise_mask" in hint_latent:
-            noise_mask = hint_latent["noise_mask"].clone().to(device=dev)
+        if "noise_mask" in latent:
+            noise_mask = latent["noise_mask"].clone().to(device=dev)
         else:
             noise_mask = torch.ones([1, 1, T, lat_h, lat_w], dtype=torch.float32, device=dev)
 

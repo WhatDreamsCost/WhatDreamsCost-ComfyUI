@@ -747,63 +747,73 @@ class LTXDirector(io.ComfyNode):
                     log.error("[PromptRelay] Could not generate empty audio latent: %s", e)
                     raise e
 
-        # If prior audio was provided, prepend it to the new-segment audio latent.
-        # prior frames get mask=0 (conditioning), new frames keep their existing mask (or mask=1).
+        # If prior audio was provided, either use it as-is (combined X+Y latent with noise_mask)
+        # or prepend it to the new-segment audio latent (raw prior-prefix without noise_mask).
         if optional_audio_latent is not None:
-            prior_a = optional_audio_latent["samples"]
-            prior_audio_t = prior_a.shape[2]
-            audio_freq_dim = prior_a.shape[-1]
-            prior_a_mask = torch.zeros(
-                [1, 1, prior_audio_t, audio_freq_dim], dtype=torch.float32,
-                device=comfy.model_management.intermediate_device(),
-            )
+            if "noise_mask" in optional_audio_latent:
+                # Combined audio latent (X locked + Y to generate) — use as-is.
+                audio_latent = optional_audio_latent
+                log.info(
+                    "[PromptRelay] Combined audio latent: %d total frames, used as-is.",
+                    optional_audio_latent["samples"].shape[2],
+                )
+            else:
+                # Raw prior-prefix: prepend it to the new-segment audio latent.
+                # prior frames get mask=0 (conditioning), new frames keep their existing mask (or mask=1).
+                prior_a = optional_audio_latent["samples"]
+                prior_audio_t = prior_a.shape[2]
+                audio_freq_dim = prior_a.shape[-1]
+                prior_a_mask = torch.zeros(
+                    [1, 1, prior_audio_t, audio_freq_dim], dtype=torch.float32,
+                    device=comfy.model_management.intermediate_device(),
+                )
 
-            if audio_vae is not None and isinstance(audio_latent, dict) and "samples" in audio_latent:
-                # Concatenate [prior | new_segment] along the time dimension
-                new_a = audio_latent["samples"]
-                new_audio_t = new_a.shape[2]
-                if "noise_mask" in audio_latent:
-                    new_a_mask = audio_latent["noise_mask"]
+                if audio_vae is not None and isinstance(audio_latent, dict) and "samples" in audio_latent:
+                    # Concatenate [prior | new_segment] along the time dimension
+                    new_a = audio_latent["samples"]
+                    new_audio_t = new_a.shape[2]
+                    if "noise_mask" in audio_latent:
+                        new_a_mask = audio_latent["noise_mask"]
+                    else:
+                        new_a_mask = torch.ones(
+                            [1, 1, new_audio_t, audio_freq_dim], dtype=torch.float32,
+                            device=comfy.model_management.intermediate_device(),
+                        )
+                    combined_mask = torch.cat([prior_a_mask, new_a_mask], dim=2)
+                    audio_latent = {
+                        "samples": torch.cat([prior_a, new_a], dim=2),
+                        "type": "audio",
+                        "noise_mask": combined_mask,
+                    }
+                    log.info(
+                        "[PromptRelay] Prepended prior audio latent: %d prior + %d new = %d total audio frames.",
+                        prior_audio_t, new_audio_t, prior_audio_t + new_audio_t,
+                    )
                 else:
+                    # No audio VAE — build empty new frames from prior dims using temporal ratio
+                    z_ch = prior_a.shape[1]
+                    if prior_latent_t > 0:
+                        new_audio_t = max(1, round(prior_audio_t * new_latent_t / prior_latent_t))
+                    else:
+                        new_audio_t = prior_audio_t
+                    new_a = torch.zeros(
+                        [1, z_ch, new_audio_t, audio_freq_dim], dtype=torch.float32,
+                        device=comfy.model_management.intermediate_device(),
+                    )
                     new_a_mask = torch.ones(
                         [1, 1, new_audio_t, audio_freq_dim], dtype=torch.float32,
                         device=comfy.model_management.intermediate_device(),
                     )
-                combined_mask = torch.cat([prior_a_mask, new_a_mask], dim=2)
-                audio_latent = {
-                    "samples": torch.cat([prior_a, new_a], dim=2),
-                    "type": "audio",
-                    "noise_mask": combined_mask,
-                }
-                log.info(
-                    "[PromptRelay] Prepended prior audio latent: %d prior + %d new = %d total audio frames.",
-                    prior_audio_t, new_audio_t, prior_audio_t + new_audio_t,
-                )
-            else:
-                # No audio VAE — build empty new frames from prior dims using temporal ratio
-                z_ch = prior_a.shape[1]
-                if prior_latent_t > 0:
-                    new_audio_t = max(1, round(prior_audio_t * new_latent_t / prior_latent_t))
-                else:
-                    new_audio_t = prior_audio_t
-                new_a = torch.zeros(
-                    [1, z_ch, new_audio_t, audio_freq_dim], dtype=torch.float32,
-                    device=comfy.model_management.intermediate_device(),
-                )
-                new_a_mask = torch.ones(
-                    [1, 1, new_audio_t, audio_freq_dim], dtype=torch.float32,
-                    device=comfy.model_management.intermediate_device(),
-                )
-                combined_mask = torch.cat([prior_a_mask, new_a_mask], dim=2)
-                audio_latent = {
-                    "samples": torch.cat([prior_a, new_a], dim=2),
-                    "type": "audio",
-                    "noise_mask": combined_mask,
-                }
-                log.info(
-                    "[PromptRelay] No audio VAE; prepended prior audio (%d frames) + empty new frames (%d).",
-                    prior_audio_t, new_audio_t,
-                )
+                    combined_mask = torch.cat([prior_a_mask, new_a_mask], dim=2)
+                    audio_latent = {
+                        "samples": torch.cat([prior_a, new_a], dim=2),
+                        "type": "audio",
+                        "noise_mask": combined_mask,
+                    }
+                    log.info(
+                        "[PromptRelay] No audio VAE; prepended prior audio (%d frames) + empty new frames (%d).",
+                        prior_audio_t, new_audio_t,
+                    )
 
         return io.NodeOutput(patched, conditioning, latent, audio_latent, guide_data, float(frame_rate), audio_out)
 

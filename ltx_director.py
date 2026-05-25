@@ -478,10 +478,20 @@ class LTXDirector(io.ComfyNode):
                 divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
                 optional_audio_latent=None, use_custom_audio=False) -> io.NodeOutput:
 
-        # Pre-compute how many prior latent frames are being prepended.
+        # Pre-compute how many prior latent frames are locked/prepended.
         # Used to offset guide_data insert_frames so LTXDirectorGuide places keyframes
-        # in the new-segment region, not the prior region.
-        prior_latent_t_hint = optional_latent["samples"].shape[2] if optional_latent is not None else 0
+        # in the new-segment region, not the locked/prior region.
+        # If optional_latent already has a noise_mask (combined X+Y latent), count the
+        # leading locked frames (mask ≈ 0) rather than the full T.
+        if optional_latent is not None:
+            if "noise_mask" in optional_latent:
+                _hint_mask = optional_latent["noise_mask"]
+                _hint_mask_t = _hint_mask[0, 0, :, 0, 0] if _hint_mask.ndim == 5 else _hint_mask[0, 0, :, 0]
+                prior_latent_t_hint = int((_hint_mask_t < 0.5).sum().item())
+            else:
+                prior_latent_t_hint = optional_latent["samples"].shape[2]
+        else:
+            prior_latent_t_hint = 0
         if prior_latent_t_hint > 0:
             try:
                 _, _, _temporal_stride = detect_model_type(model)
@@ -596,28 +606,47 @@ class LTXDirector(io.ComfyNode):
                 latent_w, latent_h, ltxv_length, new_latent_t,
             )
         else:
-            # Treat optional_latent as prior-frame prefix; concatenate with new-frame zeros + mask.
             prior_samples = optional_latent["samples"]
-            prior_latent_t = prior_samples.shape[2]
-            lat_h = prior_samples.shape[3]
-            lat_w = prior_samples.shape[4]
-            new_samples = torch.zeros(
-                [1, 128, new_latent_t, lat_h, lat_w],
-                device=dev,
-            )
-            combined_samples = torch.cat([prior_samples, new_samples], dim=2)
-            # noise_mask: 0=conditioning (prior frames), 1=generate (new frames)
-            # Shape [1, 1, T, 1, 1] broadcasts over channels, H, W
-            noise_mask = torch.cat([
-                torch.zeros([1, 1, prior_latent_t, 1, 1], dtype=torch.float32, device=dev),
-                torch.ones([1, 1, new_latent_t, 1, 1], dtype=torch.float32, device=dev),
-            ], dim=2)
-            latent = {"samples": combined_samples, "noise_mask": noise_mask}
-            log.info(
-                "[PromptRelay] Prior video latent: %d frames prepended; new: %d frames; "
-                "total: %d, spatial: latent %dx%d",
-                prior_latent_t, new_latent_t, prior_latent_t + new_latent_t, lat_w, lat_h,
-            )
+            if "noise_mask" in optional_latent:
+                # Combined latent (e.g. from LTX Audio Video Mask): X seconds locked + Y seconds
+                # to generate. The mask already encodes which frames are locked (0) vs. free (1).
+                # Use as-is; derive prior_latent_t from the leading locked region.
+                _comb_mask = optional_latent["noise_mask"]
+                _comb_mask_t = _comb_mask[0, 0, :, 0, 0] if _comb_mask.ndim == 5 else _comb_mask[0, 0, :, 0]
+                prior_latent_t = int((_comb_mask_t < 0.5).sum().item())
+                latent = {
+                    "samples": prior_samples.clone().to(device=dev),
+                    "noise_mask": _comb_mask.clone().to(device=dev),
+                }
+                log.info(
+                    "[PromptRelay] Combined video latent: %d total frames (%d locked + %d generate), "
+                    "spatial: latent %dx%d",
+                    prior_samples.shape[2], prior_latent_t,
+                    prior_samples.shape[2] - prior_latent_t,
+                    prior_samples.shape[4], prior_samples.shape[3],
+                )
+            else:
+                # Raw prior-frame prefix: concatenate with new zero frames to generate.
+                prior_latent_t = prior_samples.shape[2]
+                lat_h = prior_samples.shape[3]
+                lat_w = prior_samples.shape[4]
+                new_samples = torch.zeros(
+                    [1, 128, new_latent_t, lat_h, lat_w],
+                    device=dev,
+                )
+                combined_samples = torch.cat([prior_samples, new_samples], dim=2)
+                # noise_mask: 0=conditioning (prior frames), 1=generate (new frames)
+                # Shape [1, 1, T, 1, 1] broadcasts over channels, H, W
+                noise_mask = torch.cat([
+                    torch.zeros([1, 1, prior_latent_t, 1, 1], dtype=torch.float32, device=dev),
+                    torch.ones([1, 1, new_latent_t, 1, 1], dtype=torch.float32, device=dev),
+                ], dim=2)
+                latent = {"samples": combined_samples, "noise_mask": noise_mask}
+                log.info(
+                    "[PromptRelay] Prior video latent: %d frames prepended; new: %d frames; "
+                    "total: %d, spatial: latent %dx%d",
+                    prior_latent_t, new_latent_t, prior_latent_t + new_latent_t, lat_w, lat_h,
+                )
 
         patched, conditioning = _encode_relay(
             model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon,

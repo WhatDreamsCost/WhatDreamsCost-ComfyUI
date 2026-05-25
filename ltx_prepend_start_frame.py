@@ -6,16 +6,19 @@ log = logging.getLogger(__name__)
 
 
 class LTXPrependStartFrame:
-    """Encodes one or more start-frame images and prepends them to a hint latent
-    with noise_mask=0 (fully locked / hard-anchored).
+    """Overwrites the first latent frame(s) of a hint latent with a clean start image.
 
-    The rest of the hint latent retains its original per-pixel noise_mask
-    (e.g. from LTXSoftHintLatent) so the model can freely generate or
-    condition those frames as intended.
+    This keeps the latent T dimension unchanged (critical — prepending extra frames
+    would produce a longer video and break conditioning alignment).
+
+    The hint latent's LTXSoftHintLatent node already sets noise_mask=0 for
+    hard_start_frames. This node replaces the *content* of those frames with a
+    proper reference image instead of the sparse point-cloud render, so the model
+    anchors to clean start-frame visuals rather than an incomplete render.
 
     Typical wiring:
-        [start image]          → ─────────────────────────────┐
-        [point cloud renders]  → LTXSoftHintLatent (hint_latent) → LTXPrependStartFrame → KSampler
+        [start image]         → ──────────────────────────────────────┐
+        [point cloud renders] → LTXSoftHintLatent (hard_start_frames=1) → LTXPrependStartFrame → KSampler
     """
 
     @classmethod
@@ -27,72 +30,81 @@ class LTXPrependStartFrame:
                     "IMAGE",
                     {
                         "tooltip": (
-                            "Image(s) to hard-anchor at the beginning of the latent. "
-                            "Typically a single frame. All provided frames are encoded "
-                            "and prepended with noise_mask=0."
+                            "Image to encode and write into the first latent frame(s). "
+                            "Should be the same resolution as the point cloud renders. "
+                            "Must match the spatial dimensions of hint_latent."
                         ),
                     },
                 ),
                 "vae": ("VAE",),
+                "num_frames": (
+                    "INT",
+                    {
+                        "default": 1,
+                        "min": 1,
+                        "max": 16,
+                        "step": 1,
+                        "tooltip": (
+                            "How many leading latent frames to overwrite with the start image. "
+                            "Should match hard_start_frames in LTXSoftHintLatent."
+                        ),
+                    },
+                ),
             },
         }
 
     RETURN_TYPES = ("LATENT",)
     RETURN_NAMES = ("latent",)
-    FUNCTION = "prepend_start"
+    FUNCTION = "write_start"
     CATEGORY = "WhatDreamsCost"
 
-    def prepend_start(self, hint_latent, start_image, vae):
-        hint_samples = hint_latent["samples"]  # [1, 128, hint_T, lat_h, lat_w]
+    def write_start(self, hint_latent, start_image, vae, num_frames: int):
+        hint_samples = hint_latent["samples"].clone()  # [1, 128, T, lat_h, lat_w]
         dev = hint_samples.device
+        T = hint_samples.shape[2]
         lat_h, lat_w = hint_samples.shape[3], hint_samples.shape[4]
 
-        # ── 1. Encode start frame(s) ──────────────────────────────────────────────
-        # vae.encode expects [N, H, W, C] float32 in [0, 1].
-        pixels = start_image[:, :, :, :3]  # drop alpha if present
+        # ── 1. Encode the start image ─────────────────────────────────────────────
+        pixels = start_image[:1, :, :, :3]  # take first frame, drop alpha
         start_samples = vae.encode(pixels)  # [1, 128, start_T, s_lat_h, s_lat_w]
         start_samples = start_samples.to(device=dev)
-        start_T = start_samples.shape[2]
         s_lat_h, s_lat_w = start_samples.shape[3], start_samples.shape[4]
 
         if (s_lat_h, s_lat_w) != (lat_h, lat_w):
             log.warning(
                 "[LTXPrependStartFrame] Start image encodes to latent %dx%d but hint "
-                "latent is %dx%d. Resize the start image to match the point cloud "
-                "render resolution before connecting.",
+                "latent is %dx%d. Resize the start image to the same resolution as the "
+                "point cloud renders before connecting.",
                 s_lat_w, s_lat_h, lat_w, lat_h,
             )
-            # Best-effort bilinear resize so the node doesn't hard-crash.
             import torch.nn.functional as F
             start_samples = F.interpolate(
-                start_samples.view(1, -1, s_lat_h, s_lat_w),
-                size=(lat_h, lat_w),
-                mode="bilinear",
+                start_samples.squeeze(0),  # [128, start_T, s_lat_h, s_lat_w]
+                size=(start_samples.shape[2], lat_h, lat_w),
+                mode="trilinear",
                 align_corners=False,
-            ).view(1, start_samples.shape[1], start_T, lat_h, lat_w)
+            ).unsqueeze(0)
 
-        # ── 2. Build combined samples ─────────────────────────────────────────────
-        combined_samples = torch.cat([start_samples, hint_samples], dim=2)
+        # ── 2. Overwrite the first num_frames latent frames ───────────────────────
+        n = min(num_frames, T)
+        # start_samples may only have 1 latent frame; repeat to fill n if needed.
+        start_content = start_samples[:, :, :1, :, :].expand(-1, -1, n, -1, -1)
+        hint_samples[:, :, :n, :, :] = start_content
 
-        # ── 3. Build combined noise_mask ──────────────────────────────────────────
-        # Retrieve hint mask; default to all-ones (fully generate) if absent.
+        # ── 3. Build / update noise_mask ─────────────────────────────────────────
         if "noise_mask" in hint_latent:
-            hint_mask = hint_latent["noise_mask"].to(device=dev)
+            noise_mask = hint_latent["noise_mask"].clone().to(device=dev)
         else:
-            hint_T = hint_samples.shape[2]
-            hint_mask = torch.ones([1, 1, hint_T, lat_h, lat_w], dtype=torch.float32, device=dev)
+            noise_mask = torch.ones([1, 1, T, lat_h, lat_w], dtype=torch.float32, device=dev)
 
-        # Expand broadcast dims so cat on T-dim works regardless of hint_mask shape.
-        hint_mask = hint_mask.expand(-1, -1, -1, lat_h, lat_w).contiguous()
-
-        start_mask = torch.zeros([1, 1, start_T, lat_h, lat_w], dtype=torch.float32, device=dev)
-
-        noise_mask = torch.cat([start_mask, hint_mask], dim=2)
+        # Expand broadcast dims so we can write spatial slices safely.
+        noise_mask = noise_mask.expand(-1, -1, -1, lat_h, lat_w).contiguous()
+        noise_mask[:, :, :n, :, :] = 0.0  # hard-anchor the overwritten frames
 
         log.info(
-            "[LTXPrependStartFrame] Prepended %d locked start frame(s) + %d hint frames "
-            "= %d total latent frames, spatial latent %dx%d.",
-            start_T, hint_samples.shape[2], combined_samples.shape[2], lat_w, lat_h,
+            "[LTXPrependStartFrame] Overwrote %d leading latent frame(s) with start image "
+            "(T unchanged = %d).",
+            n, T,
         )
 
-        return ({"samples": combined_samples, "noise_mask": noise_mask},)
+        return ({"samples": hint_samples, "noise_mask": noise_mask},)

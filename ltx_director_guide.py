@@ -1,8 +1,11 @@
 from comfy_extras.nodes_lt import LTXVAddGuide
+import logging
 import torch
 import comfy.utils
 from comfy_api.latest import io
 from .ltx_director import GuideData
+
+log = logging.getLogger(__name__)
 
 
 class LTXDirectorGuide(LTXVAddGuide):
@@ -77,6 +80,21 @@ class LTXDirectorGuide(LTXVAddGuide):
             strength = strengths[idx] if idx < len(strengths) else 1.0
 
             image_1, t = cls.encode(vae, latent_width, latent_height, img_tensor, scale_factors)
+            guide_latent_frames = t.shape[2]
+
+            # Clamp f_idx so the guide always lands within the latent.
+            # Needed when e.g. an end-frame anchor sits at exactly durationFrames and the
+            # pixel count isn't a clean multiple of the temporal stride.
+            time_scale_factor = scale_factors[0]
+            max_f_idx = (latent_length - guide_latent_frames) * time_scale_factor
+            if f_idx > max_f_idx:
+                log.warning(
+                    "[LTXDirectorGuide] Guide %d: pixel frame %d exceeds latent extent "
+                    "(max valid: %d); clamping to last valid position.",
+                    idx + 1, f_idx, max_f_idx,
+                )
+                f_idx = max_f_idx
+
             frame_idx, latent_idx = cls.get_latent_index(positive, latent_length, len(image_1), f_idx, scale_factors)
 
             assert latent_idx + t.shape[2] <= latent_length, (

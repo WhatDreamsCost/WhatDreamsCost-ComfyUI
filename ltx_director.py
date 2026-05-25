@@ -389,8 +389,8 @@ class LTXDirector(io.ComfyNode):
                 io.Model.Input("model"),
                 io.Clip.Input("clip"),
                 io.Vae.Input("audio_vae", optional=True, tooltip="Optional. Connect an Audio VAE to generate audio latents."),
-                io.Latent.Input("optional_latent", optional=True, tooltip="Optional. Connect a prior-generation video latent as a prefix (e.g. for seamless continuation). Prior frames are locked (noise_mask=0); new frames are generated after them."),
-                io.Latent.Input("optional_audio_latent", optional=True, tooltip="Optional. Connect a pre-built audio latent directly (e.g. from LTX Audio Mask for audio continuation). Bypasses internal audio latent generation."),
+                io.Latent.Input("extend_from_video_latent", optional=True, tooltip="Connect the video latent output of the LTX Audio Video Mask node to seamlessly extend a clip. The locked X-second region is preserved; LTX Director conditions only the new Y-second extension."),
+                io.Latent.Input("extend_from_audio_latent", optional=True, tooltip="Connect the audio latent output of the LTX Audio Video Mask node alongside extend_from_video_latent. The locked X-second audio is preserved; new audio is generated for the extension region."),
                 io.String.Input(
                     "global_prompt", multiline=True, default="",
                     tooltip="Conditions the entire video. Anchors persistent characters, objects, and scene context.",
@@ -475,21 +475,21 @@ class LTXDirector(io.ComfyNode):
                 timeline_data, local_prompts, segment_lengths, guide_strength="", epsilon=1e-3,
                 frame_rate=24, display_mode="seconds",
                 custom_width=768, custom_height=512, resize_method="maintain aspect ratio",
-                divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
-                optional_audio_latent=None, use_custom_audio=False) -> io.NodeOutput:
+                divisible_by=32, img_compression=0, audio_vae=None, extend_from_video_latent=None,
+                extend_from_audio_latent=None, use_custom_audio=False) -> io.NodeOutput:
 
         # Pre-compute how many prior latent frames are locked/prepended.
         # Used to offset guide_data insert_frames so LTXDirectorGuide places keyframes
         # in the new-segment region, not the locked/prior region.
-        # If optional_latent already has a noise_mask (combined X+Y latent), count the
+        # If extend_from_video_latent already has a noise_mask (combined X+Y latent), count the
         # leading locked frames (mask ≈ 0) rather than the full T.
-        if optional_latent is not None:
-            if "noise_mask" in optional_latent:
-                _hint_mask = optional_latent["noise_mask"]
+        if extend_from_video_latent is not None:
+            if "noise_mask" in extend_from_video_latent:
+                _hint_mask = extend_from_video_latent["noise_mask"]
                 _hint_mask_t = _hint_mask[0, 0, :, 0, 0] if _hint_mask.ndim == 5 else _hint_mask[0, 0, :, 0]
                 prior_latent_t_hint = int((_hint_mask_t < 0.5).sum().item())
             else:
-                prior_latent_t_hint = optional_latent["samples"].shape[2]
+                prior_latent_t_hint = extend_from_video_latent["samples"].shape[2]
         else:
             prior_latent_t_hint = 0
         if prior_latent_t_hint > 0:
@@ -592,7 +592,7 @@ class LTXDirector(io.ComfyNode):
         new_latent_t = ((ltxv_length - 1) // 8) + 1
         dev = comfy.model_management.intermediate_device()
 
-        if optional_latent is None:
+        if extend_from_video_latent is None:
             prior_latent_t = 0
             latent_w = max(32, (derived_w // 32) * 32)
             latent_h = max(32, (derived_h // 32) * 32)
@@ -606,12 +606,12 @@ class LTXDirector(io.ComfyNode):
                 latent_w, latent_h, ltxv_length, new_latent_t,
             )
         else:
-            prior_samples = optional_latent["samples"]
-            if "noise_mask" in optional_latent:
+            prior_samples = extend_from_video_latent["samples"]
+            if "noise_mask" in extend_from_video_latent:
                 # Combined latent (e.g. from LTX Audio Video Mask): X seconds locked + Y seconds
                 # to generate. The mask already encodes which frames are locked (0) vs. free (1).
                 # Use as-is; derive prior_latent_t from the leading locked region.
-                _comb_mask = optional_latent["noise_mask"]
+                _comb_mask = extend_from_video_latent["noise_mask"]
                 _comb_mask_t = _comb_mask[0, 0, :, 0, 0] if _comb_mask.ndim == 5 else _comb_mask[0, 0, :, 0]
                 prior_latent_t = int((_comb_mask_t < 0.5).sum().item())
                 latent = {
@@ -749,18 +749,18 @@ class LTXDirector(io.ComfyNode):
 
         # If prior audio was provided, either use it as-is (combined X+Y latent with noise_mask)
         # or prepend it to the new-segment audio latent (raw prior-prefix without noise_mask).
-        if optional_audio_latent is not None:
-            if "noise_mask" in optional_audio_latent:
+        if extend_from_audio_latent is not None:
+            if "noise_mask" in extend_from_audio_latent:
                 # Combined audio latent (X locked + Y to generate) — use as-is.
-                audio_latent = optional_audio_latent
+                audio_latent = extend_from_audio_latent
                 log.info(
                     "[PromptRelay] Combined audio latent: %d total frames, used as-is.",
-                    optional_audio_latent["samples"].shape[2],
+                    extend_from_audio_latent["samples"].shape[2],
                 )
             else:
                 # Raw prior-prefix: prepend it to the new-segment audio latent.
                 # prior frames get mask=0 (conditioning), new frames keep their existing mask (or mask=1).
-                prior_a = optional_audio_latent["samples"]
+                prior_a = extend_from_audio_latent["samples"]
                 prior_audio_t = prior_a.shape[2]
                 audio_freq_dim = prior_a.shape[-1]
                 prior_a_mask = torch.zeros(

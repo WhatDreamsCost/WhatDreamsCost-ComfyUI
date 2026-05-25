@@ -1358,6 +1358,7 @@ class TimelineEditor {
   }
 
   checkResize() {
+    this.syncLayoutToNode(false);
     const viewportWidth = this.viewport.clientWidth;
     const currentScale = this.getRenderScale();
 
@@ -1394,6 +1395,33 @@ class TimelineEditor {
     this.canvas.height = targetHeight;
     this.ctx.setTransform(scale, 0, 0, scale, 0, 0);
     this.render();
+  }
+
+  syncLayoutToNode(forceRender = true) {
+    const nodeWidth = this.node?.size?.[0] || 1000;
+    const targetWidth = Math.max(300, nodeWidth - 30);
+
+    if (this.container) {
+      this.container.style.width = `${targetWidth}px`;
+      this.container.style.maxWidth = `${targetWidth}px`;
+      this.container.style.boxSizing = "border-box";
+    }
+    if (this.wrapper) {
+      this.wrapper.style.width = "100%";
+      this.wrapper.style.maxWidth = "100%";
+      this.wrapper.style.boxSizing = "border-box";
+    }
+
+    const viewportWidth = this.viewport?.clientWidth || targetWidth;
+    const canvasWidth = Math.max(viewportWidth, viewportWidth * this.zoomLevel);
+    const currentWidth = parseFloat(this.canvas?.style?.width) || 0;
+    if (viewportWidth > 0 && Math.abs(currentWidth - canvasWidth) > 1) {
+      this.canvas.style.width = `${canvasWidth}px`;
+      this.resizeCanvas(canvasWidth);
+      this._lastWidth = viewportWidth;
+      this._lastZoom = this.zoomLevel;
+      if (forceRender) this.render();
+    }
   }
 
   // Helper to map mouse events accurately regardless of canvas scaling
@@ -3821,6 +3849,9 @@ app.registerExtension({
         }
 
         const container = document.createElement("div");
+        container.style.width = "100%";
+        container.style.maxWidth = "100%";
+        container.style.boxSizing = "border-box";
         const widget = this.addDOMWidget("timeline_ui", "timeline_ui", container, {
           getValue: () => "",
           setValue: () => { },
@@ -3828,7 +3859,8 @@ app.registerExtension({
 
         widget.computeSize = function (width) {
           const canvasH = self._timelineEditor ? self._timelineEditor.canvasHeight : CANVAS_HEIGHT;
-          return [width, canvasH + 235];
+          const nodeWidth = self.size?.[0] || width || 1000;
+          return [Math.max(300, nodeWidth - 30), canvasH + 235];
         };
 
         const self = this;
@@ -3839,6 +3871,15 @@ app.registerExtension({
             console.error("[PromptRelay] timeline editor init failed:", err);
           }
         }, 0);
+      };
+
+      const onResize = nodeType.prototype.onResize;
+      nodeType.prototype.onResize = function (size) {
+        const out = onResize?.apply(this, arguments);
+        if (this._timelineEditor) {
+          requestAnimationFrame(() => this._timelineEditor?.syncLayoutToNode());
+        }
+        return out;
       };
 
       const onRemoved = nodeType.prototype.onRemoved;
@@ -3865,6 +3906,7 @@ app.registerExtension({
               Math.max(-1, this._timelineEditor.timeline.segments.length - 1)
             );
             this._timelineEditor.updateUIFromSelection();
+            this._timelineEditor.syncLayoutToNode();
             this._timelineEditor.render();
           }
         }, 0);

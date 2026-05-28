@@ -3819,18 +3819,49 @@ app.registerExtension({
             if (globalPromptWidget.element) globalPromptWidget.element.style.display = "none";
           }, 0);
         }
-
+        //----------------
         const container = document.createElement("div");
         const widget = this.addDOMWidget("timeline_ui", "timeline_ui", container, {
           getValue: () => "",
           setValue: () => { },
         });
 
+        // 1. We return the minimum so that the node can be freely compressed.
         widget.computeSize = function (width) {
           const canvasH = self._timelineEditor ? self._timelineEditor.canvasHeight : CANVAS_HEIGHT;
           return [width, canvasH + 235];
         };
 
+        // 2. Forcefully hit the DOM element styles on each frame
+        const originalDraw = widget.draw;
+        widget.draw = function(ctx, node, widget_width, y, widget_height) {
+          const canvasH = self._timelineEditor ? self._timelineEditor.canvasHeight : CANVAS_HEIGHT;
+          const minHeight = canvasH + 235;
+          
+          const remainingHeight = node.size[1] - y - 15;
+          const finalHeight = Math.max(minHeight, remainingHeight);
+
+          // HERE IT IS, THE KEY FIX: Directly changing the height of the HTML container in CSS
+          if (widget.element) {
+            widget.element.style.height = `${finalHeight}px`;
+          }
+
+          // We call the original to draw the rest
+          if (originalDraw) {
+            originalDraw.call(this, ctx, node, widget_width, y, finalHeight);
+          }
+        };
+
+        // Soft resize when dragging the frame
+        const onResize = nodeType.prototype.onResize;
+        nodeType.prototype.onResize = function (size) {
+          if (onResize) onResize.apply(this, arguments);
+          if (this._timelineEditor) {
+            this._timelineEditor.render();
+          }
+        };
+
+        //----------------
         const self = this;
         setTimeout(() => {
           try {

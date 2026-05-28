@@ -1662,7 +1662,9 @@ class TimelineEditor {
     setTimeout(() => {
       if (this.node && this.node.computeSize) {
         const sz = this.node.computeSize();
+        if (this.node.size[1] < sz[1]) {
         this.node.size[1] = sz[1];
+        }
         if (window.app && window.app.graph) {
           window.app.graph.setDirtyCanvas(true, true);
         }
@@ -2832,7 +2834,9 @@ class TimelineEditor {
     setTimeout(() => {
       if (this.node && this.node.computeSize) {
         const sz = this.node.computeSize();
-        this.node.size[1] = sz[1];
+        if (this.node.size[1] < sz[1]) {
+          this.node.size[1] = sz[1];
+        }
         if (app.graph) app.graph.setDirtyCanvas(true, true);
       }
     }, 0);

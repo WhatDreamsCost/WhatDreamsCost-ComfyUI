@@ -389,7 +389,7 @@ class LTXDirector(io.ComfyNode):
                 io.Model.Input("model"),
                 io.Clip.Input("clip"),
                 io.Vae.Input("audio_vae", optional=True, tooltip="Optional. Connect an Audio VAE to generate audio latents."),
-                io.Latent.Input("extend_from_video_latent", optional=True, tooltip="Connect the video latent output of the LTX Audio Video Mask node to seamlessly extend a clip. The locked X-second region is preserved; LTX Director conditions only the new Y-second extension."),
+                io.Latent.Input("extend_from_video_latent", optional=True, tooltip="Connect the video latent output of the LTX Audio Video Mask node to seamlessly extend a clip. Editor pixel 0 = start of the combined (locked + new) output. Place keyframes and prompt segments at their target positions in the combined timeline; items overlapping the locked region are preserved unchanged."),
                 io.Latent.Input("extend_from_audio_latent", optional=True, tooltip="Connect the audio latent output of the LTX Audio Video Mask node alongside extend_from_video_latent. The locked X-second audio is preserved; new audio is generated for the extension region."),
                 io.String.Input(
                     "global_prompt", multiline=True, default="",
@@ -478,29 +478,6 @@ class LTXDirector(io.ComfyNode):
                 divisible_by=32, img_compression=0, audio_vae=None, extend_from_video_latent=None,
                 extend_from_audio_latent=None, use_custom_audio=False) -> io.NodeOutput:
 
-        # Pre-compute how many prior latent frames are locked/prepended.
-        # Used to offset guide_data insert_frames so LTXDirectorGuide places keyframes
-        # in the new-segment region, not the locked/prior region.
-        # If extend_from_video_latent already has a noise_mask (combined X+Y latent), count the
-        # leading locked frames (mask ≈ 0) rather than the full T.
-        if extend_from_video_latent is not None:
-            if "noise_mask" in extend_from_video_latent:
-                _hint_mask = extend_from_video_latent["noise_mask"]
-                _hint_mask_t = _hint_mask[0, 0, :, 0, 0] if _hint_mask.ndim == 5 else _hint_mask[0, 0, :, 0]
-                prior_latent_t_hint = int((_hint_mask_t < 0.5).sum().item())
-            else:
-                prior_latent_t_hint = extend_from_video_latent["samples"].shape[2]
-        else:
-            prior_latent_t_hint = 0
-        if prior_latent_t_hint > 0:
-            try:
-                _, _, _temporal_stride = detect_model_type(model)
-            except Exception:
-                _temporal_stride = 8  # LTX default
-            _guide_frame_offset = prior_latent_t_hint * _temporal_stride
-        else:
-            _guide_frame_offset = 0
-
         # --- Build guide_data from image segments FIRST (to derive output dimensions) ---
         guide_data = {"images": [], "insert_frames": [], "strengths": [], "frame_rate": frame_rate}
         derived_w, derived_h = custom_width, custom_height
@@ -578,15 +555,6 @@ class LTXDirector(io.ComfyNode):
         except Exception as e:
             log.warning("[PromptRelay] Could not build guide_data: %s", e)
 
-        # Shift all guide keyframe positions by the prior-frame pixel offset so that
-        # LTXDirectorGuide maps them to the correct region of the combined latent.
-        if _guide_frame_offset > 0 and guide_data["insert_frames"]:
-            guide_data["insert_frames"] = [f + _guide_frame_offset for f in guide_data["insert_frames"]]
-            log.info(
-                "[PromptRelay] Guide insert_frames shifted by %d px (%d prior latent frames).",
-                _guide_frame_offset, prior_latent_t_hint,
-            )
-
         # --- Build LTXV video latent ---
         ltxv_length = duration_frames + 1
         new_latent_t = ((ltxv_length - 1) // 8) + 1
@@ -648,9 +616,26 @@ class LTXDirector(io.ComfyNode):
                     prior_latent_t, new_latent_t, prior_latent_t + new_latent_t, lat_w, lat_h,
                 )
 
+        # Warn for keyframes that fall inside the locked prior region — they will be no-ops
+        # (the noise_mask=0 there preserves the prior latent regardless of guide influence).
+        # LTX VAE is causally asymmetric: latent frame 0 → pixel 0; latent frame N≥1 → pixel 1 + (N-1)*8.
+        if prior_latent_t > 0 and guide_data["insert_frames"]:
+            try:
+                _, _, _temporal_stride = detect_model_type(model)
+            except Exception:
+                _temporal_stride = 8
+            prior_pixel_count = 1 + (prior_latent_t - 1) * _temporal_stride if prior_latent_t >= 1 else 0
+            for _idx, _f in enumerate(guide_data["insert_frames"]):
+                if _f < prior_pixel_count:
+                    log.warning(
+                        "[LTX Director] Keyframe %d at pixel %d is inside the locked prior region "
+                        "(< pixel %d); it will be a no-op (prior content is preserved).",
+                        _idx + 1, _f, prior_pixel_count,
+                    )
+
         patched, conditioning = _encode_relay(
             model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon,
-            frame_offset=prior_latent_t,
+            frame_offset=0,
         )
 
         # --- Build Audio Output ---

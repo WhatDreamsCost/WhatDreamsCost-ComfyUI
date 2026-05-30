@@ -25,15 +25,6 @@ class LTXDirectorGuide(LTXVAddGuide):
                 io.Vae.Input("vae", tooltip="Video VAE used to encode the guide images."),
                 io.Latent.Input("latent", tooltip="Video latent — guides are inserted into this latent."),
                 GuideData.Input("guide_data", tooltip="Guide data produced by Prompt Relay Encode (Timeline)."),
-                io.Int.Input(
-                    "falloff_latent_frames",
-                    default=1,
-                    min=0,
-                    max=8,
-                    step=1,
-                    optional=True,
-                    tooltip="How many neighboring latent frames on each side receive reduced guide strength. 0 disables falloff.",
-                ),
                 io.Float.Input("scale_by", default=1.0, min=0.01, max=8.0, step=0.01, tooltip="Scale the latent by this factor."),
                 io.Combo.Input("upscale_method", options=["nearest-exact", "bilinear", "area", "bicubic", "bislerp"], default="bicubic", tooltip="Method used to upscale/downscale the latent."),
             ],
@@ -45,7 +36,7 @@ class LTXDirectorGuide(LTXVAddGuide):
         )
 
     @classmethod
-    def execute(cls, positive, negative, vae, latent, guide_data, falloff_latent_frames=2, scale_by=1.0, upscale_method="bicubic") -> io.NodeOutput:
+    def execute(cls, positive, negative, vae, latent, guide_data, scale_by=1.0, upscale_method="bicubic") -> io.NodeOutput:
         scale_factors = vae.downscale_index_formula
 
         # Clone latents to avoid mutating upstream nodes
@@ -85,25 +76,6 @@ class LTXDirectorGuide(LTXVAddGuide):
         strengths = guide_data.get("strengths", [])
         time_scale_factor = scale_factors[0]
 
-        def apply_guide(pixel_frame_idx: int, image_1, t: torch.Tensor, guide_strength: float):
-            nonlocal positive, negative, latent_image, noise_mask
-            guide_latent_frames = t.shape[2]
-
-            max_f_idx = (latent_length - guide_latent_frames) * time_scale_factor
-            if pixel_frame_idx > max_f_idx:
-                pixel_frame_idx = max_f_idx
-
-            frame_idx, latent_idx = cls.get_latent_index(
-                positive, latent_length, len(image_1), pixel_frame_idx, scale_factors
-            )
-
-            if latent_idx + t.shape[2] > latent_length:
-                return
-
-            positive, negative, latent_image, noise_mask = cls.append_keyframe(
-                positive, negative, frame_idx, latent_image, noise_mask, t, guide_strength, scale_factors,
-            )
-
         for idx, img_tensor in enumerate(images):
             f_idx = insert_frames[idx] if idx < len(insert_frames) else 0
             strength = strengths[idx] if idx < len(strengths) else 1.0
@@ -120,23 +92,15 @@ class LTXDirectorGuide(LTXVAddGuide):
                 )
                 f_idx = max_f_idx
 
-            apply_guide(f_idx, image_1, t, strength)
+            frame_idx, latent_idx = cls.get_latent_index(
+                positive, latent_length, len(image_1), f_idx, scale_factors
+            )
 
-            # Apply predictable linear temporal falloff on neighboring latent frames.
-            # Example with falloff=2 and strength=1.0:
-            # center=1.00, neighbors at +/-1 latent frame=0.67, +/-2=0.33
-            falloff = max(0, int(falloff_latent_frames))
-            if falloff > 0 and strength > 0:
-                for d in range(1, falloff + 1):
-                    ramp_strength = strength * (1.0 - (d / (falloff + 1)))
-                    if ramp_strength <= 0:
-                        continue
-                    pixel_offset = d * time_scale_factor
-                    left_idx = f_idx - pixel_offset
-                    right_idx = f_idx + pixel_offset
-                    if left_idx >= 0:
-                        apply_guide(left_idx, image_1, t, ramp_strength)
-                    if right_idx >= 0:
-                        apply_guide(right_idx, image_1, t, ramp_strength)
+            if latent_idx + t.shape[2] > latent_length:
+                continue
+
+            positive, negative, latent_image, noise_mask = cls.append_keyframe(
+                positive, negative, frame_idx, latent_image, noise_mask, t, strength, scale_factors,
+            )
 
         return io.NodeOutput(positive, negative, {"samples": latent_image, "noise_mask": noise_mask})

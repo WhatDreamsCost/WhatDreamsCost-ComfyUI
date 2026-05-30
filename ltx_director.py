@@ -616,22 +616,25 @@ class LTXDirector(io.ComfyNode):
                     prior_latent_t, new_latent_t, prior_latent_t + new_latent_t, lat_w, lat_h,
                 )
 
-        # Warn for keyframes that fall inside the locked prior region — they will be no-ops
-        # (the noise_mask=0 there preserves the prior latent regardless of guide influence).
-        # LTX VAE is causally asymmetric: latent frame 0 → pixel 0; latent frame N≥1 → pixel 1 + (N-1)*8.
+        # Shift keyframe insert_frames into the new region so a keyframe placed at editor pixel 0
+        # appears at the first frame of the NEW region (otherwise it lands in the locked prior
+        # and is a no-op). LTX VAE is causally asymmetric: latent frame 0 → pixel 0; latent frame
+        # N≥1 → pixel 1 + (N-1)*8. So for N prior latent frames, the first new pixel is at
+        # 1 + (N-1)*8 (this lands exactly on the first new frame's RoPE slot — the keyframe and
+        # the first new frame share a RoPE position, so the keyframe directly overrides it).
+        # NOTE: segments are NOT shifted (frame_offset=0 below) — that shift was suppressing
+        # ~half the prompts by pushing their midpoints outside the valid query range.
         if prior_latent_t > 0 and guide_data["insert_frames"]:
             try:
                 _, _, _temporal_stride = detect_model_type(model)
             except Exception:
                 _temporal_stride = 8
-            prior_pixel_count = 1 + (prior_latent_t - 1) * _temporal_stride if prior_latent_t >= 1 else 0
-            for _idx, _f in enumerate(guide_data["insert_frames"]):
-                if _f < prior_pixel_count:
-                    log.warning(
-                        "[LTX Director] Keyframe %d at pixel %d is inside the locked prior region "
-                        "(< pixel %d); it will be a no-op (prior content is preserved).",
-                        _idx + 1, _f, prior_pixel_count,
-                    )
+            _guide_frame_offset = 1 + (prior_latent_t - 1) * _temporal_stride
+            guide_data["insert_frames"] = [f + _guide_frame_offset for f in guide_data["insert_frames"]]
+            log.info(
+                "[LTX Director] Guide insert_frames shifted by %d px (%d prior latent frames; first new pixel).",
+                _guide_frame_offset, prior_latent_t,
+            )
 
         patched, conditioning = _encode_relay(
             model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon,

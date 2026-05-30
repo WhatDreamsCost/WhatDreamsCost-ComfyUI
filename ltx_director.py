@@ -578,22 +578,36 @@ class LTXDirector(io.ComfyNode):
             if "noise_mask" in extend_from_video_latent:
                 # Combined latent (e.g. from LTX Audio Video Mask): X seconds locked + Y seconds
                 # to generate. The mask encodes which frames are locked (0) vs. free (1).
-                # We HARDEN the mask to exact 0/1 here — any fractional values upstream (from
-                # interpolation/blur/etc.) cause partial denoising of the locked region, which
-                # looks like the locked frames coming out noisy in the final output.
+                # Keep upstream mask values as-is; hard-thresholding to 0/1 over-constrains
+                # motion when upstream nodes intentionally emit soft values.
                 _comb_mask = extend_from_video_latent["noise_mask"].to(device=dev).float()
                 _raw_min = float(_comb_mask.min().item())
                 _raw_max = float(_comb_mask.max().item())
-                _hardened = (_comb_mask >= 0.5).float()
-                _comb_mask_t = _hardened[0, 0, :, 0, 0] if _hardened.ndim == 5 else _hardened[0, 0, :, 0]
-                prior_latent_t = int((_comb_mask_t < 0.5).sum().item())
+
+                # Derive prior length from the LEADING locked prefix only.
+                # Counting all frames below threshold can misclassify later soft/noisy frames
+                # as "prior", which shifts prompts/guides too far forward.
+                if _comb_mask.ndim == 5:
+                    _comb_mask_t = _comb_mask[0, 0].reshape(_comb_mask.shape[2], -1).mean(dim=1)
+                elif _comb_mask.ndim == 4:
+                    _comb_mask_t = _comb_mask[0, 0].reshape(_comb_mask.shape[2], -1).mean(dim=1)
+                else:
+                    _comb_mask_t = _comb_mask[0, 0].reshape(_comb_mask.shape[2])
+
+                prior_latent_t = 0
+                for _v in _comb_mask_t:
+                    if float(_v.item()) <= 0.05:
+                        prior_latent_t += 1
+                    else:
+                        break
+
                 latent = {
                     "samples": prior_samples.clone().to(device=dev),
-                    "noise_mask": _hardened,
+                    "noise_mask": _comb_mask,
                 }
                 log.info(
                     "[PromptRelay] Combined video latent: %d total frames (%d locked + %d generate), "
-                    "spatial: latent %dx%d | mask raw min/max=%.4f/%.4f → hardened to 0/1",
+                    "spatial: latent %dx%d | mask raw min/max=%.4f/%.4f",
                     prior_samples.shape[2], prior_latent_t,
                     prior_samples.shape[2] - prior_latent_t,
                     prior_samples.shape[4], prior_samples.shape[3],

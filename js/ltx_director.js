@@ -1502,6 +1502,7 @@ class TimelineEditor {
               length: constrainedLength,
               prompt: "",
               type: "image",
+              guideStrength: 0.7,
               imageFile: imageFile,
               imageB64: imgUrl
             };
@@ -1757,7 +1758,7 @@ class TimelineEditor {
         this.promptInput.disabled = false;
 
         const isImage = seg.type !== "text";
-        const strength = isImage ? (seg.guideStrength ?? 1.0) : 1.0;
+        const strength = isImage ? (seg.guideStrength ?? 0.7) : 1.0;
         this.strengthValue.value = strength.toFixed(2);
         this.strengthValue.disabled = !isImage;
       } else {

@@ -458,6 +458,10 @@ class LTXDirector(io.ComfyNode):
                     "img_compression", default=18, min=0, max=100, step=1, optional=True,
                     tooltip="H.264 CRF compression to apply to each guide image. 0 = no compression, higher = more artefacts.",
                 ),
+                io.Float.Input(
+                    "prior_strength", default=1.0, min=0.0, max=1.0, step=0.01, optional=True,
+                    tooltip="How strongly the prior video latent locks the new region's motion. 1.0 = hard lock (mask=0, prior fully preserved — can make Y motion rigid because the model inherits the prior's motion pattern). 0.7 = soft hint (mask=0.3, prior is a suggestion, Y has motion freedom). 0.0 = no lock (mask=1, prior region is re-denoised). Only applies when extend_from_video_latent is connected.",
+                ),
             ],
             outputs=[
                 io.Model.Output(display_name="model"),
@@ -476,7 +480,7 @@ class LTXDirector(io.ComfyNode):
                 frame_rate=24, display_mode="seconds",
                 custom_width=768, custom_height=512, resize_method="maintain aspect ratio",
                 divisible_by=32, img_compression=0, audio_vae=None, extend_from_video_latent=None,
-                extend_from_audio_latent=None, use_custom_audio=False) -> io.NodeOutput:
+                extend_from_audio_latent=None, use_custom_audio=False, prior_strength=1.0) -> io.NodeOutput:
 
         # --- Build guide_data from image segments FIRST (to derive output dimensions) ---
         guide_data = {"images": [], "insert_frames": [], "strengths": [], "frame_rate": frame_rate}
@@ -608,13 +612,18 @@ class LTXDirector(io.ComfyNode):
                 if prior_latent_t < total_t:
                     strict_samples[:, :, prior_latent_t:, :, :] = 0.0
 
+                # prior_strength controls how strongly the prior region locks Y's motion.
+                # 1.0 → mask=0 (hard lock, prior fully preserved, can rigidify Y motion).
+                # 0.7 → mask=0.3 (soft hint, the model can partially repaint the prior).
+                # 0.0 → mask=1 (no lock; prior region gets re-denoised).
+                _prior_mask_value = max(0.0, min(1.0, 1.0 - float(prior_strength)))
                 strict_mask = torch.ones_like(_comb_mask, dtype=torch.float32, device=dev)
                 if strict_mask.ndim == 5:
-                    strict_mask[:, :, :prior_latent_t, :, :] = 0.0
+                    strict_mask[:, :, :prior_latent_t, :, :] = _prior_mask_value
                 elif strict_mask.ndim == 4:
-                    strict_mask[:, :, :prior_latent_t, :] = 0.0
+                    strict_mask[:, :, :prior_latent_t, :] = _prior_mask_value
                 else:
-                    strict_mask[:, :, :prior_latent_t] = 0.0
+                    strict_mask[:, :, :prior_latent_t] = _prior_mask_value
 
                 latent = {
                     "samples": strict_samples,
@@ -622,11 +631,11 @@ class LTXDirector(io.ComfyNode):
                 }
                 log.info(
                     "[PromptRelay] Combined video latent: %d total frames (%d locked + %d generate), "
-                    "spatial: latent %dx%d | mask raw min/max=%.4f/%.4f → strict prefix mask",
+                    "spatial: latent %dx%d | mask raw min/max=%.4f/%.4f → strict prefix mask=%.2f (prior_strength=%.2f)",
                     prior_samples.shape[2], prior_latent_t,
                     prior_samples.shape[2] - prior_latent_t,
                     prior_samples.shape[4], prior_samples.shape[3],
-                    _raw_min, _raw_max,
+                    _raw_min, _raw_max, _prior_mask_value, float(prior_strength),
                 )
             else:
                 # Raw prior-frame prefix: concatenate with new zero frames to generate.
@@ -638,17 +647,19 @@ class LTXDirector(io.ComfyNode):
                     device=dev,
                 )
                 combined_samples = torch.cat([prior_samples, new_samples], dim=2)
-                # noise_mask: 0=conditioning (prior frames), 1=generate (new frames)
-                # Shape [1, 1, T, 1, 1] broadcasts over channels, H, W
+                # noise_mask: prior region uses (1 - prior_strength) so the user can soften
+                # the prior's motion lock-in. 0=conditioning (hard lock), 1=generate (full denoise).
+                _prior_mask_value = max(0.0, min(1.0, 1.0 - float(prior_strength)))
                 noise_mask = torch.cat([
-                    torch.zeros([1, 1, prior_latent_t, 1, 1], dtype=torch.float32, device=dev),
+                    torch.full([1, 1, prior_latent_t, 1, 1], _prior_mask_value, dtype=torch.float32, device=dev),
                     torch.ones([1, 1, new_latent_t, 1, 1], dtype=torch.float32, device=dev),
                 ], dim=2)
                 latent = {"samples": combined_samples, "noise_mask": noise_mask}
                 log.info(
                     "[PromptRelay] Prior video latent: %d frames prepended; new: %d frames; "
-                    "total: %d, spatial: latent %dx%d",
+                    "total: %d, spatial: latent %dx%d, prior_mask=%.2f (prior_strength=%.2f)",
                     prior_latent_t, new_latent_t, prior_latent_t + new_latent_t, lat_w, lat_h,
+                    _prior_mask_value, float(prior_strength),
                 )
 
         # Shift keyframe insert_frames into the new region so timeline pixel 0 lands at

@@ -577,9 +577,9 @@ class LTXDirector(io.ComfyNode):
             prior_samples = extend_from_video_latent["samples"]
             if "noise_mask" in extend_from_video_latent:
                 # Combined latent (e.g. from LTX Audio Video Mask): X seconds locked + Y seconds
-                # to generate. The mask encodes which frames are locked (0) vs. free (1).
-                # Keep upstream mask values as-is; hard-thresholding to 0/1 over-constrains
-                # motion when upstream nodes intentionally emit soft values.
+                # to generate. Use STRICT prefix conditioning: preserve only the leading
+                # locked region and clear the rest so upstream video latent content cannot
+                # leak into the new region generation.
                 _comb_mask = extend_from_video_latent["noise_mask"].to(device=dev).float()
                 _raw_min = float(_comb_mask.min().item())
                 _raw_max = float(_comb_mask.max().item())
@@ -601,13 +601,28 @@ class LTXDirector(io.ComfyNode):
                     else:
                         break
 
+                total_t = prior_samples.shape[2]
+                prior_latent_t = max(0, min(prior_latent_t, total_t))
+
+                strict_samples = prior_samples.clone().to(device=dev)
+                if prior_latent_t < total_t:
+                    strict_samples[:, :, prior_latent_t:, :, :] = 0.0
+
+                strict_mask = torch.ones_like(_comb_mask, dtype=torch.float32, device=dev)
+                if strict_mask.ndim == 5:
+                    strict_mask[:, :, :prior_latent_t, :, :] = 0.0
+                elif strict_mask.ndim == 4:
+                    strict_mask[:, :, :prior_latent_t, :] = 0.0
+                else:
+                    strict_mask[:, :, :prior_latent_t] = 0.0
+
                 latent = {
-                    "samples": prior_samples.clone().to(device=dev),
-                    "noise_mask": _comb_mask,
+                    "samples": strict_samples,
+                    "noise_mask": strict_mask,
                 }
                 log.info(
                     "[PromptRelay] Combined video latent: %d total frames (%d locked + %d generate), "
-                    "spatial: latent %dx%d | mask raw min/max=%.4f/%.4f",
+                    "spatial: latent %dx%d | mask raw min/max=%.4f/%.4f → strict prefix mask",
                     prior_samples.shape[2], prior_latent_t,
                     prior_samples.shape[2] - prior_latent_t,
                     prior_samples.shape[4], prior_samples.shape[3],

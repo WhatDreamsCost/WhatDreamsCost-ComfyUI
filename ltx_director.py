@@ -622,8 +622,6 @@ class LTXDirector(io.ComfyNode):
         # N≥1 → pixel 1 + (N-1)*8. So for N prior latent frames, the first new pixel is at
         # 1 + (N-1)*8 (this lands exactly on the first new frame's RoPE slot — the keyframe and
         # the first new frame share a RoPE position, so the keyframe directly overrides it).
-        # NOTE: segments are NOT shifted (frame_offset=0 below) — that shift was suppressing
-        # ~half the prompts by pushing their midpoints outside the valid query range.
         if prior_latent_t > 0 and guide_data["insert_frames"]:
             try:
                 _, _, _temporal_stride = detect_model_type(model)
@@ -636,9 +634,14 @@ class LTXDirector(io.ComfyNode):
                 _guide_frame_offset, prior_latent_t,
             )
 
+        # Segments span the NEW region only (frame_offset = prior_latent_t in latent frames). The
+        # editor's segment_lengths describe the Y region; build_segments starts frame_cursor at
+        # prior_latent_t so midpoints land in latent indices [prior_latent_t, total_latent_frames).
+        # Setting frame_offset=0 here would place segments mostly inside the locked X region
+        # (no-op via mask=0), starving the actual new region of prompt guidance.
         patched, conditioning = _encode_relay(
             model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon,
-            frame_offset=0,
+            frame_offset=prior_latent_t,
         )
 
         # --- Build Audio Output ---

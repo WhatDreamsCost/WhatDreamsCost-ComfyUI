@@ -3489,12 +3489,21 @@ class TimelineEditor {
     // --- Global Prompt Toggle ---
     const globalPromptWidget = this.node.widgets?.find(w => w.name === "global_prompt");
     if (globalPromptWidget) {
+      // Ensure the node's properties object exists in LiteGraph for serialization
+      if (!this.node.properties) this.node.properties = {};
+
       const cb = document.createElement("input");
       cb.type = "checkbox";
-      cb.checked = !(globalPromptWidget.options && globalPromptWidget.options.hidden);
-      cb.style.cursor = "pointer";
-      cb.addEventListener("change", () => {
-        const isVisible = cb.checked;
+      
+      // READ STATE: Check persistence layer first; fallback to widget visibility state if undefined
+      if (this.node.properties["use_global_prompt"] !== undefined) {
+        cb.checked = this.node.properties["use_global_prompt"];
+      } else {
+        cb.checked = !(globalPromptWidget.options && globalPromptWidget.options.hidden);
+      }
+
+      // Helper function to dynamically update the visibility and bounds of the text widget
+      const applyGlobalPromptState = (isVisible) => {
         if (!globalPromptWidget.options) globalPromptWidget.options = {};
         globalPromptWidget.options.hidden = !isVisible;
 
@@ -3507,6 +3516,19 @@ class TimelineEditor {
           globalPromptWidget.hidden = true;
           if (globalPromptWidget.element) globalPromptWidget.element.style.display = "none";
         }
+      };
+
+      // INITIAL REFRESH: Apply serialized state immediately upon workflow initialization or tab switching
+      applyGlobalPromptState(cb.checked);
+
+      cb.style.cursor = "pointer";
+      cb.addEventListener("change", () => {
+        const isVisible = cb.checked;
+        
+        // WRITE STATE: Persist layout state to internal node properties to survive canvas redraws/workflow switches
+        this.node.properties["use_global_prompt"] = isVisible;
+        
+        applyGlobalPromptState(isVisible);
 
         // Force refresh via display mode double-toggle trick
         if (this.displayModeWidget) {
@@ -3516,6 +3538,11 @@ class TimelineEditor {
           if (this.displayModeWidget.callback) this.displayModeWidget.callback(otherVal);
           this.displayModeWidget.value = origVal;
           if (this.displayModeWidget.callback) this.displayModeWidget.callback(origVal);
+        }
+
+        // Notify ComfyUI that the workflow state has changed to trigger an auto-save/cache update
+        if (window.app && window.app.graph) {
+          window.app.graph.setDirtyCanvas(true, true);
         }
       });
       menu.appendChild(this._makeSettingRow("Use Global Prompt", cb));
@@ -3790,6 +3817,9 @@ app.registerExtension({
       nodeType.prototype.onNodeCreated = function () {
         if (onNodeCreated) onNodeCreated.apply(this, arguments);
 
+        // Ensure serialization object exists
+        if (!this.properties) this.properties = {};
+
         for (const [name, def] of APPENDED_WIDGET_DEFAULTS) {
           if (!this.widgets?.find(w => w.name === name)) {
             this.addWidget("string", name, def, () => { });
@@ -3808,16 +3838,22 @@ app.registerExtension({
           compWidget.value = 18;
         }
 
-        // Hide global prompt by default on creation without destroying its DOM element
+        // Handle initialization of global prompt visibility based on stored property state
         const globalPromptWidget = this.widgets?.find(w => w.name === "global_prompt");
         if (globalPromptWidget) {
+          // Read persistent property, default to false (hidden) if not present yet
+          const isVisible = this.properties["use_global_prompt"] || false;
+          
           if (!globalPromptWidget.options) globalPromptWidget.options = {};
-          globalPromptWidget.options.hidden = true;
-          globalPromptWidget.hidden = true;
-          globalPromptWidget.computeSize = () => [0, 0];
-          setTimeout(() => {
-            if (globalPromptWidget.element) globalPromptWidget.element.style.display = "none";
-          }, 0);
+          globalPromptWidget.options.hidden = !isVisible;
+          globalPromptWidget.hidden = !isVisible;
+          
+          if (!isVisible) {
+            globalPromptWidget.computeSize = () => [0, 0];
+            setTimeout(() => {
+              if (globalPromptWidget.element) globalPromptWidget.element.style.display = "none";
+            }, 0);
+          }
         }
 
         const container = document.createElement("div");
@@ -3865,7 +3901,34 @@ app.registerExtension({
               Math.max(-1, this._timelineEditor.timeline.segments.length - 1)
             );
             this._timelineEditor.updateUIFromSelection();
+            
+            // --- CONFIGURE INITIALIZATION FIX ---
+            // Re-apply the stored layout state when reloading or switching workflow files
+            if (this.properties && this.properties["use_global_prompt"] !== undefined) {
+              const isVisible = this.properties["use_global_prompt"];
+              const globalPromptWidget = this.widgets?.find(w => w.name === "global_prompt");
+              
+              if (globalPromptWidget) {
+                if (!globalPromptWidget.options) globalPromptWidget.options = {};
+                globalPromptWidget.options.hidden = !isVisible;
+                globalPromptWidget.hidden = !isVisible;
+
+                if (isVisible) {
+                  delete globalPromptWidget.computeSize;
+                  if (globalPromptWidget.element) globalPromptWidget.element.style.display = "";
+                } else {
+                  globalPromptWidget.computeSize = () => [0, 0];
+                  if (globalPromptWidget.element) globalPromptWidget.element.style.display = "none";
+                }
+              }
+            }
+            
             this._timelineEditor.render();
+            
+            // Redraw canvas context to enforce proper geometry positioning of elements
+            if (this.setDirtyCanvas) {
+              this.setDirtyCanvas(true, true);
+            }
           }
         }, 0);
         return out;

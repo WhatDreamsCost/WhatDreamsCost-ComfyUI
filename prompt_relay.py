@@ -61,12 +61,26 @@ def create_mask_fn(q_token_idx, fallback_tokens_per_frame, latent_frames):
         if Lk == video_lq or Lk < max_token_idx:
             return None
 
-        mode = "video" if Lq == video_lq else "scaled"
+        has_appended_guide_queries = Lq > video_lq and (Lq - video_lq) % max(video_tpf, 1) == 0
+        if Lq == video_lq:
+            mode = "video"
+        elif has_appended_guide_queries:
+            mode = "video_with_guides"
+        else:
+            mode = "scaled"
 
         key = (Lq, Lk, mode, q.device)
         if key not in cache:
             if mode == "video":
                 cost = build_temporal_cost(q_token_idx, Lq, Lk, q.device, q.dtype, video_tpf)
+            elif mode == "video_with_guides":
+                # Guide tokens are appended after the normal video tokens. Keep prompt-relay
+                # timing on the original video region and leave the appended guide queries neutral
+                # so they do not get remapped through the scaled/audio path.
+                cost = torch.zeros(Lq, Lk, device=q.device, dtype=q.dtype)
+                cost[:video_lq] = build_temporal_cost(
+                    q_token_idx, video_lq, Lk, q.device, q.dtype, video_tpf
+                )
             else:
                 cost = build_temporal_cost_scaled(q_token_idx, Lq, Lk, q.device, q.dtype, latent_frames)
             log.info(

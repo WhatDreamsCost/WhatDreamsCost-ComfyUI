@@ -658,7 +658,7 @@ class LTXDirector(io.ComfyNode):
                 _, _, _temporal_stride = detect_model_type(model)
             except Exception:
                 _temporal_stride = 8
-            _guide_frame_offset = prior_latent_t * _temporal_stride
+            _guide_frame_offset = 1 + (prior_latent_t - 1) * _temporal_stride
             guide_data["insert_frames"] = [f + _guide_frame_offset for f in guide_data["insert_frames"]]
             log.info(
                 "[LTX Director] Guide insert_frames shifted by %d px (%d prior latent frames).",
@@ -773,11 +773,48 @@ class LTXDirector(io.ComfyNode):
         # or prepend it to the new-segment audio latent (raw prior-prefix without noise_mask).
         if extend_from_audio_latent is not None:
             if "noise_mask" in extend_from_audio_latent:
-                # Combined audio latent (X locked + Y to generate) — use as-is.
-                audio_latent = extend_from_audio_latent
+                # Combined audio latent: keep STRICT prefix conditioning so generation
+                # starts after the locked prefix (prevents overlap at the start).
+                prior_a = extend_from_audio_latent["samples"].to(
+                    device=comfy.model_management.intermediate_device()
+                )
+                _a_mask = extend_from_audio_latent["noise_mask"].to(
+                    device=comfy.model_management.intermediate_device()
+                ).float()
+
+                if _a_mask.ndim == 4:
+                    _a_mask_t = _a_mask[0, 0].reshape(_a_mask.shape[2], -1).mean(dim=1)
+                else:
+                    _a_mask_t = _a_mask[0, 0].reshape(_a_mask.shape[2])
+
+                prior_audio_t = 0
+                for _v in _a_mask_t:
+                    if float(_v.item()) <= 0.05:
+                        prior_audio_t += 1
+                    else:
+                        break
+
+                total_audio_t = prior_a.shape[2]
+                prior_audio_t = max(0, min(prior_audio_t, total_audio_t))
+
+                strict_a_samples = prior_a.clone()
+                if prior_audio_t < total_audio_t:
+                    strict_a_samples[:, :, prior_audio_t:, :] = 0.0
+
+                strict_a_mask = torch.ones_like(_a_mask, dtype=torch.float32)
+                if strict_a_mask.ndim == 4:
+                    strict_a_mask[:, :, :prior_audio_t, :] = 0.0
+                else:
+                    strict_a_mask[:, :, :prior_audio_t] = 0.0
+
+                audio_latent = {
+                    "samples": strict_a_samples,
+                    "type": "audio",
+                    "noise_mask": strict_a_mask,
+                }
                 log.info(
-                    "[PromptRelay] Combined audio latent: %d total frames, used as-is.",
-                    extend_from_audio_latent["samples"].shape[2],
+                    "[PromptRelay] Combined audio latent: %d total frames (%d locked + %d generate), strict prefix mask.",
+                    total_audio_t, prior_audio_t, total_audio_t - prior_audio_t,
                 )
             else:
                 # Raw prior-prefix: prepend it to the new-segment audio latent.

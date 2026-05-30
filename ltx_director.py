@@ -622,6 +622,30 @@ class LTXDirector(io.ComfyNode):
                     prior_latent_t, new_latent_t, prior_latent_t + new_latent_t, lat_w, lat_h,
                 )
 
+        # When extending, the user's editor `duration_frames` may not match the actual Y region
+        # size set by the upstream AV-Mask node. We auto-rescale `insert_frames` and
+        # `segment_lengths` so the editor's full timeline maps onto the actual Y region in pixels.
+        # This guarantees:
+        #   - segments span the full new region (no uncovered latent frames at the tail)
+        #   - end keyframe lands at the actual end of Y, not partway through
+        if prior_latent_t > 0:
+            try:
+                _, _, _temporal_stride = detect_model_type(model)
+            except Exception:
+                _temporal_stride = 8
+            new_latent_t_actual = latent["samples"].shape[2] - prior_latent_t
+            y_pixel_count = new_latent_t_actual * _temporal_stride
+            if duration_frames > 0 and duration_frames != y_pixel_count:
+                _rescale = y_pixel_count / duration_frames
+                guide_data["insert_frames"] = [int(round(f * _rescale)) for f in guide_data["insert_frames"]]
+                if segment_lengths.strip():
+                    _scaled = [int(round(int(float(x.strip())) * _rescale)) for x in segment_lengths.split(",") if x.strip()]
+                    segment_lengths = ",".join(str(max(1, v)) for v in _scaled)
+                log.info(
+                    "[LTX Director] Auto-rescaled editor positions: duration_frames=%d → Y_pixels=%d (scale=%.3f)",
+                    duration_frames, y_pixel_count, _rescale,
+                )
+
         # Shift keyframe insert_frames into the new region so a keyframe placed at editor pixel 0
         # appears at the first frame of the NEW region (otherwise it lands in the locked prior
         # and is a no-op). LTX VAE is causally asymmetric: latent frame 0 → pixel 0; latent frame
@@ -629,10 +653,6 @@ class LTXDirector(io.ComfyNode):
         # 1 + (N-1)*8 (this lands exactly on the first new frame's RoPE slot — the keyframe and
         # the first new frame share a RoPE position, so the keyframe directly overrides it).
         if prior_latent_t > 0 and guide_data["insert_frames"]:
-            try:
-                _, _, _temporal_stride = detect_model_type(model)
-            except Exception:
-                _temporal_stride = 8
             _guide_frame_offset = 1 + (prior_latent_t - 1) * _temporal_stride
             guide_data["insert_frames"] = [f + _guide_frame_offset for f in guide_data["insert_frames"]]
             log.info(

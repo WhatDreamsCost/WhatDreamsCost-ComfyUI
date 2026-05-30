@@ -63,10 +63,13 @@ class LTXDirectorGuide(LTXVAddGuide):
             latent_resized_4d = comfy.utils.common_upscale(latent_4d, width, height, upscale_method, "disabled")
             latent_image = latent_resized_4d.reshape(B, F, C, height, width).permute(0, 2, 1, 3, 4)
 
-            # Also resize noise mask if it's not a broadcasted mask
+            # Also resize noise mask if it's not a broadcasted mask.
+            # Use nearest-exact (not the user's upscale_method) — interpolating modes like bicubic
+            # introduce fractional values at locked/free boundaries, which partially denoises the
+            # locked region during sampling and looks like noise/garbage in the output.
             if noise_mask.shape[-1] > 1 or noise_mask.shape[-2] > 1:
                 mask_4d = noise_mask.permute(0, 2, 1, 3, 4).reshape(B * F, 1, H, W)
-                mask_resized_4d = comfy.utils.common_upscale(mask_4d, width, height, upscale_method, "disabled")
+                mask_resized_4d = comfy.utils.common_upscale(mask_4d, width, height, "nearest-exact", "disabled")
                 noise_mask = mask_resized_4d.reshape(B, F, 1, height, width).permute(0, 2, 1, 3, 4)
 
         _, _, latent_length, latent_height, latent_width = latent_image.shape

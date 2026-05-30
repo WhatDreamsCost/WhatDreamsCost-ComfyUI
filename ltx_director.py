@@ -577,21 +577,27 @@ class LTXDirector(io.ComfyNode):
             prior_samples = extend_from_video_latent["samples"]
             if "noise_mask" in extend_from_video_latent:
                 # Combined latent (e.g. from LTX Audio Video Mask): X seconds locked + Y seconds
-                # to generate. The mask already encodes which frames are locked (0) vs. free (1).
-                # Use as-is; derive prior_latent_t from the leading locked region.
-                _comb_mask = extend_from_video_latent["noise_mask"]
-                _comb_mask_t = _comb_mask[0, 0, :, 0, 0] if _comb_mask.ndim == 5 else _comb_mask[0, 0, :, 0]
+                # to generate. The mask encodes which frames are locked (0) vs. free (1).
+                # We HARDEN the mask to exact 0/1 here — any fractional values upstream (from
+                # interpolation/blur/etc.) cause partial denoising of the locked region, which
+                # looks like the locked frames coming out noisy in the final output.
+                _comb_mask = extend_from_video_latent["noise_mask"].to(device=dev).float()
+                _raw_min = float(_comb_mask.min().item())
+                _raw_max = float(_comb_mask.max().item())
+                _hardened = (_comb_mask >= 0.5).float()
+                _comb_mask_t = _hardened[0, 0, :, 0, 0] if _hardened.ndim == 5 else _hardened[0, 0, :, 0]
                 prior_latent_t = int((_comb_mask_t < 0.5).sum().item())
                 latent = {
                     "samples": prior_samples.clone().to(device=dev),
-                    "noise_mask": _comb_mask.clone().to(device=dev),
+                    "noise_mask": _hardened,
                 }
                 log.info(
                     "[PromptRelay] Combined video latent: %d total frames (%d locked + %d generate), "
-                    "spatial: latent %dx%d",
+                    "spatial: latent %dx%d | mask raw min/max=%.4f/%.4f → hardened to 0/1",
                     prior_samples.shape[2], prior_latent_t,
                     prior_samples.shape[2] - prior_latent_t,
                     prior_samples.shape[4], prior_samples.shape[3],
+                    _raw_min, _raw_max,
                 )
             else:
                 # Raw prior-frame prefix: concatenate with new zero frames to generate.

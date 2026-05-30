@@ -389,7 +389,7 @@ class LTXDirector(io.ComfyNode):
                 io.Model.Input("model"),
                 io.Clip.Input("clip"),
                 io.Vae.Input("audio_vae", optional=True, tooltip="Optional. Connect an Audio VAE to generate audio latents."),
-                io.Latent.Input("extend_from_video_latent", optional=True, tooltip="Connect the video latent output of the LTX Audio Video Mask node to seamlessly extend a clip. Editor pixel 0 = start of the combined (locked + new) output. Place keyframes and prompt segments at their target positions in the combined timeline; items overlapping the locked region are preserved unchanged."),
+                io.Latent.Input("extend_from_video_latent", optional=True, tooltip="Connect the video latent output of the LTX Audio Video Mask node to extend a clip. The incoming masked region is preserved as conditioning; prompt/keyframe conditioning starts after that locked prefix. In extension mode, timeline frame 0 corresponds to the START of the new region (Y), not the locked prefix (X)."),
                 io.Latent.Input("extend_from_audio_latent", optional=True, tooltip="Connect the audio latent output of the LTX Audio Video Mask node alongside extend_from_video_latent. The locked X-second audio is preserved; new audio is generated for the extension region."),
                 io.String.Input(
                     "global_prompt", multiline=True, default="",
@@ -397,7 +397,7 @@ class LTXDirector(io.ComfyNode):
                 ),
                 io.Int.Input(
                     "duration_frames", default=120, min=1, max=10000, step=1,
-                    tooltip="Total timeline length in pixel-space frames. Used by the editor for visual scale only.",
+                    tooltip="Timeline length in pixel-space frames. In extension mode, this is the NEW region (Y) length.",
                 ),
                 io.Float.Input(
                     "duration_seconds", default=5, min=0.1, max=1000.0, step=0.01,
@@ -636,41 +636,17 @@ class LTXDirector(io.ComfyNode):
                     prior_latent_t, new_latent_t, prior_latent_t + new_latent_t, lat_w, lat_h,
                 )
 
-        # When extending, the user's editor `duration_frames` may not match the actual Y region
-        # size set by the upstream AV-Mask node. We auto-rescale `insert_frames` and
-        # `segment_lengths` so the editor's full timeline maps onto the actual Y region in pixels.
-        # This guarantees:
-        #   - segments span the full new region (no uncovered latent frames at the tail)
-        #   - end keyframe lands at the actual end of Y, not partway through
-        if prior_latent_t > 0:
+        # Shift keyframe insert_frames into the new region so timeline pixel 0 lands at
+        # the first NEW pixel after the locked prefix.
+        if prior_latent_t > 0 and guide_data["insert_frames"]:
             try:
                 _, _, _temporal_stride = detect_model_type(model)
             except Exception:
                 _temporal_stride = 8
-            new_latent_t_actual = latent["samples"].shape[2] - prior_latent_t
-            y_pixel_count = new_latent_t_actual * _temporal_stride
-            if duration_frames > 0 and duration_frames != y_pixel_count:
-                _rescale = y_pixel_count / duration_frames
-                guide_data["insert_frames"] = [int(round(f * _rescale)) for f in guide_data["insert_frames"]]
-                if segment_lengths.strip():
-                    _scaled = [int(round(int(float(x.strip())) * _rescale)) for x in segment_lengths.split(",") if x.strip()]
-                    segment_lengths = ",".join(str(max(1, v)) for v in _scaled)
-                log.info(
-                    "[LTX Director] Auto-rescaled editor positions: duration_frames=%d → Y_pixels=%d (scale=%.3f)",
-                    duration_frames, y_pixel_count, _rescale,
-                )
-
-        # Shift keyframe insert_frames into the new region so a keyframe placed at editor pixel 0
-        # appears at the first frame of the NEW region (otherwise it lands in the locked prior
-        # and is a no-op). LTX VAE is causally asymmetric: latent frame 0 → pixel 0; latent frame
-        # N≥1 → pixel 1 + (N-1)*8. So for N prior latent frames, the first new pixel is at
-        # 1 + (N-1)*8 (this lands exactly on the first new frame's RoPE slot — the keyframe and
-        # the first new frame share a RoPE position, so the keyframe directly overrides it).
-        if prior_latent_t > 0 and guide_data["insert_frames"]:
-            _guide_frame_offset = 1 + (prior_latent_t - 1) * _temporal_stride
+            _guide_frame_offset = prior_latent_t * _temporal_stride
             guide_data["insert_frames"] = [f + _guide_frame_offset for f in guide_data["insert_frames"]]
             log.info(
-                "[LTX Director] Guide insert_frames shifted by %d px (%d prior latent frames; first new pixel).",
+                "[LTX Director] Guide insert_frames shifted by %d px (%d prior latent frames).",
                 _guide_frame_offset, prior_latent_t,
             )
 
@@ -770,7 +746,7 @@ class LTXDirector(io.ComfyNode):
                     log.error("[PromptRelay] Failed to generate custom audio latent: %s", e)
                     raise e
             else:
-                # Generate empty latent
+                # Generate empty latent (no custom timeline-audio conditioning).
                 try:
                     audio_latent = get_empty_latent()
                     log.info("[PromptRelay] Auto-generated empty audio latent.")

@@ -33,7 +33,7 @@ All of my nodes are created with the help of AI, so there may or may not be redu
 
 **❗❗IMPORTANT❗❗**
 
-If you don't see the latest version (v1.3.9) yet in the manager then just downloaded the nightly version (or fetch the updates to update the list to see the latest version). 
+If you don't see the latest version (v1.3.9) yet in the manager then just download the nightly version (or fetch the updates to update the list to see the latest version). 
 Also you will need to update ComfyUI-LTXVideo and ComfyUI-KJNodes to the latest version as well. You cannot use this node without updating ComfyUI-LTXVideo!
 
 # 🔄 Recent Updates

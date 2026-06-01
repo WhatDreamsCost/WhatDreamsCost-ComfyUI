@@ -84,7 +84,7 @@ def build_segments(token_ranges, segment_lengths, epsilon=1e-3, relay_options=No
     """Per-segment metadata for the temporal penalty.
 
     relay_options (optional dict) overrides per-stream knobs:
-        video_strength, video_window_scale,
+        video_strength, video_window_scale, transition_smoothness,
         audio_epsilon, audio_strength, audio_window_scale
     Audio knobs only affect architectures whose cross-attention takes the scaled
     (non-integer-frame) path — currently LTX audio_attn2.
@@ -98,6 +98,7 @@ def build_segments(token_ranges, segment_lengths, epsilon=1e-3, relay_options=No
     a_epsilon = opts.get("audio_epsilon")
     a_strength = opts.get("audio_strength", 1.0)
     a_window_scale = opts.get("audio_window_scale", 1.0)
+    transition_smoothness = opts.get("transition_smoothness") or []
 
     if a_epsilon is not None and 0 < a_epsilon < 1:
         sigma_audio = 1.0 / math.log(1.0 / a_epsilon)
@@ -116,21 +117,31 @@ def build_segments(token_ranges, segment_lengths, epsilon=1e-3, relay_options=No
     q_token_idx = []
     frame_cursor = 0
 
-    for (tok_start, tok_end), L in zip(token_ranges, segment_lengths):
+    for idx, ((tok_start, tok_end), L) in enumerate(zip(token_ranges, segment_lengths)):
         if L <= 0:
             frame_cursor += L
             continue
+        smoothness = 0.0
+        if idx < len(transition_smoothness):
+            try:
+                smoothness = float(transition_smoothness[idx])
+            except (TypeError, ValueError):
+                smoothness = 0.0
+        smoothness = max(0.0, min(1.0, smoothness))
         midpoint = (2 * frame_cursor + L) // 2
         base_window = max(L // 2 - 2, 0)
+        sigma_scale = 1.0 + smoothness * 24.0
+        window_extra = smoothness * max(1.0, L * 0.15)
         q_token_idx.append({
             "local_token_idx": torch.arange(tok_start, tok_end),
             "midpoint": midpoint,
-            "window": max(base_window * v_window_scale, 0.0),
-            "sigma": sigma,
+            "window": max((base_window + window_extra) * v_window_scale, 0.0),
+            "sigma": sigma * sigma_scale,
             "strength": v_strength,
             "window_audio": max(base_window * a_window_scale, 0.0),
-            "sigma_audio": sigma_audio,
+            "sigma_audio": sigma_audio * sigma_scale,
             "strength_audio": a_strength,
+            "transition_smoothness": smoothness,
         })
         frame_cursor += L
 

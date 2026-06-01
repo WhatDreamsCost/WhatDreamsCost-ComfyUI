@@ -10,7 +10,7 @@ const HANDLE_HIT_PX = 14;
 const MIN_SEGMENT_LENGTH = 6;
 const MAX_THUMBNAIL_DIM = 512; // Increased to maintain quality for taller images
 
-const HIDDEN_WIDGET_NAMES = ["timeline_data", "local_prompts", "segment_lengths", "guide_strength", "audio_data", "use_custom_audio"];
+const HIDDEN_WIDGET_NAMES = ["timeline_data", "local_prompts", "segment_lengths", "transition_smoothness", "guide_strength", "audio_data", "use_custom_audio"];
 
 function hideWidget(w) {
   if (!w) return;
@@ -166,6 +166,13 @@ const STYLES = `
     white-space: nowrap;
     margin-left: auto;
   }
+  .pr-duration-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+    margin-left: auto;
+  }
   .pr-strength-slider {
     -webkit-appearance: none;
     appearance: none;
@@ -209,6 +216,20 @@ const STYLES = `
     -moz-appearance: textfield;
   }
   .pr-strength-input:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+  .pr-duration-input {
+    font-size: 12px;
+    color: #fff;
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 4px;
+    width: 64px;
+    text-align: center;
+    padding: 3px;
+  }
+  .pr-duration-input:disabled {
     opacity: 0.35;
     cursor: not-allowed;
   }
@@ -538,7 +559,8 @@ const ICONS = {
   plus: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
   fit: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><polyline points="8 7 3 12 8 17"></polyline><polyline points="16 7 21 12 16 17"></polyline></svg>`,
   gear: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`,
-  close: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`
+  close: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
+  scissors: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg>`
 };
 
 // --- Data Models ---
@@ -632,6 +654,7 @@ class TimelineEditor {
     this.timelineDataWidget = this.node.widgets.find(w => w.name === "timeline_data");
     this.localPromptsWidget = this.node.widgets.find(w => w.name === "local_prompts");
     this.segmentLengthsWidget = this.node.widgets.find(w => w.name === "segment_lengths");
+    this.transitionSmoothnessWidget = this.node.widgets.find(w => w.name === "transition_smoothness");
     this.guideStrengthWidget = this.node.widgets.find(w => w.name === "guide_strength");
     this.displayModeWidget = this.node.widgets.find(w => w.name === "display_mode");
 
@@ -661,6 +684,7 @@ class TimelineEditor {
           isSyncing = false;
         }
 
+        this.updateUIFromSelection();
         this.commitChanges();
       };
     }
@@ -689,6 +713,7 @@ class TimelineEditor {
           this.durationSecondsWidget.value = parseFloat((this.getDurationFrames() / this.getFrameRate()).toFixed(3));
           isSyncing = false;
         }
+        this.updateUIFromSelection();
       };
     }
 
@@ -723,7 +748,7 @@ class TimelineEditor {
   }
 
   // Grow the timeline duration to fit `requiredFrames` if it is currently shorter.
-  // The timeline only ever grows — never shrinks — through this method.
+  // The timeline only ever grows 鈥?never shrinks 鈥?through this method.
   growTimelineIfNeeded(requiredFrames) {
     const current = this.getDurationFrames();
     if (requiredFrames <= current) return; // already big enough
@@ -756,8 +781,8 @@ class TimelineEditor {
   }
 
   // Returns the visual timeline length in frames:
-  // the furthest segment end (across both tracks) × 1.30, with a floor of getDurationFrames().
-  // This is used for all rendering/positioning — the actual output duration is getDurationFrames().
+  // the furthest segment end (across both tracks) 脳 1.30, with a floor of getDurationFrames().
+  // This is used for all rendering/positioning 鈥?the actual output duration is getDurationFrames().
   getVisualDurationFrames() {
     let furthest = 0;
     for (const seg of this.timeline.segments) {
@@ -1259,8 +1284,30 @@ class TimelineEditor {
     this.strengthRow = document.createElement("div");
     this.strengthRow.className = "pr-strength-row";
 
+    const durationLabel = document.createElement("span");
+    durationLabel.className = "pr-duration-label";
+    durationLabel.textContent = "Duration (s):";
+
+    this.durationValue = document.createElement("input");
+    this.durationValue.type = "text";
+    this.durationValue.className = "pr-duration-input";
+    this.durationValue.value = "0.00";
+    this.durationValue.disabled = true;
+    this.durationValue.title = "Duration of the selected image/text segment in seconds";
+    this.durationValue.addEventListener("change", (e) => {
+      this.setSelectedDurationSeconds(e.target.value);
+    });
+    this.durationValue.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this.setSelectedDurationSeconds(e.target.value);
+        this.durationValue.blur();
+      }
+    });
+
     const strengthLabel = document.createElement("span");
     strengthLabel.className = "pr-strength-label";
+    strengthLabel.style.marginLeft = "0";
     strengthLabel.textContent = "Guide Strength:";
 
     this.strengthValue = document.createElement("input");
@@ -1269,6 +1316,19 @@ class TimelineEditor {
     this.strengthValue.value = "1.00";
     this.strengthValue.disabled = true;
     this.strengthValue.style.cursor = "ew-resize";
+
+    const transitionLabel = document.createElement("span");
+    transitionLabel.className = "pr-strength-label";
+    transitionLabel.style.marginLeft = "8px";
+    transitionLabel.textContent = "Transition:";
+
+    this.transitionValue = document.createElement("input");
+    this.transitionValue.type = "text";
+    this.transitionValue.className = "pr-strength-input";
+    this.transitionValue.value = "0.00";
+    this.transitionValue.disabled = true;
+    this.transitionValue.title = "Per-segment transition smoothness: 0.00 = hard cut, 1.00 = smooth blend";
+    this.transitionValue.style.cursor = "ew-resize";
 
     // Dragging logic for guide strength
     let isDragging = false;
@@ -1338,10 +1398,69 @@ class TimelineEditor {
       }
     });
 
+    const setSelectedTransition = (rawValue) => {
+      let val = parseFloat(rawValue);
+      if (isNaN(val)) val = 0;
+      val = Math.max(0, Math.min(1, val));
+      this.transitionValue.value = val.toFixed(2);
+      if (this.selectionType === "image" && this.timeline.segments[this.selectedIndex]) {
+        const seg = this.timeline.segments[this.selectedIndex];
+        seg.transitionSmoothness = val;
+        this.commitChanges();
+      }
+    };
+
+    let isTransitionDragging = false;
+    let transitionStartX = 0;
+    let transitionStartVal = 0;
+    let transitionHasMoved = false;
+
+    this.transitionValue.addEventListener("mousedown", (e) => {
+      if (this.transitionValue.disabled) return;
+      transitionStartX = e.clientX;
+      transitionStartVal = parseFloat(this.transitionValue.value) || 0.0;
+      transitionHasMoved = false;
+
+      const onMouseMove = (moveEvent) => {
+        const deltaX = moveEvent.clientX - transitionStartX;
+        if (Math.abs(deltaX) > 3) {
+          transitionHasMoved = true;
+          isTransitionDragging = true;
+        }
+
+        if (isTransitionDragging) {
+          moveEvent.preventDefault();
+          setSelectedTransition(transitionStartVal + deltaX * 0.002);
+        }
+      };
+
+      const onMouseUp = () => {
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+
+        if (!transitionHasMoved) {
+          this.transitionValue.focus();
+          this.transitionValue.select();
+        }
+        isTransitionDragging = false;
+      };
+
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    });
+
+    this.transitionValue.addEventListener("change", (e) => {
+      setSelectedTransition(e.target.value);
+    });
+
     this.strengthRow.appendChild(this.timeCodeDisplay);
     this.strengthRow.appendChild(this.segmentBoundsDisplay);
+    this.strengthRow.appendChild(durationLabel);
+    this.strengthRow.appendChild(this.durationValue);
     this.strengthRow.appendChild(strengthLabel);
     this.strengthRow.appendChild(this.strengthValue);
+    this.strengthRow.appendChild(transitionLabel);
+    this.strengthRow.appendChild(this.transitionValue);
 
 
     this.wrapper.appendChild(toolbar);
@@ -1469,7 +1588,7 @@ class TimelineEditor {
               targetFrameStart = newStart + newLength; // For the next file in batch
             }
 
-            // Use the full intended length — the timeline has already been grown to fit.
+            // Use the full intended length 鈥?the timeline has already been grown to fit.
             let constrainedLength = newLength;
 
             const seg = {
@@ -1581,7 +1700,7 @@ class TimelineEditor {
             targetFrameStart = newStart + newLength;
           }
 
-          // Use the full clip length — timeline has already grown to fit.
+          // Use the full clip length 鈥?timeline has already grown to fit.
           let constrainedLength = newLength;
 
           const seg = {
@@ -1636,6 +1755,221 @@ class TimelineEditor {
       return dropSuffix ? secs.toFixed(2) : secs.toFixed(2) + "s";
     }
     return dropSuffix ? Math.round(frames).toString() : Math.round(frames) + " frames";
+  }
+
+  formatDurationSeconds(frames) {
+    return (Math.max(MIN_SEGMENT_LENGTH, frames) / this.getFrameRate()).toFixed(2);
+  }
+
+  setSelectedDurationSeconds(value) {
+    if (this.selectionType === "audio") {
+      this.setSelectedAudioDurationSeconds(value);
+    } else {
+      this.setSelectedImageDurationSeconds(value);
+    }
+  }
+
+  setSelectedImageDurationSeconds(value) {
+    if (this.selectionType !== "image" || this.selectedIndex < 0) return;
+
+    const selected = this.timeline.segments[this.selectedIndex];
+    if (!selected) return;
+
+    let seconds = parseFloat(value);
+    if (!Number.isFinite(seconds)) {
+      if (this.durationValue) this.durationValue.value = this.formatDurationSeconds(selected.length);
+      return;
+    }
+
+    const frameRate = this.getFrameRate();
+    seconds = Math.max(MIN_SEGMENT_LENGTH / frameRate, seconds);
+    const newLength = Math.max(MIN_SEGMENT_LENGTH, Math.round(seconds * frameRate));
+    const selectedId = selected.id;
+    const sortedSegments = [...this.timeline.segments].sort((a, b) => a.start - b.start);
+    const selectedSortedIndex = sortedSegments.findIndex(s => s.id === selectedId);
+    if (selectedSortedIndex < 0) return;
+
+    sortedSegments[selectedSortedIndex].length = newLength;
+
+    let cursor = sortedSegments[selectedSortedIndex].start + newLength;
+    for (let i = selectedSortedIndex + 1; i < sortedSegments.length; i++) {
+      sortedSegments[i].start = cursor;
+      cursor += sortedSegments[i].length;
+    }
+
+    this.timeline.segments = sortedSegments;
+    this.selectedIndex = this.timeline.segments.findIndex(s => s.id === selectedId);
+
+    if (this.durationValue) {
+      this.durationValue.value = this.formatDurationSeconds(newLength);
+    }
+
+    this.commitChanges();
+    this.updateUIFromSelection();
+    this.render();
+  }
+
+  setSelectedAudioDurationSeconds(value) {
+    if (this.selectionType !== "audio" || this.selectedIndex < 0) return;
+
+    const selected = this.timeline.audioSegments[this.selectedIndex];
+    if (!selected) return;
+
+    let seconds = parseFloat(value);
+    if (!Number.isFinite(seconds)) {
+      if (this.durationValue) this.durationValue.value = this.formatDurationSeconds(selected.length);
+      return;
+    }
+
+    const frameRate = this.getFrameRate();
+    const selectedId = selected.id;
+    const sortedSegments = [...this.timeline.audioSegments].sort((a, b) => a.start - b.start);
+    const selectedSortedIndex = sortedSegments.findIndex(s => s.id === selectedId);
+    if (selectedSortedIndex < 0) return;
+
+    const target = sortedSegments[selectedSortedIndex];
+    const clipFrames = Math.max(MIN_SEGMENT_LENGTH, target.audioDurationFrames || target.length);
+    const trimStart = Math.max(0, target.trimStart || 0);
+    let maxLength = Math.max(MIN_SEGMENT_LENGTH, clipFrames - trimStart);
+    const nextSeg = sortedSegments[selectedSortedIndex + 1];
+    if (nextSeg) {
+      maxLength = Math.min(maxLength, Math.max(MIN_SEGMENT_LENGTH, nextSeg.start - target.start));
+    }
+
+    const oldLength = target.length;
+    const newLength = clamp(Math.round(seconds * frameRate), MIN_SEGMENT_LENGTH, maxLength);
+    const tailLength = oldLength - newLength;
+    target.length = newLength;
+
+    if (tailLength >= MIN_SEGMENT_LENGTH) {
+      const tailSeg = {
+        ...target,
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+        start: target.start + newLength,
+        length: tailLength,
+        trimStart: trimStart + newLength
+      };
+      sortedSegments.splice(selectedSortedIndex + 1, 0, tailSeg);
+    }
+
+    this.timeline.audioSegments = sortedSegments;
+    this.selectedIndex = this.timeline.audioSegments.findIndex(s => s.id === selectedId);
+
+    if (this.durationValue) {
+      this.durationValue.value = this.formatDurationSeconds(newLength);
+    }
+
+    this.commitChanges();
+    this.updateUIFromSelection();
+    this.render();
+  }
+
+  splitAudioSegmentAtFrame(seg, frame) {
+    if (!seg) return false;
+
+    const cutFrame = Math.round(frame);
+    const cutOffset = cutFrame - seg.start;
+    if (cutOffset < MIN_SEGMENT_LENGTH || seg.length - cutOffset < MIN_SEGMENT_LENGTH) {
+      return false;
+    }
+
+    const rightSeg = {
+      ...seg,
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+      start: cutFrame,
+      length: seg.length - cutOffset,
+      trimStart: (seg.trimStart || 0) + cutOffset
+    };
+
+    seg.length = cutOffset;
+    this.timeline.audioSegments.push(rightSeg);
+    this.timeline.audioSegments.sort((a, b) => a.start - b.start);
+    this.selectionType = "audio";
+    this.selectedIndex = this.timeline.audioSegments.findIndex(s => s.id === rightSeg.id);
+    this.commitChanges();
+    this.updateUIFromSelection();
+    this.render();
+    return true;
+  }
+
+  splitSelectedAudioAtPlayhead() {
+    if (this.selectionType !== "audio" || this.selectedIndex < 0) return false;
+    const seg = this.timeline.audioSegments[this.selectedIndex];
+    if (!seg) return false;
+    return this.splitAudioSegmentAtFrame(seg, this.currentFrame);
+  }
+
+  setSelectedAudioTrimStartSeconds(value) {
+    if (this.selectionType !== "audio" || this.selectedIndex < 0) return;
+
+    const selected = this.timeline.audioSegments[this.selectedIndex];
+    if (!selected) return;
+
+    let seconds = parseFloat(value);
+    if (!Number.isFinite(seconds)) {
+      this.updateUIFromSelection();
+      return;
+    }
+
+    const frameRate = this.getFrameRate();
+    const clipFrames = Math.max(MIN_SEGMENT_LENGTH, selected.audioDurationFrames || selected.length);
+    const newTrimStart = clamp(Math.round(seconds * frameRate), 0, Math.max(0, clipFrames - MIN_SEGMENT_LENGTH));
+    selected.trimStart = newTrimStart;
+    selected.length = Math.min(selected.length, Math.max(MIN_SEGMENT_LENGTH, clipFrames - newTrimStart));
+
+    this.commitChanges();
+    this.updateUIFromSelection();
+    this.render();
+  }
+
+  rangesOverlap(a, b) {
+    return Math.min(a.start + a.length, b.start + b.length) > Math.max(a.start, b.start);
+  }
+
+  getOverlappingAudioSegment(seg) {
+    if (!seg) return null;
+    return this.timeline.audioSegments.find(audioSeg => this.rangesOverlap(seg, audioSeg)) || null;
+  }
+
+  getOverlappingImageSegments(audioSeg) {
+    if (!audioSeg) return [];
+    return this.timeline.segments.filter(seg => this.rangesOverlap(seg, audioSeg));
+  }
+
+  alignImageSegmentToAudio(imageSeg, audioSeg) {
+    if (!imageSeg || !audioSeg) return false;
+    imageSeg.start = audioSeg.start;
+    imageSeg.length = audioSeg.length;
+    return true;
+  }
+
+  alignSelectedImageToOverlappingAudio(imageSeg) {
+    const audioSeg = this.getOverlappingAudioSegment(imageSeg);
+    if (!audioSeg) return false;
+
+    const selectedId = imageSeg.id;
+    this.alignImageSegmentToAudio(imageSeg, audioSeg);
+    this.timeline.segments.sort((a, b) => a.start - b.start);
+    this.selectionType = "image";
+    this.selectedIndex = this.timeline.segments.findIndex(s => s.id === selectedId);
+    this.commitChanges();
+    this.updateUIFromSelection();
+    this.render();
+    return true;
+  }
+
+  alignOverlappingImagesToAudio(audioSeg) {
+    const imageSegs = this.getOverlappingImageSegments(audioSeg);
+    if (imageSegs.length === 0) return 0;
+
+    for (const imageSeg of imageSegs) {
+      this.alignImageSegmentToAudio(imageSeg, audioSeg);
+    }
+    this.timeline.segments.sort((a, b) => a.start - b.start);
+    this.commitChanges();
+    this.updateUIFromSelection();
+    this.render();
+    return imageSegs.length;
   }
 
   updateWidgetVisibility() {
@@ -1694,13 +2028,42 @@ class TimelineEditor {
       this.promptInput.style.display = "none";
       this.strengthRow.style.display = "flex";
       this.audioInfoArea.style.display = "block";
+      const frameRate = this.getFrameRate();
+      const trimStartFrames = Math.max(0, seg.trimStart || 0);
+      const clipFrames = Math.max(MIN_SEGMENT_LENGTH, seg.audioDurationFrames || seg.length);
+      const trimOutFrames = Math.max(0, clipFrames - (trimStartFrames + seg.length));
       this.audioInfoArea.innerHTML = `
         File: <span>${seg.fileName || "Unknown"}</span><br>
-        Length: <span>${this.formatTime(seg.audioDurationFrames)}</span> Output Length: <span>${this.formatTime(seg.length)}</span><br>
-        Trim-in: <span>${this.formatTime(Math.round(seg.trimStart))}</span> Trim-Out: <span>${this.formatTime(Math.round(seg.audioDurationFrames - (seg.trimStart + seg.length)))}</span>
+        Length: <span>${this.formatTime(clipFrames)}</span> Output Length: <span>${this.formatTime(seg.length)}</span><br>
+        Trim Start (s): <input class="pr-duration-input pr-audio-trim-start" type="text" value="${(trimStartFrames / frameRate).toFixed(2)}" title="Start reading this audio clip from this source time in seconds"><br>
+        Trim-in: <span>${this.formatTime(Math.round(trimStartFrames))}</span> Trim-Out: <span>${this.formatTime(Math.round(trimOutFrames))}</span><br>
+        <button class="pr-gap-menu-btn pr-audio-cut-btn" type="button" title="Split this audio segment at the playhead">${ICONS.scissors} Cut at Playhead</button>
       `;
+      const trimStartInput = this.audioInfoArea.querySelector(".pr-audio-trim-start");
+      if (trimStartInput) {
+        const applyTrimStart = () => this.setSelectedAudioTrimStartSeconds(trimStartInput.value);
+        trimStartInput.addEventListener("change", applyTrimStart);
+        trimStartInput.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            applyTrimStart();
+            trimStartInput.blur();
+          }
+        });
+      }
+      const cutBtn = this.audioInfoArea.querySelector(".pr-audio-cut-btn");
+      if (cutBtn) {
+        cutBtn.addEventListener("click", () => this.splitSelectedAudioAtPlayhead());
+      }
       this.strengthValue.value = "1.00";
       this.strengthValue.disabled = true;
+      this.transitionValue.value = "0.00";
+      this.transitionValue.disabled = true;
+      if (this.durationValue) {
+        this.durationValue.value = this.formatDurationSeconds(seg.length);
+        this.durationValue.disabled = false;
+        this.durationValue.title = "Trimmed output duration of the selected audio segment in seconds";
+      }
     } else {
       this.audioInfoArea.style.display = "none";
       this.promptInput.style.display = "block";
@@ -1714,11 +2077,25 @@ class TimelineEditor {
         const strength = isImage ? (seg.guideStrength ?? 1.0) : 1.0;
         this.strengthValue.value = strength.toFixed(2);
         this.strengthValue.disabled = !isImage;
+        const transition = seg.transitionSmoothness ?? 0.0;
+        this.transitionValue.value = transition.toFixed(2);
+        this.transitionValue.disabled = false;
+        if (this.durationValue) {
+          this.durationValue.value = this.formatDurationSeconds(seg.length);
+          this.durationValue.disabled = false;
+          this.durationValue.title = "Duration of the selected image/text segment in seconds";
+        }
       } else {
         this.promptInput.value = "";
         this.promptInput.disabled = true;
         this.strengthValue.value = "1.00";
         this.strengthValue.disabled = true;
+        this.transitionValue.value = "0.00";
+        this.transitionValue.disabled = true;
+        if (this.durationValue) {
+          this.durationValue.value = "0.00";
+          this.durationValue.disabled = true;
+        }
       }
     }
 
@@ -1840,10 +2217,10 @@ class TimelineEditor {
         this.ctx.clip();
 
         if (imgRatio > boxRatio) {
-          // Fits width, vertical letterboxing (black bars top/bottom) — keep as is
+          // Fits width, vertical letterboxing (black bars top/bottom) 鈥?keep as is
           this.ctx.drawImage(imgObj, drawX, drawY, drawW, drawH);
         } else {
-          // Fits height, horizontal letterboxing (black bars left/right) — tile horizontally
+          // Fits height, horizontal letterboxing (black bars left/right) 鈥?tile horizontally
           this.ctx.drawImage(imgObj, drawX, drawY, drawW, drawH);
 
           // Tile left
@@ -1887,10 +2264,10 @@ class TimelineEditor {
           const maxTextW = pxWidth - 10;
           let label = seg.prompt;
           if (this.ctx.measureText(label).width > maxTextW) {
-            while (label.length > 0 && this.ctx.measureText(label + "…").width > maxTextW) {
+            while (label.length > 0 && this.ctx.measureText(label + "...").width > maxTextW) {
               label = label.slice(0, -1);
             }
-            label += "…";
+            label += "...";
           }
 
           this.ctx.fillText(label, startX + pxWidth / 2, overlayY + overlayH / 2);
@@ -1927,7 +2304,7 @@ class TimelineEditor {
           const maxLines = Math.max(1, Math.floor((this.blockHeight - pad * 2) / lineH));
           if (lines.length > maxLines) {
             lines = lines.slice(0, maxLines);
-            lines[lines.length - 1] += "…";
+            lines[lines.length - 1] += "...";
           }
 
           const totalTextHeight = lines.length * lineH;
@@ -2762,6 +3139,7 @@ class TimelineEditor {
     let sortedSegments = [...this.timeline.segments].sort((a, b) => a.start - b.start);
     let contiguousLengths = [];
     let contiguousPrompts = [];
+    let contiguousTransitions = [];
     let currentCursor = 0;
     const durationFrames = this.getDurationFrames();
 
@@ -2776,7 +3154,7 @@ class TimelineEditor {
       if (seg.start >= durationFrames) break;
 
       if (seg.start > currentCursor) {
-        // Gap between the cursor and this segment — clip it at the cutoff too.
+        // Gap between the cursor and this segment 鈥?clip it at the cutoff too.
         const gapLength = Math.min(seg.start, durationFrames) - currentCursor;
         if (contiguousLengths.length > 0) {
           contiguousLengths[contiguousLengths.length - 1] += gapLength;
@@ -2791,6 +3169,7 @@ class TimelineEditor {
 
       contiguousLengths.push(clippedLength + pendingGap);
       contiguousPrompts.push(seg.prompt || "");
+      contiguousTransitions.push((seg.transitionSmoothness !== undefined ? seg.transitionSmoothness : 0.0).toFixed(2));
       pendingGap = 0;
       currentCursor = seg.start + seg.length; // advance by the real (unclipped) end for gap detection
     }
@@ -2817,6 +3196,9 @@ class TimelineEditor {
     }
     if (this.segmentLengthsWidget) {
       this.segmentLengthsWidget.value = contiguousLengths.join(",");
+    }
+    if (this.transitionSmoothnessWidget) {
+      this.transitionSmoothnessWidget.value = contiguousTransitions.join(",");
     }
 
     if (this.guideStrengthWidget) {
@@ -3015,6 +3397,41 @@ class TimelineEditor {
       this.dismissContextMenu();
     };
     menu.appendChild(copySegBtn);
+
+    if (trackType === "audio") {
+      const cutAtPlayheadBtn = document.createElement("button");
+      cutAtPlayheadBtn.className = "pr-gap-menu-btn";
+      cutAtPlayheadBtn.innerHTML = `${ICONS.scissors} Cut at Playhead`;
+      cutAtPlayheadBtn.onclick = () => {
+        this.splitAudioSegmentAtFrame(seg, this.currentFrame);
+        this.dismissContextMenu();
+      };
+      menu.appendChild(cutAtPlayheadBtn);
+
+      const overlappingImages = this.getOverlappingImageSegments(seg);
+      if (overlappingImages.length > 0) {
+        const alignImagesBtn = document.createElement("button");
+        alignImagesBtn.className = "pr-gap-menu-btn";
+        alignImagesBtn.innerHTML = `Match Overlapping Image(s) to Audio`;
+        alignImagesBtn.onclick = () => {
+          this.alignOverlappingImagesToAudio(seg);
+          this.dismissContextMenu();
+        };
+        menu.appendChild(alignImagesBtn);
+      }
+    } else {
+      const overlappingAudio = this.getOverlappingAudioSegment(seg);
+      if (overlappingAudio) {
+        const alignToAudioBtn = document.createElement("button");
+        alignToAudioBtn.className = "pr-gap-menu-btn";
+        alignToAudioBtn.innerHTML = `Match Segment to Audio`;
+        alignToAudioBtn.onclick = () => {
+          this.alignSelectedImageToOverlappingAudio(seg);
+          this.dismissContextMenu();
+        };
+        menu.appendChild(alignToAudioBtn);
+      }
+    }
 
     const currentTrack = trackType === "audio" ? "audio" : "image";
     if (this._copiedSegment && this._copiedSegmentTrack === currentTrack) {
@@ -3779,6 +4196,7 @@ const APPENDED_WIDGET_DEFAULTS = [
   ["timeline_data", "{}"],
   ["local_prompts", ""],
   ["segment_lengths", ""],
+  ["transition_smoothness", ""],
 ];
 
 app.registerExtension({
@@ -3807,6 +4225,18 @@ app.registerExtension({
         if (compWidget && (compWidget.value === undefined || compWidget.value === null || compWidget.value === 0)) {
           compWidget.value = 18;
         }
+
+        const restoreFiniteWidget = (name, fallback, min = -Infinity, max = Infinity) => {
+          const widget = this.widgets?.find(w => w.name === name);
+          if (!widget) return;
+          const value = Number(widget.value);
+          if (!Number.isFinite(value) || value < min || value > max) {
+            widget.value = fallback;
+            if (widget.callback) widget.callback(fallback);
+          }
+        };
+        restoreFiniteWidget("epsilon", 0.001, 0.0001, 0.99);
+        restoreFiniteWidget("frame_rate", 24, 1, 240);
 
         // Hide global prompt by default on creation without destroying its DOM element
         const globalPromptWidget = this.widgets?.find(w => w.name === "global_prompt");

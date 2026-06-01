@@ -311,7 +311,7 @@ def _convert_to_latent_lengths(pixel_lengths, temporal_stride, latent_frames):
     return result
 
 
-def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon):
+def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon, transition_smoothness=""):
     for name, val in (("global_prompt", global_prompt),
                       ("local_prompts", local_prompts),
                       ("segment_lengths", segment_lengths)):
@@ -345,6 +345,14 @@ def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_len
         pixel_lengths = [int(float(x.strip())) for x in segment_lengths.split(",") if x.strip()]
         parsed_lengths = _convert_to_latent_lengths(pixel_lengths, temporal_stride, latent_frames)
 
+    transition_values = []
+    if transition_smoothness and transition_smoothness.strip():
+        transition_values = [
+            float(x.strip())
+            for x in transition_smoothness.split(",")
+            if x.strip()
+        ]
+
     raw_tokenizer = get_raw_tokenizer(clip)
     full_prompt, token_ranges = map_token_indices(raw_tokenizer, global_prompt, locals_list)
 
@@ -361,7 +369,8 @@ def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_len
         latent_frames, tokens_per_frame, effective_lengths,
     )
 
-    q_token_idx = build_segments(token_ranges, effective_lengths, epsilon, None)
+    relay_options = {"transition_smoothness": transition_values}
+    q_token_idx = build_segments(token_ranges, effective_lengths, epsilon, relay_options)
     mask_fn = create_mask_fn(q_token_idx, tokens_per_frame, latent_frames)
 
     patched = model.clone()
@@ -456,6 +465,11 @@ class LTXDirector(io.ComfyNode):
                     "img_compression", default=18, min=0, max=100, step=1, optional=True,
                     tooltip="H.264 CRF compression to apply to each guide image. 0 = no compression, higher = more artefacts.",
                 ),
+                io.String.Input(
+                    "transition_smoothness", default="",
+                    optional=True,
+                    tooltip="Auto-populated from the timeline editor (per-segment transition smoothness, 0=hard cut, 1=smooth blend).",
+                ),
             ],
             outputs=[
                 io.Model.Output(display_name="model"),
@@ -474,7 +488,21 @@ class LTXDirector(io.ComfyNode):
                 frame_rate=24, display_mode="seconds",
                 custom_width=768, custom_height=512, resize_method="maintain aspect ratio",
                 divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
-                use_custom_audio=False) -> io.NodeOutput:
+                use_custom_audio=False, transition_smoothness="") -> io.NodeOutput:
+
+        try:
+            epsilon = float(epsilon)
+        except (TypeError, ValueError):
+            epsilon = 1e-3
+        if not math.isfinite(epsilon) or not (0 < epsilon < 1):
+            epsilon = 1e-3
+
+        try:
+            frame_rate = float(frame_rate)
+        except (TypeError, ValueError):
+            frame_rate = 24.0
+        if not math.isfinite(frame_rate) or frame_rate <= 0:
+            frame_rate = 24.0
 
         # --- Build guide_data from image segments FIRST (to derive output dimensions) ---
         guide_data = {"images": [], "insert_frames": [], "strengths": [], "frame_rate": frame_rate}
@@ -572,7 +600,7 @@ class LTXDirector(io.ComfyNode):
             latent = optional_latent
 
         patched, conditioning = _encode_relay(
-            model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon,
+            model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon, transition_smoothness,
         )
 
         # --- Build Audio Output ---

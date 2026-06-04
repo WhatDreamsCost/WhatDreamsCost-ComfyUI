@@ -83,8 +83,15 @@ class LTXDirectorGuide(LTXVAddGuide):
                 f"Guide image {idx + 1}: conditioning frames exceed the length of the latent sequence."
             )
 
-            positive, negative, latent_image, noise_mask = cls.append_keyframe(
-                positive, negative, frame_idx, latent_image, noise_mask, t, strength, scale_factors,
+            # Write the guide into the existing latent in-place rather than appending it.
+            # append_keyframe + LTXVCropGuides is the canonical LTXV pattern, but it grows the
+            # latent by 1 frame per guide and requires a downstream crop node — when the crop is
+            # missing (as in most LTXDirector workflows) the appended guide gets VAE-decoded as
+            # 8 extra pixel frames of "distorted start image" at the tail. replace_latent_frames
+            # keeps the latent the size the Director sized it to, so the decoded video is exactly
+            # the requested length with no trailing echo.
+            latent_image, noise_mask = cls.replace_latent_frames(
+                latent_image, noise_mask, t, latent_idx, strength,
             )
 
         return io.NodeOutput(positive, negative, {"samples": latent_image, "noise_mask": noise_mask})

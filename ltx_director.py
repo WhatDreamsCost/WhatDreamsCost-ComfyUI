@@ -370,6 +370,112 @@ def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_len
     return patched, conditioning
 
 
+def _window_timeline(tdata: dict, win_start: int, win_end: int, isolate: bool = False):
+    """Slice a timeline dict to the pixel-space window [win_start, win_end).
+
+    Mirrors the JS contiguous-prompt/length packer (gaps absorbed into the
+    adjacent segment, last segment padded to reach the cutoff) but applied to
+    the window instead of the full duration. All emitted segment starts are
+    shifted into window-local coordinates (window start -> 0).
+
+    When `isolate=True`, any segment whose start is *before* win_start is dropped
+    even if it overlaps into the window — so a clip that bleeds in from before
+    the window can't sneak its guide image into the render. Use this when you
+    want a clip to render as if it's the only thing on the timeline.
+
+    Returns:
+        prompts:        list[str] for the windowed segments, in order.
+        lengths:        list[int] matching prompts, summing to win_end-win_start.
+        img_strengths:  list[float] for non-"text" segments in the window
+                        (mirrors the JS guide_strength serialisation).
+        segments:       list[dict] of windowed segments (start shifted, length
+                        clipped). Used to rebuild timeline_data for downstream
+                        guide-image extraction.
+        audio_segments: list[dict] of windowed audio segments (start shifted,
+                        trimStart pushed forward by any front-clip, length
+                        clipped on both ends).
+    """
+    segments = sorted(tdata.get("segments", []), key=lambda s: int(s.get("start", 0)))
+
+    prompts: list = []
+    lengths: list = []
+    img_strengths: list = []
+    out_segments: list = []
+
+    pending_gap = 0
+    cursor = win_start  # in original frame space; gaps measured against this
+
+    for seg in segments:
+        # Use round() not int() — drag-and-drop in the JS timeline can leave starts
+        # as floats like 191.6 that int() would truncate to 191, which then sneaks
+        # past the `seg_start >= win_end` check and bleeds one frame into the window.
+        seg_start = int(round(float(seg.get("start", 0))))
+        seg_len = int(round(float(seg.get("length", 0))))
+        seg_end = seg_start + seg_len
+
+        if seg_end <= win_start:
+            continue
+        if seg_start >= win_end:
+            break
+        # Isolation: drop clips that overlap into the window from before — they're
+        # not "the clip this window is for".
+        if isolate and seg_start < win_start:
+            continue
+
+        clipped_start = max(seg_start, win_start)
+        clipped_end = min(seg_end, win_end)
+        clipped_length = clipped_end - clipped_start
+
+        if clipped_start > cursor:
+            gap = clipped_start - cursor
+            if lengths:
+                lengths[-1] += gap
+            else:
+                pending_gap += gap
+
+        lengths.append(clipped_length + pending_gap)
+        prompts.append(seg.get("prompt", ""))
+        pending_gap = 0
+        cursor = max(cursor, seg_end)
+
+        if seg.get("type", "image") != "text":
+            img_strengths.append(float(seg.get("guideStrength", 1.0)))
+
+        shifted = dict(seg)
+        shifted["start"] = clipped_start - win_start
+        shifted["length"] = clipped_length
+        out_segments.append(shifted)
+
+    clamped_cursor = min(cursor, win_end)
+    if lengths and clamped_cursor < win_end:
+        lengths[-1] += win_end - clamped_cursor
+
+    # Audio segments — keep anything that intersects the window, push front-clip
+    # into trimStart so we still play the correct portion of the source clip.
+    # We deliberately do NOT back-clip at win_end: _build_combined_audio caps the
+    # output at `total_samples` (derived from ltxv_length, which is duration_frames + 1).
+    # Back-clipping here would shorten the audio by one LTXV padding frame and produce
+    # ~0.04s of trailing silence that the unwindowed single-clip path doesn't have.
+    out_audio: list = []
+    for aseg in tdata.get("audioSegments", []):
+        a_start = float(aseg.get("start", 0))
+        a_len = float(aseg.get("length", 0))
+        a_end = a_start + a_len
+        if a_end <= win_start or a_start >= win_end:
+            continue
+        clip_front = max(0.0, win_start - a_start)
+        new_len = a_len - clip_front
+        if new_len <= 0:
+            continue
+        shifted = dict(aseg)
+        shifted["trimStart"] = float(aseg.get("trimStart", 0)) + clip_front
+        shifted["length"] = new_len
+        shifted["start"] = max(0.0, a_start - win_start)
+        out_audio.append(shifted)
+
+    return prompts, lengths, img_strengths, out_segments, out_audio
+
+
 class LTXDirector(io.ComfyNode):
     """WYSIWYG timeline variant — segments and lengths come from a visual editor in the node UI."""
 
@@ -456,6 +562,29 @@ class LTXDirector(io.ComfyNode):
                     "img_compression", default=18, min=0, max=100, step=1, optional=True,
                     tooltip="H.264 CRF compression to apply to each guide image. 0 = no compression, higher = more artefacts.",
                 ),
+                io.Int.Input(
+                    "window_start_frames", default=0, min=0, max=10000, step=1, optional=True,
+                    tooltip="Render only the timeline slice starting at this pixel-space frame. 0 = from the beginning. "
+                            "Use this (or right-click a clip → Window) to render a sub-section and avoid running out of VRAM on long timelines.",
+                ),
+                io.Int.Input(
+                    "window_end_frames", default=0, min=0, max=10000, step=1, optional=True,
+                    tooltip="Render only the timeline slice ending at this pixel-space frame (exclusive). 0 = to the end (no windowing). "
+                            "Shrinks the auto-generated latent so only the windowed frames are sampled.",
+                ),
+                io.Boolean.Input(
+                    "isolate_clips", default=False, optional=True,
+                    tooltip="When ON, the window only includes clips whose start is inside it — clips that bleed in from before "
+                            "the window are dropped. Use this to render a single clip as if it were the only thing on the timeline "
+                            "(prevents an adjacent clip's guide image from leaking into the render).",
+                ),
+                io.Boolean.Input(
+                    "anchor_clip_end", default=False, optional=True,
+                    tooltip="When ON, the first guide image is also inserted at the last frame of the latent. "
+                            "Stops LTXV from drifting into a distorted version of the start image at the end of the clip — "
+                            "the model has to interpolate between the image and itself, producing coherent motion. "
+                            "Most useful in combination with isolate_clips.",
+                ),
             ],
             outputs=[
                 io.Model.Output(display_name="model"),
@@ -474,7 +603,79 @@ class LTXDirector(io.ComfyNode):
                 frame_rate=24, display_mode="seconds",
                 custom_width=768, custom_height=512, resize_method="maintain aspect ratio",
                 divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
-                use_custom_audio=False) -> io.NodeOutput:
+                use_custom_audio=False, window_start_frames=0, window_end_frames=0,
+                isolate_clips=False, anchor_clip_end=False) -> io.NodeOutput:
+
+        # --- Optional timeline windowing ---
+        # Render only the slice [window_start_frames, window_end_frames) of the timeline.
+        # This is the key to rendering long timelines without running out of VRAM: when no
+        # latent is connected, duration_frames drives the auto-generated latent's temporal
+        # size, so shrinking it here means only the windowed frames are ever sampled.
+        # local_prompts, segment_lengths, guide_strength and timeline_data are all re-derived
+        # from the windowed view, so the rest of execute() is unchanged afterwards.
+        win_start = max(0, int(window_start_frames))
+        win_end_raw = int(window_end_frames)
+        win_end = win_end_raw if win_end_raw > 0 else duration_frames
+        win_end = min(win_end, duration_frames)
+        if win_end <= win_start:
+            win_end = win_start + 1
+        # `isolate_clips` forces windowing to run even with no explicit window, so a
+        # single clip at the start of the timeline can still be rendered alone.
+        windowing_active = (
+            (win_start > 0)
+            or (win_end_raw > 0 and win_end_raw < duration_frames)
+            or bool(isolate_clips)
+        )
+
+        if windowing_active:
+            if optional_latent is not None:
+                # An external latent fixes the sampled frame count, so windowing the prompts
+                # alone won't reduce VRAM. Warn rather than silently slice someone else's latent.
+                log.warning(
+                    "[PromptRelay] window active but optional_latent is connected — the latent's "
+                    "frame count is fixed upstream, so windowing will NOT reduce memory. "
+                    "Disconnect optional_latent to let the Director size the latent to the window."
+                )
+
+            try:
+                tdata_full = json.loads(timeline_data) if timeline_data else None
+            except Exception as e:
+                log.warning("[PromptRelay] window: timeline_data not parseable, skipping window: %s", e)
+                tdata_full = None
+
+            if tdata_full is not None:
+                (win_prompts, win_lengths, win_img_strengths,
+                 win_segments, win_audio_segs) = _window_timeline(
+                    tdata_full, win_start, win_end, isolate=bool(isolate_clips)
+                )
+
+                if not win_prompts:
+                    raise ValueError(
+                        f"LTXDirector window [{win_start}, {win_end}) contains no prompt segments. "
+                        "Adjust window_start_frames / window_end_frames."
+                    )
+
+                local_prompts = " | ".join(win_prompts)
+                segment_lengths = ",".join(str(int(l)) for l in win_lengths)
+                guide_strength = ",".join(f"{s:.2f}" for s in win_img_strengths)
+
+                # Re-serialize timeline_data with shifted segments/audio for downstream consumers.
+                tdata_full["segments"] = win_segments
+                tdata_full["audioSegments"] = win_audio_segs
+                timeline_data = json.dumps(tdata_full)
+                duration_frames = win_end - win_start
+                log.info(
+                    "[PromptRelay] window active%s: [%d, %d) -> %d frames, %d prompt segs, %d image segs, %d audio segs",
+                    " (isolated)" if isolate_clips else "",
+                    win_start, win_end, duration_frames, len(win_prompts),
+                    sum(1 for s in win_segments if s.get("imageFile") or s.get("imageB64")),
+                    len(win_audio_segs),
+                )
+                for i, a in enumerate(win_audio_segs):
+                    log.info(
+                        "[PromptRelay] window audio[%d]: start=%.2f length=%.2f trimStart=%.2f",
+                        i, float(a.get("start", 0)), float(a.get("length", 0)), float(a.get("trimStart", 0)),
+                    )
 
         # --- Build guide_data from image segments FIRST (to derive output dimensions) ---
         guide_data = {"images": [], "insert_frames": [], "strengths": [], "frame_rate": frame_rate}
@@ -557,7 +758,9 @@ class LTXDirector(io.ComfyNode):
         if optional_latent is None:
             latent_w = max(32, (derived_w // 32) * 32)
             latent_h = max(32, (derived_h // 32) * 32)
-            # LTXV temporal: ((length - 1) // 8) + 1 latent frames; invert to get pixel frames -> length
+            # LTXV temporal: ((length - 1) // 8) + 1 latent frames; invert to get pixel frames -> length.
+            # LTXDirectorGuide writes guides in-place via replace_latent_frames, so the latent doesn't
+            # grow and we don't need to compensate for an appended-keyframe suffix here.
             latent_t = ((ltxv_length - 1) // 8) + 1
             samples = torch.zeros(
                 [1, 128, latent_t, latent_h // 32, latent_w // 32],
@@ -570,6 +773,55 @@ class LTXDirector(io.ComfyNode):
             )
         else:
             latent = optional_latent
+
+        # --- Clamp guide insert frames into the latent's safe range ---
+        # LTXVAddGuide computes latent_idx = (frame_idx + 7) // 8 and asserts
+        # latent_idx + t.shape[2] <= latent_length. For single-image guides
+        # t.shape[2] == 1, so the largest safe frame_idx is 8 * (latent_length - 1).
+        # When duration_frames is not a multiple of 8 (very common with windowing
+        # or arbitrary clip boundaries), images placed in the last sub-stride
+        # of pixel frames would otherwise overflow the latent.
+        try:
+            latent_length = int(latent["samples"].shape[2])
+            max_safe_frame = max(0, 8 * (latent_length - 1))
+            for i, f in enumerate(guide_data["insert_frames"]):
+                if f > max_safe_frame:
+                    log.info(
+                        "[PromptRelay] Clamping guide image %d insert frame %d -> %d (latent_length=%d)",
+                        i + 1, f, max_safe_frame, latent_length,
+                    )
+                    guide_data["insert_frames"][i] = max_safe_frame
+        except Exception as e:
+            log.warning("[PromptRelay] Could not clamp guide insert_frames: %s", e)
+
+        # --- Anchor the clip's end with the start image ---
+        # LTXV with only a frame-0 guide drifts freely toward the end of the latent,
+        # often producing a distorted echo of the start image. Duplicating the first
+        # guide at the last safe frame anchors both ends so the model has to interpolate
+        # between the image and itself instead of inventing content.
+        if anchor_clip_end and guide_data["images"]:
+            try:
+                end_frame = int(max_safe_frame)
+                # Don't double-up if something already anchors the end (within one stride).
+                already_anchored = any(
+                    abs(int(f) - end_frame) < 8 for f in guide_data["insert_frames"]
+                )
+                if not already_anchored:
+                    guide_data["images"].append(guide_data["images"][0])
+                    guide_data["insert_frames"].append(end_frame)
+                    guide_data["strengths"].append(float(guide_data["strengths"][0]))
+                    log.info(
+                        "[PromptRelay] anchor_clip_end: duplicated guide image 1 at frame %d "
+                        "(latent_length=%d, strength=%.2f)",
+                        end_frame, latent_length, guide_data["strengths"][-1],
+                    )
+                else:
+                    log.info(
+                        "[PromptRelay] anchor_clip_end: end frame %d already has a guide nearby, skipping.",
+                        end_frame,
+                    )
+            except Exception as e:
+                log.warning("[PromptRelay] Could not anchor clip end: %s", e)
 
         patched, conditioning = _encode_relay(
             model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon,
@@ -616,6 +868,24 @@ class LTXDirector(io.ComfyNode):
                                 "waveform": waveform,
                                 "sample_rate": audio_out["sample_rate"],
                             })
+
+                        # Diagnostic: encoded latent shape vs the "ideal" empty-latent shape for
+                        # ltxv_length frames. If the encoded latent has fewer T positions than the
+                        # empty one would, the downstream sampler/decoder will produce shorter audio.
+                        try:
+                            inner = getattr(audio_vae, "first_stage_model", audio_vae)
+                            ideal_T = inner.num_of_latents_from_frames(ltxv_length, float(frame_rate))
+                            log.info(
+                                "[PromptRelay] custom audio: waveform=%s, encoded latent=%s, "
+                                "ideal latent T for %d frames = %d",
+                                tuple(waveform.shape), tuple(latent_samples.shape),
+                                ltxv_length, ideal_T,
+                            )
+                        except Exception as _:
+                            log.info(
+                                "[PromptRelay] custom audio: waveform=%s, encoded latent=%s",
+                                tuple(waveform.shape), tuple(latent_samples.shape),
+                            )
                         
                         if latent_samples.numel() == 0:
                             raise ValueError("Encoded audio latent is empty (0 elements).")

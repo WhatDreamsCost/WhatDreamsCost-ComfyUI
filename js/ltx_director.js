@@ -718,8 +718,177 @@ class TimelineEditor {
     return parseInt((this.durationFramesWidget && this.durationFramesWidget.value > 0) ? this.durationFramesWidget.value : 24, 10);
   }
 
+  // Furthest end-frame across all clips (image + audio). Drives duration_frames so
+  // the timeline length always matches its content — users no longer set this manually.
+  getContentDurationFrames() {
+    let furthest = 0;
+    for (const seg of this.timeline.segments || []) {
+      furthest = Math.max(furthest, Math.ceil(seg.start + seg.length));
+    }
+    for (const seg of this.timeline.audioSegments || []) {
+      furthest = Math.max(furthest, Math.ceil(seg.start + seg.length));
+    }
+    return Math.max(1, furthest);
+  }
+
+  // Sync duration_frames / duration_seconds to match the current timeline content.
+  syncDurationToContent() {
+    const frames = this.getContentDurationFrames();
+    if (this.durationFramesWidget && this.durationFramesWidget.value !== frames) {
+      this.durationFramesWidget.value = frames;
+    }
+    if (this.durationSecondsWidget) {
+      const secs = parseFloat((frames / this.getFrameRate()).toFixed(3));
+      if (this.durationSecondsWidget.value !== secs) {
+        this.durationSecondsWidget.value = secs;
+      }
+    }
+  }
+
   getFrameRate() {
     return parseInt((this.frameRateWidget && this.frameRateWidget.value > 0) ? this.frameRateWidget.value : 24, 10);
+  }
+
+  // Render-window helpers. `window_end_frames === 0` means "to the end".
+  // Returns { start, end, active } in pixel-space frames, clipped to duration.
+  getWindow() {
+    const duration = this.getDurationFrames();
+    const startW = this.node.widgets.find(w => w.name === "window_start_frames");
+    const endW = this.node.widgets.find(w => w.name === "window_end_frames");
+    const rawStart = startW ? Math.max(0, parseInt(startW.value || 0, 10)) : 0;
+    const rawEnd = endW ? Math.max(0, parseInt(endW.value || 0, 10)) : 0;
+    const start = Math.min(rawStart, duration);
+    const end = rawEnd > 0 ? Math.min(rawEnd, duration) : duration;
+    const active = (rawStart > 0) || (rawEnd > 0 && rawEnd < duration);
+    return { start, end: Math.max(end, start + 1), active };
+  }
+
+  setWindow(start, end) {
+    const startW = this.node.widgets.find(w => w.name === "window_start_frames");
+    const endW = this.node.widgets.find(w => w.name === "window_end_frames");
+    if (startW) startW.value = Math.max(0, Math.round(start));
+    if (endW) endW.value = Math.max(0, Math.round(end));
+    if (window.app && window.app.graph) window.app.graph.setDirtyCanvas(true, true);
+    this.render();
+  }
+
+  clearWindow() {
+    this.setWindow(0, 0);
+  }
+
+  // Build the JSON-safe form of a single clip + its overlapping audio, with all
+  // start positions shifted so the clip begins at frame 0. Used by renderAllClips to
+  // present each clip to Python as if it's the only thing on the timeline — sidesteps
+  // _window_timeline entirely, so overlapping/adjacent clips can't leak in.
+  buildIsolatedClipPayload(seg) {
+    const clipLen = Math.max(1, Math.round(seg.length));
+    const clipStart = seg.start;
+    const clipEnd = clipStart + seg.length;
+
+    // Strip the in-memory image object before serializing.
+    const cleanSeg = { ...seg };
+    delete cleanSeg.imgObj;
+    cleanSeg.start = 0;
+    cleanSeg.length = clipLen;
+
+    // Mirror the Python _window_timeline behavior: only front-clip the audio.
+    // Trailing samples past clipEnd are clipped downstream by total_samples in
+    // _build_combined_audio, which prevents ~0.04s of silence at the end vs. the
+    // single-clip codepath.
+    const audio = [];
+    for (const aseg of (this.timeline.audioSegments || [])) {
+      const aStart = aseg.start;
+      const aEnd = aseg.start + aseg.length;
+      if (aEnd <= clipStart || aStart >= clipEnd) continue;
+      const clipFront = Math.max(0, clipStart - aStart);
+      const newLen = aseg.length - clipFront;
+      if (newLen <= 0) continue;
+      audio.push({
+        ...aseg,
+        trimStart: (aseg.trimStart || 0) + clipFront,
+        length: newLen,
+        start: Math.max(0, aStart - clipStart),
+      });
+    }
+
+    return {
+      clipLen,
+      timelineJson: JSON.stringify({ segments: [cleanSeg], audioSegments: audio }),
+      prompt: seg.prompt || "",
+      guideStrength: (seg.type === "text") ? "" : (seg.guideStrength !== undefined ? seg.guideStrength : 1.0).toFixed(2),
+    };
+  }
+
+  // Queue one render per clip, each in true isolation: the timeline_data widget is
+  // temporarily replaced with a single-clip JSON so Python sees only that one clip
+  // (and any audio overlapping it). Window widgets are forced to 0 so the Python-side
+  // windowing logic is bypassed entirely. All widgets are restored when done.
+  async renderAllClips() {
+    if (this._renderingAll) return;
+
+    const segs = [...(this.timeline.segments || [])].sort((a, b) => a.start - b.start);
+    if (segs.length === 0) {
+      alert("No clips to render.");
+      return;
+    }
+
+    const names = [
+      "timeline_data", "local_prompts", "segment_lengths", "guide_strength",
+      "duration_frames", "duration_seconds", "window_start_frames", "window_end_frames",
+    ];
+    const widgets = {};
+    const orig = {};
+    for (const n of names) {
+      const w = this.node.widgets.find(x => x.name === n);
+      if (w) {
+        widgets[n] = w;
+        orig[n] = w.value;
+      }
+    }
+
+    if (!window.confirm(`Queue ${segs.length} isolated render${segs.length === 1 ? "" : "s"}, one per clip?`)) {
+      return;
+    }
+
+    const origBtnHtml = this.renderAllBtn ? this.renderAllBtn.innerHTML : null;
+    this._renderingAll = true;
+    if (this.renderAllBtn) this.renderAllBtn.disabled = true;
+
+    try {
+      const fps = this.getFrameRate();
+      for (let i = 0; i < segs.length; i++) {
+        const seg = segs[i];
+        const payload = this.buildIsolatedClipPayload(seg);
+
+        if (widgets.timeline_data)       widgets.timeline_data.value       = payload.timelineJson;
+        if (widgets.local_prompts)       widgets.local_prompts.value       = payload.prompt;
+        if (widgets.segment_lengths)     widgets.segment_lengths.value     = String(payload.clipLen);
+        if (widgets.guide_strength)      widgets.guide_strength.value      = payload.guideStrength;
+        if (widgets.duration_frames)     widgets.duration_frames.value     = payload.clipLen;
+        if (widgets.duration_seconds)    widgets.duration_seconds.value    = parseFloat((payload.clipLen / fps).toFixed(3));
+        if (widgets.window_start_frames) widgets.window_start_frames.value = 0;
+        if (widgets.window_end_frames)   widgets.window_end_frames.value   = 0;
+
+        if (this.renderAllBtn) {
+          this.renderAllBtn.innerHTML = `Queuing ${i + 1}/${segs.length}…`;
+        }
+
+        await app.queuePrompt(0, 1);
+      }
+    } catch (err) {
+      console.error("[LTXDirector] Render All Clips failed:", err);
+      alert("Render All Clips failed: " + (err && err.message ? err.message : err));
+    } finally {
+      for (const n in orig) {
+        if (widgets[n]) widgets[n].value = orig[n];
+      }
+      this._renderingAll = false;
+      if (this.renderAllBtn) {
+        this.renderAllBtn.disabled = false;
+        if (origBtnHtml !== null) this.renderAllBtn.innerHTML = origBtnHtml;
+      }
+      this.render();
+    }
   }
 
   // Grow the timeline duration to fit `requiredFrames` if it is currently shorter.
@@ -883,12 +1052,19 @@ class TimelineEditor {
     deleteBtn.innerHTML = `${ICONS.trash} Delete`;
     deleteBtn.addEventListener("click", () => this.deleteSelectedSegment());
 
+    this.renderAllBtn = document.createElement("button");
+    this.renderAllBtn.className = "pr-btn";
+    this.renderAllBtn.innerHTML = `${ICONS.play} Render All Clips`;
+    this.renderAllBtn.title = "Queue one render per clip, each windowed to that clip's range.";
+    this.renderAllBtn.addEventListener("click", () => this.renderAllClips());
+
     actionGroup.appendChild(this.fileInput);
     actionGroup.appendChild(this.audioFileInput);
     actionGroup.appendChild(uploadBtn);
     actionGroup.appendChild(addTextBtn);
     actionGroup.appendChild(uploadAudioBtn);
     actionGroup.appendChild(deleteBtn);
+    actionGroup.appendChild(this.renderAllBtn);
     toolbar.appendChild(actionGroup);
 
     const rightGroup = document.createElement("div");
@@ -1639,24 +1815,8 @@ class TimelineEditor {
   }
 
   updateWidgetVisibility() {
-    const mode = this.displayModeWidget ? this.displayModeWidget.value : "seconds";
-
-    if (this.durationFramesWidget) {
-      // Always visible regardless of display mode
-      this.durationFramesWidget.type = "INT";
-      if (!this.durationFramesWidget.options) this.durationFramesWidget.options = {};
-      this.durationFramesWidget.options.hidden = false;
-      this.durationFramesWidget.hidden = false;
-      delete this.durationFramesWidget.computeSize;
-    }
-    if (this.durationSecondsWidget) {
-      // Always visible regardless of display mode
-      this.durationSecondsWidget.type = "FLOAT";
-      if (!this.durationSecondsWidget.options) this.durationSecondsWidget.options = {};
-      this.durationSecondsWidget.options.hidden = false;
-      this.durationSecondsWidget.hidden = false;
-      delete this.durationSecondsWidget.computeSize;
-    }
+    // duration_frames / duration_seconds are auto-derived from the timeline content
+    // (see syncDurationToContent) and stay hidden — they're managed in hideSettingsWidgets.
 
     // Force node resize and redraw deferred to next tick
     setTimeout(() => {
@@ -2099,6 +2259,62 @@ class TimelineEditor {
         this.ctx.textBaseline = "middle";
         this.ctx.fillText("+", gap.centerX, gap.centerY + 1);
       }
+    }
+
+    // --- Render-window shadow overlay ---
+    // When window_start_frames / window_end_frames slice the timeline,
+    // shade everything OUTSIDE the window so the user can see what will actually render.
+    const win = this.getWindow();
+    if (win.active) {
+      const winStartX = (win.start / totalFrames) * width;
+      const winEndX = (win.end / totalFrames) * width;
+      const tracksH = this.blockHeight + this.audioTrackHeight;
+
+      this.ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+      if (winStartX > 0) this.ctx.fillRect(0, RULER_HEIGHT, winStartX, tracksH);
+      if (winEndX < width) this.ctx.fillRect(winEndX, RULER_HEIGHT, width - winEndX, tracksH);
+
+      // Tinted ruler stripe inside the window so it pops
+      this.ctx.fillStyle = "rgba(120, 200, 255, 0.18)";
+      this.ctx.fillRect(winStartX, 0, winEndX - winStartX, RULER_HEIGHT);
+
+      // Bracket markers at each end
+      this.ctx.save();
+      this.ctx.strokeStyle = "rgba(120, 200, 255, 0.95)";
+      this.ctx.lineWidth = 2;
+      this.ctx.beginPath();
+      // Left bracket
+      this.ctx.moveTo(winStartX + 5, 2);
+      this.ctx.lineTo(winStartX, 2);
+      this.ctx.lineTo(winStartX, RULER_HEIGHT + tracksH - 2);
+      this.ctx.lineTo(winStartX + 5, RULER_HEIGHT + tracksH - 2);
+      // Right bracket
+      this.ctx.moveTo(winEndX - 5, 2);
+      this.ctx.lineTo(winEndX, 2);
+      this.ctx.lineTo(winEndX, RULER_HEIGHT + tracksH - 2);
+      this.ctx.lineTo(winEndX - 5, RULER_HEIGHT + tracksH - 2);
+      this.ctx.stroke();
+      this.ctx.restore();
+
+      // Range label centered inside the window so the user can confirm what renders.
+      const winFrames = Math.max(0, Math.round(win.end - win.start));
+      let label;
+      try {
+        label = `Render window: ${this.formatTime(win.start, true)}–${this.formatTime(win.end, true)} (${winFrames}f)`;
+      } catch (e) {
+        label = `Render window: ${Math.round(win.start)}–${Math.round(win.end)} (${winFrames}f)`;
+      }
+      this.ctx.save();
+      this.ctx.font = "11px sans-serif";
+      this.ctx.textAlign = "center";
+      this.ctx.textBaseline = "top";
+      const labelX = Math.min(Math.max((winStartX + winEndX) / 2, 60), width - 60);
+      const labelW = this.ctx.measureText(label).width + 10;
+      this.ctx.fillStyle = "rgba(20, 30, 45, 0.85)";
+      this.ctx.fillRect(labelX - labelW / 2, RULER_HEIGHT + 3, labelW, 16);
+      this.ctx.fillStyle = "rgba(170, 220, 255, 1)";
+      this.ctx.fillText(label, labelX, RULER_HEIGHT + 5);
+      this.ctx.restore();
     }
 
     // --- Out-of-duration shadow overlay ---
@@ -2759,6 +2975,9 @@ class TimelineEditor {
 
   // --- Backend Data Sync ---
   commitChanges(skipRender = false) {
+    // Auto-size duration to the content extent before anything reads it.
+    this.syncDurationToContent();
+
     let sortedSegments = [...this.timeline.segments].sort((a, b) => a.start - b.start);
     let contiguousLengths = [];
     let contiguousPrompts = [];
@@ -3037,6 +3256,56 @@ class TimelineEditor {
       menu.appendChild(pasteReplaceBtn);
     }
 
+    // --- Render-window helpers (set start/end to this clip's boundaries) ---
+    // Available on every track (image, text, and audio) so any clip edge can
+    // become a window boundary.
+    {
+      const segStart = Math.round(seg.start);
+      const segEnd = Math.round(seg.start + seg.length);
+
+      const winStartBtn = document.createElement("button");
+      winStartBtn.className = "pr-gap-menu-btn";
+      winStartBtn.innerHTML = `Window: Start at this clip`;
+      winStartBtn.onclick = () => {
+        const { end } = this.getWindow();
+        const newEnd = end > segStart ? end : 0; // 0 = "to the end"
+        this.setWindow(segStart, newEnd);
+        this.dismissContextMenu();
+      };
+      menu.appendChild(winStartBtn);
+
+      const winEndBtn = document.createElement("button");
+      winEndBtn.className = "pr-gap-menu-btn";
+      winEndBtn.innerHTML = `Window: End after this clip`;
+      winEndBtn.onclick = () => {
+        const { start } = this.getWindow();
+        const newStart = start < segEnd ? start : 0;
+        this.setWindow(newStart, segEnd);
+        this.dismissContextMenu();
+      };
+      menu.appendChild(winEndBtn);
+
+      const winOnlyBtn = document.createElement("button");
+      winOnlyBtn.className = "pr-gap-menu-btn";
+      winOnlyBtn.innerHTML = `Window: Only this clip`;
+      winOnlyBtn.onclick = () => {
+        this.setWindow(segStart, segEnd);
+        this.dismissContextMenu();
+      };
+      menu.appendChild(winOnlyBtn);
+
+      if (this.getWindow().active) {
+        const winClearBtn = document.createElement("button");
+        winClearBtn.className = "pr-gap-menu-btn";
+        winClearBtn.innerHTML = `Window: Clear (render all)`;
+        winClearBtn.onclick = () => {
+          this.clearWindow();
+          this.dismissContextMenu();
+        };
+        menu.appendChild(winClearBtn);
+      }
+    }
+
     const delBtn = document.createElement("button");
     delBtn.className = "pr-gap-menu-btn";
     delBtn.innerHTML = `Delete`;
@@ -3209,7 +3478,7 @@ class TimelineEditor {
   // --- Settings Menu ---
   // Widgets that are managed by the settings menu (hidden from node by default).
   get _settingsWidgetNames() {
-    return ["display_mode", "epsilon", "divisible_by", "img_compression"];
+    return ["display_mode", "epsilon", "divisible_by", "img_compression", "duration_frames", "duration_seconds"];
   }
 
   // Hide all settings widgets on the node (called on init).

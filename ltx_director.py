@@ -312,6 +312,11 @@ def _convert_to_latent_lengths(pixel_lengths, temporal_stride, latent_frames):
 
 
 def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon, frame_offset=0):
+    """Prompt-relay encode. `frame_offset` (in latent frames) shifts the segments into the
+    new region of an extension; with frame_offset=0 (default), behaves identically to the
+    pure kijai formula. `build_segments` itself is left untouched — the shift is applied
+    externally to the q_token_idx midpoints so the kijai math stays pristine.
+    """
     for name, val in (("global_prompt", global_prompt),
                       ("local_prompts", local_prompts),
                       ("segment_lengths", segment_lengths)):
@@ -325,7 +330,7 @@ def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_len
 
     # Split prompts but do NOT filter out empty ones yet, so we can detect them
     locals_list = [p.strip() for p in local_prompts.split("|")]
-    
+
     # Check if any specific segment is empty
     for p in locals_list:
         if not p:
@@ -338,7 +343,9 @@ def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_len
 
     samples = latent["samples"]
     total_latent_frames = samples.shape[2]
-    new_latent_frames = total_latent_frames - frame_offset
+    # Segments are distributed across the NEW region only; mask_fn still uses total_latent_frames
+    # so query_frames span the full combined latent (X locked + Y free).
+    new_latent_frames = max(1, total_latent_frames - frame_offset)
     tokens_per_frame = (samples.shape[3] // patch_size[1]) * (samples.shape[4] // patch_size[2])
 
     parsed_lengths = None
@@ -362,7 +369,12 @@ def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_len
         total_latent_frames, frame_offset, new_latent_frames, tokens_per_frame, effective_lengths,
     )
 
-    q_token_idx = build_segments(token_ranges, effective_lengths, epsilon, None, frame_offset=frame_offset)
+    # Build segments with pure kijai math (cursor=0), then shift midpoints into the Y region.
+    q_token_idx = build_segments(token_ranges, effective_lengths, epsilon, None)
+    if frame_offset > 0:
+        for seg in q_token_idx:
+            seg["midpoint"] += frame_offset
+
     mask_fn = create_mask_fn(q_token_idx, tokens_per_frame, total_latent_frames)
 
     patched = model.clone()
@@ -537,8 +549,7 @@ class LTXDirector(io.ComfyNode):
 
                 strength = strengths[idx] if idx < len(strengths) else 1.0
                 guide_data["images"].append(tensor)
-                anchor_frame = int(seg["start"]) + int(seg.get("anchorOffset", 0))
-                guide_data["insert_frames"].append(anchor_frame)
+                guide_data["insert_frames"].append(int(seg["start"]))
                 guide_data["strengths"].append(float(strength))
             
             # If no images were loaded from the timeline, create a dummy image at strength 0
@@ -662,25 +673,26 @@ class LTXDirector(io.ComfyNode):
                     _prior_mask_value, float(prior_strength),
                 )
 
-        # Shift keyframe insert_frames into the new region so timeline pixel 0 lands at
-        # the first NEW pixel after the locked prefix.
-        if prior_latent_t > 0 and guide_data["insert_frames"]:
+        # When extending, the editor's duration_frames represents only the new region (Y).
+        # Auto-shift keyframes by the prior region's pixel size so editor pixel 0 lands at
+        # the first NEW pixel in the combined latent. Segments are offset in latent space via
+        # _encode_relay's frame_offset, which shifts their midpoints into the Y region after
+        # they're built (kijai's build_segments stays pure).
+        # LTX VAE is causally asymmetric: latent 0 → pixel 0; latent N≥1 → pixel 1+(N-1)*8.
+        # For N prior latent frames, the first new pixel is at 1 + (N-1)*8.
+        if prior_latent_t > 0:
             try:
                 _, _, _temporal_stride = detect_model_type(model)
             except Exception:
                 _temporal_stride = 8
             _guide_frame_offset = 1 + (prior_latent_t - 1) * _temporal_stride
-            guide_data["insert_frames"] = [f + _guide_frame_offset for f in guide_data["insert_frames"]]
-            log.info(
-                "[LTX Director] Guide insert_frames shifted by %d px (%d prior latent frames).",
-                _guide_frame_offset, prior_latent_t,
-            )
+            if guide_data["insert_frames"]:
+                guide_data["insert_frames"] = [f + _guide_frame_offset for f in guide_data["insert_frames"]]
+                log.info(
+                    "[LTX Director] Auto-shift: keyframes +%d px, segments +%d latent frames (extending from %d prior latent frames).",
+                    _guide_frame_offset, prior_latent_t, prior_latent_t,
+                )
 
-        # Segments span the NEW region only (frame_offset = prior_latent_t in latent frames). The
-        # editor's segment_lengths describe the Y region; build_segments starts frame_cursor at
-        # prior_latent_t so midpoints land in latent indices [prior_latent_t, total_latent_frames).
-        # Setting frame_offset=0 here would place segments mostly inside the locked X region
-        # (no-op via mask=0), starving the actual new region of prompt guidance.
         patched, conditioning = _encode_relay(
             model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon,
             frame_offset=prior_latent_t,
@@ -784,19 +796,20 @@ class LTXDirector(io.ComfyNode):
         # or prepend it to the new-segment audio latent (raw prior-prefix without noise_mask).
         if extend_from_audio_latent is not None:
             if "noise_mask" in extend_from_audio_latent:
-                # Combined audio latent: keep STRICT prefix conditioning so generation
-                # starts after the locked prefix (prevents overlap at the start).
-                prior_a = extend_from_audio_latent["samples"].to(
-                    device=comfy.model_management.intermediate_device()
-                )
-                _a_mask = extend_from_audio_latent["noise_mask"].to(
-                    device=comfy.model_management.intermediate_device()
-                ).float()
+                # Combined audio latent: X (locked prior) + Y (to generate).
+                # Take the LOCKED PREFIX from extend, then attach the Y region. The Y region
+                # uses our custom timeline audio when `use_custom_audio=True`, otherwise it's
+                # zeros + mask=1 (full generation). Before this fix, the strict-prefix code
+                # silently overwrote any custom audio with extend's zeroed Y region.
+                _dev = comfy.model_management.intermediate_device()
+                prior_a_full = extend_from_audio_latent["samples"].to(device=_dev).float()
+                prior_mask = extend_from_audio_latent["noise_mask"].to(device=_dev).float()
 
-                if _a_mask.ndim == 4:
-                    _a_mask_t = _a_mask[0, 0].reshape(_a_mask.shape[2], -1).mean(dim=1)
+                # Derive prior_audio_t from the leading locked region (mask <= 0.05).
+                if prior_mask.ndim == 4:
+                    _a_mask_t = prior_mask[0, 0].reshape(prior_mask.shape[2], -1).mean(dim=1)
                 else:
-                    _a_mask_t = _a_mask[0, 0].reshape(_a_mask.shape[2])
+                    _a_mask_t = prior_mask[0, 0].reshape(prior_mask.shape[2])
 
                 prior_audio_t = 0
                 for _v in _a_mask_t:
@@ -805,27 +818,55 @@ class LTXDirector(io.ComfyNode):
                     else:
                         break
 
-                total_audio_t = prior_a.shape[2]
+                total_audio_t = prior_a_full.shape[2]
                 prior_audio_t = max(0, min(prior_audio_t, total_audio_t))
 
-                strict_a_samples = prior_a.clone()
-                if prior_audio_t < total_audio_t:
-                    strict_a_samples[:, :, prior_audio_t:, :] = 0.0
+                # X (locked) region: take the actual prior audio samples + mask=0
+                x_samples = prior_a_full[:, :, :prior_audio_t, :]
+                x_mask = torch.zeros(
+                    (1, 1, prior_audio_t, prior_a_full.shape[-1]),
+                    dtype=torch.float32, device=_dev,
+                )
 
-                strict_a_mask = torch.ones_like(_a_mask, dtype=torch.float32)
-                if strict_a_mask.ndim == 4:
-                    strict_a_mask[:, :, :prior_audio_t, :] = 0.0
+                # Y region: custom audio if present, otherwise zeros + mask=1
+                have_custom = (
+                    use_custom_audio
+                    and isinstance(audio_latent, dict)
+                    and "samples" in audio_latent
+                    and audio_latent["samples"].numel() > 0
+                )
+                if have_custom:
+                    y_samples = audio_latent["samples"].to(device=_dev)
+                    y_mask_existing = audio_latent.get("noise_mask", None)
+                    if y_mask_existing is not None:
+                        y_mask = y_mask_existing.to(device=_dev).float()
+                    else:
+                        y_mask = torch.ones(
+                            (1, 1, y_samples.shape[2], y_samples.shape[-1]),
+                            dtype=torch.float32, device=_dev,
+                        )
                 else:
-                    strict_a_mask[:, :, :prior_audio_t] = 0.0
+                    y_t = max(1, total_audio_t - prior_audio_t)
+                    y_samples = torch.zeros(
+                        (1, prior_a_full.shape[1], y_t, prior_a_full.shape[-1]),
+                        dtype=prior_a_full.dtype, device=_dev,
+                    )
+                    y_mask = torch.ones(
+                        (1, 1, y_t, prior_a_full.shape[-1]),
+                        dtype=torch.float32, device=_dev,
+                    )
+
+                combined_samples = torch.cat([x_samples, y_samples], dim=2)
+                combined_mask = torch.cat([x_mask, y_mask], dim=2)
 
                 audio_latent = {
-                    "samples": strict_a_samples,
+                    "samples": combined_samples,
                     "type": "audio",
-                    "noise_mask": strict_a_mask,
+                    "noise_mask": combined_mask,
                 }
                 log.info(
-                    "[PromptRelay] Combined audio latent: %d total frames (%d locked + %d generate), strict prefix mask.",
-                    total_audio_t, prior_audio_t, total_audio_t - prior_audio_t,
+                    "[PromptRelay] Combined audio latent: %d total frames (%d locked + %d Y), custom_audio=%s.",
+                    combined_samples.shape[2], prior_audio_t, y_samples.shape[2], have_custom,
                 )
             else:
                 # Raw prior-prefix: prepend it to the new-segment audio latent.

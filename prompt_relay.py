@@ -61,26 +61,12 @@ def create_mask_fn(q_token_idx, fallback_tokens_per_frame, latent_frames):
         if Lk == video_lq or Lk < max_token_idx:
             return None
 
-        has_appended_guide_queries = Lq > video_lq and (Lq - video_lq) % max(video_tpf, 1) == 0
-        if Lq == video_lq:
-            mode = "video"
-        elif has_appended_guide_queries:
-            mode = "video_with_guides"
-        else:
-            mode = "scaled"
+        mode = "video" if Lq == video_lq else "scaled"
 
         key = (Lq, Lk, mode, q.device)
         if key not in cache:
             if mode == "video":
                 cost = build_temporal_cost(q_token_idx, Lq, Lk, q.device, q.dtype, video_tpf)
-            elif mode == "video_with_guides":
-                # Guide tokens are appended after the normal video tokens. Keep prompt-relay
-                # timing on the original video region and leave the appended guide queries neutral
-                # so they do not get remapped through the scaled/audio path.
-                cost = torch.zeros(Lq, Lk, device=q.device, dtype=q.dtype)
-                cost[:video_lq] = build_temporal_cost(
-                    q_token_idx, video_lq, Lk, q.device, q.dtype, video_tpf
-                )
             else:
                 cost = build_temporal_cost_scaled(q_token_idx, Lq, Lk, q.device, q.dtype, latent_frames)
             log.info(
@@ -94,7 +80,7 @@ def create_mask_fn(q_token_idx, fallback_tokens_per_frame, latent_frames):
     return mask_fn
 
 
-def build_segments(token_ranges, segment_lengths, epsilon=1e-3, relay_options=None, frame_offset=0):
+def build_segments(token_ranges, segment_lengths, epsilon=1e-3, relay_options=None):
     """Per-segment metadata for the temporal penalty.
 
     relay_options (optional dict) overrides per-stream knobs:
@@ -102,9 +88,6 @@ def build_segments(token_ranges, segment_lengths, epsilon=1e-3, relay_options=No
         audio_epsilon, audio_strength, audio_window_scale
     Audio knobs only affect architectures whose cross-attention takes the scaled
     (non-integer-frame) path — currently LTX audio_attn2.
-
-    frame_offset: number of prior-context frames prepended before the timeline segments.
-    Segment midpoints are shifted by this amount so they align with the correct latent frames.
     """
     # Paper uses constant sigma = 1/ln(1/epsilon) regardless of segment length
     sigma = 1.0 / math.log(1.0 / epsilon) if 0 < epsilon < 1 else 0.1448
@@ -131,14 +114,14 @@ def build_segments(token_ranges, segment_lengths, epsilon=1e-3, relay_options=No
         )
 
     q_token_idx = []
-    frame_cursor = frame_offset  # Start after any prior-context frames
+    frame_cursor = 0
 
     for (tok_start, tok_end), L in zip(token_ranges, segment_lengths):
         if L <= 0:
             frame_cursor += L
             continue
         midpoint = (2 * frame_cursor + L) // 2
-        base_window = L // 2
+        base_window = max(L // 2 - 2, 0)
         q_token_idx.append({
             "local_token_idx": torch.arange(tok_start, tok_end),
             "midpoint": midpoint,

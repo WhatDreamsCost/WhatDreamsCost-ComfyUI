@@ -828,7 +828,12 @@ class LTXDirector(io.ComfyNode):
         )
 
         # --- Build Audio Output ---
-        audio_out = _build_combined_audio(timeline_data, ltxv_length, float(frame_rate))
+        # Size the combined waveform by `duration_frames`, NOT `ltxv_length` (which is +1 due to
+        # the LTXV pixel-frame grid). Otherwise each isolated/windowed render pulls one extra
+        # source frame of audio past the clip's nominal end, and when the user concatenates
+        # back-to-back clips that 1-frame overflow shows up as an overlap at adjacent boundaries
+        # and as a skip when there's any small placement gap.
+        audio_out = _build_combined_audio(timeline_data, duration_frames, float(frame_rate))
 
         # --- Audio Latent Generation ---
         audio_latent = {}

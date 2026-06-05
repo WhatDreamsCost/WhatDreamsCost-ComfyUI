@@ -26,6 +26,20 @@ function hideWidget(w) {
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
+// LTXV's video VAE decodes a latent of T frames into (T-1)*LTXV_TEMPORAL_STRIDE + 1 pixel frames,
+// so the only frame counts LTXV can output are 1, 9, 17, 25, ..., 185, 193, 201, ... — i.e. 8n+1.
+// Asking for an off-grid count (e.g. 192) silently rounds up to the next grid point (193), which
+// causes 1-frame video/audio mismatches that break seamless concatenation across clips. We snap
+// all image/text clip lengths to this grid so a per-clip batch render produces clips whose
+// rendered frame counts match the timeline frame counts exactly.
+const LTXV_TEMPORAL_STRIDE = 8;
+function snapToLTXVGrid(frames) {
+  const f = Math.max(1, Math.round(Number(frames) || 0));
+  if (f <= 1) return 1;
+  const n = Math.round((f - 1) / LTXV_TEMPORAL_STRIDE);
+  return Math.max(1, n * LTXV_TEMPORAL_STRIDE + 1);
+}
+
 // --- Modern Dark/Grey UI CSS (ComfyUI Match) ---
 const STYLES = `
   .pr-wrapper {
@@ -781,7 +795,9 @@ class TimelineEditor {
   // present each clip to Python as if it's the only thing on the timeline — sidesteps
   // _window_timeline entirely, so overlapping/adjacent clips can't leak in.
   buildIsolatedClipPayload(seg) {
-    const clipLen = Math.max(1, Math.round(seg.length));
+    // Snap to grid here too — if anything ever bypassed commitChanges with a non-grid length,
+    // the rendered video and audio frame counts must still match for seamless concatenation.
+    const clipLen = snapToLTXVGrid(seg.length);
     const clipStart = seg.start;
     const clipEnd = clipStart + seg.length;
 
@@ -1588,7 +1604,8 @@ class TimelineEditor {
   async handleImageUpload(files, targetFrameStart = null, explicitLength = null) {
     const frameRate = this.getFrameRate();
     const durationFrames = this.getDurationFrames();
-    const newLength = explicitLength !== null ? explicitLength : frameRate * 1; // Default to 1 second long
+    // Snap to LTXV grid so the new clip is renderable as a self-contained unit.
+    const newLength = snapToLTXVGrid(explicitLength !== null ? explicitLength : frameRate * 1);
 
     for (let file of files) {
       if (!file.type.startsWith("image/")) continue;
@@ -2975,6 +2992,15 @@ class TimelineEditor {
 
   // --- Backend Data Sync ---
   commitChanges(skipRender = false) {
+    // Snap image/text clip lengths to LTXV's 8n+1 frame grid so each per-clip render
+    // produces video and audio of identical frame count. Audio segments are untouched —
+    // they're sliced per-clip, not rendered. See snapToLTXVGrid above for rationale.
+    for (const seg of this.timeline.segments) {
+      if (seg.type === "audio") continue;
+      const snapped = snapToLTXVGrid(seg.length);
+      if (snapped !== seg.length) seg.length = snapped;
+    }
+
     // Auto-size duration to the content extent before anything reads it.
     this.syncDurationToContent();
 
@@ -3854,7 +3880,7 @@ class TimelineEditor {
 
   addTextSegmentFreeSpace() {
     const frameRate = this.getFrameRate();
-    const newLength = Math.max(1, frameRate); // 1 second default
+    const newLength = snapToLTXVGrid(frameRate); // ~1 second, snapped to LTXV grid
     const sorted = [...this.timeline.segments].sort((a, b) => a.start - b.start);
     let newStart = 0;
     for (const seg of sorted) {

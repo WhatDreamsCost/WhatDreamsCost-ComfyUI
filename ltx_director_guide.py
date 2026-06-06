@@ -1,8 +1,12 @@
+import logging
+
 from comfy_extras.nodes_lt import LTXVAddGuide
 import torch
 import comfy.utils
 from comfy_api.latest import io
 from .ltx_director import GuideData
+
+log = logging.getLogger(__name__)
 
 
 class LTXDirectorGuide(LTXVAddGuide):
@@ -54,6 +58,19 @@ class LTXDirectorGuide(LTXVAddGuide):
             B, C, F, H, W = latent_image.shape
             width = round(W * scale_by)
             height = round(H * scale_by)
+            # Clamp to >= 1 so a small latent (or aggressive downscale) can't produce a
+            # zero-sized dimension, which would otherwise crash common_upscale/interpolate
+            # with a cryptic "Input and output sizes should be greater than 0" RuntimeError.
+            if width < 1 or height < 1:
+                log.warning(
+                    "[LTXDirectorGuide] scale_by=%.3f on a %dx%d latent rounds to %dx%d; "
+                    "clamping to >=1. The input resolution is almost certainly too small — "
+                    "check the width/height feeding the latent (a 1x1 latent usually means "
+                    "pixel dimensions below 32 reached the latent generator).",
+                    scale_by, W, H, width, height,
+                )
+                width = max(1, width)
+                height = max(1, height)
             
             # Reshape to 4D for common_upscale
             latent_4d = latent_image.permute(0, 2, 1, 3, 4).reshape(B * F, C, H, W)

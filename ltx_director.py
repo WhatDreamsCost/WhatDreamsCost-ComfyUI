@@ -693,6 +693,11 @@ class LTXDirector(io.ComfyNode):
                     _guide_frame_offset, prior_latent_t, prior_latent_t,
                 )
 
+        # Pass the X/Y boundary latent index to LTXDirectorGuide so it can ramp kf_softness
+        # to 0 at the boundary (keyframes there have to compete with clean/locked prior content
+        # at RoPE distance 1; a noised kf loses that competition).
+        guide_data["boundary_latent_idx"] = int(prior_latent_t)
+
         patched, conditioning = _encode_relay(
             model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon,
             frame_offset=prior_latent_t,

@@ -72,6 +72,11 @@ class LTXDirectorGuide(LTXVAddGuide):
         images = guide_data.get("images", [])
         insert_frames = guide_data.get("insert_frames", [])
         strengths = guide_data.get("strengths", [])
+        # In extend mode, the first Y frame is at latent index = boundary_latent_idx. Keyframes
+        # landing there have to compete with the prior at RoPE distance 1 (the last X frame),
+        # which is hard-locked and has clean content. A noised kf loses that competition, so we
+        # ramp kf_softness to 0 at the boundary and back up to full softness 2+ latent frames in.
+        boundary_latent_idx = int(guide_data.get("boundary_latent_idx", 0))
 
         for idx, img_tensor in enumerate(images):
             f_idx = insert_frames[idx] if idx < len(insert_frames) else 0
@@ -79,23 +84,34 @@ class LTXDirectorGuide(LTXVAddGuide):
 
             image_1, t = cls.encode(vae, latent_width, latent_height, img_tensor, scale_factors)
 
-            # Pre-noise the keyframe latent (variance-preserving blend with Gaussian noise).
-            # The kf token's content becomes less crisp — frames attending to it still get an
-            # anchor pull, but with fuzzy content instead of a hard-edged still. At the target
-            # frame the kf is still dominant in attention so the image lands; at neighbor frames
-            # the noisy anchor lets motion blend in instead of locking. variance-preserving so
-            # the latent stays in-distribution for the model.
-            if kf_softness > 0.0:
-                noise = torch.randn_like(t)
-                sqrt_keep = (1.0 - kf_softness) ** 0.5
-                sqrt_noise = kf_softness ** 0.5
-                t = sqrt_keep * t + sqrt_noise * noise
-
+            # Compute latent_idx BEFORE pre-noise so we can ramp softness based on its position.
             frame_idx, latent_idx = cls.get_latent_index(positive, latent_length, len(image_1), f_idx, scale_factors)
 
             assert latent_idx + t.shape[2] <= latent_length, (
                 f"Guide image {idx + 1}: conditioning frames exceed the length of the latent sequence."
             )
+
+            # Ramp kf_softness based on distance from the X/Y boundary in extend mode.
+            # Boundary kf (latent_idx == boundary): softness=0 (pristine, max competition vs prior).
+            # 1 latent frame in: softness = 0.5 * kf_softness (transition).
+            # 2+ latent frames in: full kf_softness (normal pose-anchor behavior).
+            # Non-extend mode (boundary_latent_idx == 0): full kf_softness everywhere.
+            if boundary_latent_idx > 0 and latent_idx >= boundary_latent_idx:
+                distance_from_boundary = latent_idx - boundary_latent_idx
+                softness_scale = min(1.0, distance_from_boundary / 2.0)
+            else:
+                softness_scale = 1.0
+            effective_softness = kf_softness * softness_scale
+
+            # Pre-noise the keyframe latent (variance-preserving blend with Gaussian noise).
+            # The kf token's content becomes less crisp — frames attending to it still get an
+            # anchor pull, but with fuzzy content instead of a hard-edged still. variance-preserving
+            # so the latent stays in-distribution for the model.
+            if effective_softness > 0.0:
+                noise = torch.randn_like(t)
+                sqrt_keep = (1.0 - effective_softness) ** 0.5
+                sqrt_noise = effective_softness ** 0.5
+                t = sqrt_keep * t + sqrt_noise * noise
 
             positive, negative, latent_image, noise_mask = cls.append_keyframe(
                 positive, negative, frame_idx, latent_image, noise_mask, t, strength, scale_factors,

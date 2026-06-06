@@ -7,11 +7,29 @@ from server import PromptServer
 from aiohttp import web
 import comfy.utils
 
-# Custom API route to serve video files from anywhere on the user's system for the frontend preview
+# Media file extensions this preview route is allowed to serve. Restricting to
+# media types prevents the route from being abused to read arbitrary files
+# (e.g. SSH keys, .env, config, source) off the server's filesystem.
+_ALLOWED_PREVIEW_EXTS = {
+    ".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".mpg", ".mpeg", ".wmv", ".flv", ".gif",
+    ".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac", ".opus",
+}
+
+# Custom API route to serve user-selected video files for the frontend preview.
+# The feature intentionally allows previewing media chosen by absolute path, but
+# the path is normalised and the extension is allow-listed so this cannot be used
+# as a wildcard arbitrary-file-read primitive.
 @PromptServer.instance.routes.get("/video_ui_custom_view")
 async def custom_view(request):
-    file_path = request.query.get("filename", "")
-    if os.path.exists(file_path) and os.path.isfile(file_path):
+    raw = request.query.get("filename", "")
+    if not raw:
+        return web.Response(status=400, text="Missing filename")
+
+    # Resolve symlinks/.. and compare against an extension allow-list.
+    file_path = os.path.realpath(raw)
+    if os.path.splitext(file_path)[1].lower() not in _ALLOWED_PREVIEW_EXTS:
+        return web.Response(status=403, text="File type not allowed")
+    if os.path.isfile(file_path):
         return web.FileResponse(file_path)
     return web.Response(status=404, text="File not found")
 
@@ -21,11 +39,30 @@ async def upload_chunk(request):
     post = await request.post()
     file = post.get("file")
     filename = post.get("filename")
-    chunk_index = int(post.get("chunk_index"))
-    total_chunks = int(post.get("total_chunks"))
+
+    if file is None or not filename:
+        return web.Response(status=400, text="Missing file or filename")
+
+    try:
+        chunk_index = int(post.get("chunk_index"))
+        total_chunks = int(post.get("total_chunks"))
+    except (TypeError, ValueError):
+        return web.Response(status=400, text="Invalid chunk metadata")
 
     upload_dir = folder_paths.get_input_directory()
-    file_path = os.path.join(upload_dir, filename)
+
+    # Strip any directory components so a malicious/crafted filename (e.g.
+    # "..\..\autorun.bat" or an absolute path) cannot escape the input directory.
+    safe_name = os.path.basename(filename)
+    if not safe_name or safe_name in (".", ".."):
+        return web.Response(status=400, text="Invalid filename")
+
+    file_path = os.path.join(upload_dir, safe_name)
+
+    # Defence in depth: confirm the resolved path stays inside the input directory.
+    real_upload_dir = os.path.realpath(upload_dir)
+    if os.path.commonpath([real_upload_dir, os.path.realpath(file_path)]) != real_upload_dir:
+        return web.Response(status=400, text="Invalid filename")
 
     # Append to file if it's not the first chunk, otherwise write new
     mode = "ab" if chunk_index > 0 else "wb"
@@ -33,7 +70,7 @@ async def upload_chunk(request):
         f.write(file.file.read())
 
     if chunk_index == total_chunks - 1:
-        return web.json_response({"name": filename})
+        return web.json_response({"name": safe_name})
     return web.json_response({"status": "ok"})
 
 

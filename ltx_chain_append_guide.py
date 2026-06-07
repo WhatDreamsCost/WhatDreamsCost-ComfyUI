@@ -24,6 +24,10 @@ but differ in WHERE the kf's latent goes:
                              reference — but the model's output strongly resembles the
                              kf via natural attention coherence.
 
+The chain attention mask applies UNIFORMLY across all transformer blocks (no early-vs-
+late layer gating). The block-fraction gating was evaluated and didn't visibly improve
+output quality in this mode while adding a knob to tune — removed for simplicity.
+
 Pair with a standard CLIP+conditioning path. The node returns the MODIFIED positive/
 negative (they now carry `keyframe_idxs` entries that the model reads to remap RoPE).
 
@@ -77,7 +81,8 @@ def _parse_csv_floats(s, fallback=None):
 class LTXChainKeyframeAppend(LTXVAddGuide):
     """Append-mode multi-keyframe with chain-aware self-attention. Kfs are attached as
     extra reference tokens (no latent-slot pinning), and the chain mask partitions each
-    kf's influence to its bordering segments.
+    kf's influence to its bordering segments. Chain mask applies to all transformer
+    blocks (no layer gating).
     """
 
     @classmethod
@@ -139,11 +144,6 @@ class LTXChainKeyframeAppend(LTXVAddGuide):
                     "cut_attention_floor", default=0.01, min=0.0001, max=1.0, step=0.0001, optional=True,
                     tooltip="Minimum attention across HARD CUTS (slot-to-slot only). Default 0.01."
                 ),
-                io.Float.Input(
-                    "boundary_block_fraction", default=0.5, min=0.0, max=1.0, step=0.05, optional=True,
-                    tooltip="Fraction of EARLY transformer blocks that apply chain masking. "
-                            "Late blocks attend freely (semantic bleed). Default 0.5."
-                ),
             ],
             outputs=[
                 io.Model.Output(display_name="model", tooltip="Model with chain-aware self-attention patch applied."),
@@ -169,7 +169,6 @@ class LTXChainKeyframeAppend(LTXVAddGuide):
         isolation_edge1=0.6,
         cross_segment_floor=0.05,
         cut_attention_floor=0.01,
-        boundary_block_fraction=0.5,
     ) -> io.NodeOutput:
         scale_factors = vae.downscale_index_formula
 
@@ -204,7 +203,6 @@ class LTXChainKeyframeAppend(LTXVAddGuide):
                 log.warning("[LTXChainKfAppend] cut_index %d out of range [0, %d) — ignoring", c, n_images)
         cut_kf_indices = {c for c in cut_kf_indices if 0 <= c < n_images}
 
-        # Clone the original latent + noise_mask. The append calls will GROW the temporal axis.
         latent_image = latent["samples"].clone()
         if "noise_mask" in latent:
             noise_mask = latent["noise_mask"].clone()
@@ -216,26 +214,16 @@ class LTXChainKeyframeAppend(LTXVAddGuide):
                 device=latent_image.device,
             )
 
-        # n_original = the latent stream length BEFORE any appends. Each call to append_keyframe
-        # adds 1 latent frame to the temporal dim. We need this to know where the appended
-        # tokens live in the final mask.
         n_original = latent_image.shape[2]
         _, _, _, latent_height, latent_width = latent_image.shape
 
-        # Place each kf via append_keyframe. The parent's `causal_fix` handling is fine for
-        # single-image inputs at any position — for append mode the VAE asymmetry doesn't
-        # affect output because no kf-content lands in the decoded latent stream.
-        kf_records = []  # one per kf, in user-input order, captures central latent slot for segmenting
+        kf_records = []
         for i in range(n_images):
-            img_tensor = images[i:i + 1]  # [1, H, W, 3]
+            img_tensor = images[i:i + 1]
             f_idx = int(positions[i])
             strength = float(parsed_strengths[i])
 
             image_1, t = cls.encode(vae, latent_width, latent_height, img_tensor, scale_factors)
-
-            # frame_idx may snap; latent_idx is the kf's central slot in the ORIGINAL stream
-            # (the slot the kf is "closest to" in RoPE space). For single-image guide_length=1,
-            # no snap is applied.
             frame_idx, latent_idx = cls.get_latent_index(positive, n_original, len(image_1), f_idx, scale_factors)
 
             positive, negative, latent_image, noise_mask = cls.append_keyframe(
@@ -252,12 +240,8 @@ class LTXChainKeyframeAppend(LTXVAddGuide):
                 "is_cut": i in cut_kf_indices,
             })
 
-        # Sort by central latent slot for segment construction.
         kf_records.sort(key=lambda r: r["central_latent_idx"])
 
-        # Detect leading prior-locked region from noise_mask. Append-mode kfs don't write
-        # to the original stream, but the noise_mask might still carry an extend-prior
-        # locked region from upstream (LTXVAudioVideoMask, etc.).
         prior_locked_t = 0
         try:
             if noise_mask.ndim == 5:
@@ -271,8 +255,6 @@ class LTXChainKeyframeAppend(LTXVAddGuide):
             log.warning("[LTXChainKfAppend] could not detect prior-locked region: %s", e)
             prior_locked_t = 0
 
-        # Build segments over the ORIGINAL latent stream [0, n_original). Each kf's central
-        # slot is the right boundary of one segment.
         segments = []
         cursor = 0
         if prior_locked_t > 0:
@@ -290,15 +272,8 @@ class LTXChainKeyframeAppend(LTXVAddGuide):
         if cursor < n_original:
             segments.append((cursor, n_original - 1))
 
-        # KF segment membership: each kf bounds the segment ending at its central slot AND
-        # the segment starting just after. We map the SORTED kf order back to user order
-        # for the membership list (we want kf_segment_membership indexed by APPEND order
-        # = user input order = the order they live in the appended tail of the latent
-        # stream).
         seg_offset = 1 if prior_locked_t > 0 else 0
-        # For sorted kf j (in segment-list ordering): left segment = seg_offset + j,
-        # right segment = seg_offset + j + 1 (if it exists)
-        sorted_kf_membership = []  # by sorted order
+        sorted_kf_membership = []
         for j in range(len(kf_records)):
             left_seg = seg_offset + j
             right_seg = seg_offset + j + 1
@@ -307,20 +282,15 @@ class LTXChainKeyframeAppend(LTXVAddGuide):
                 mem.append(right_seg)
             sorted_kf_membership.append(mem)
 
-        # Map back to user input order (append_keyframe was called in user order, so the
-        # appended tokens in the latent_image temporal dim are in user order).
         kf_segment_membership_user_order = [None] * n_images
         for sorted_idx, rec in enumerate(kf_records):
             kf_segment_membership_user_order[rec["order"]] = sorted_kf_membership[sorted_idx]
 
-        # cut_segment_boundaries: same logic as the replace-mode node. A cut at sorted kf j
-        # means the boundary between segments[seg_offset+j] and segments[seg_offset+j+1] is hard.
         cut_segment_boundaries = set()
         for sorted_idx, rec in enumerate(kf_records):
             if rec["is_cut"]:
                 cut_segment_boundaries.add(seg_offset + sorted_idx)
 
-        # tokens_per_frame fallback
         try:
             _arch, _patch_size, _ = detect_model_type(model)
         except Exception as e:
@@ -341,7 +311,6 @@ class LTXChainKeyframeAppend(LTXVAddGuide):
             "isolation_edge1": float(isolation_edge1),
             "cross_segment_floor": float(cross_segment_floor),
             "cut_attention_floor": float(cut_attention_floor),
-            "boundary_block_fraction": float(boundary_block_fraction),
         }
 
         log.info(

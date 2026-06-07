@@ -855,8 +855,13 @@ def make_chain_append_attention_mask_fn_factory(kf_state):
       - 'n_kfs': int.
       - 'total_latent_frames': int (n_original + n_kfs).
       - 'tokens_per_frame': int (fallback for tpf derivation).
-      - 'isolation_edge0', 'isolation_edge1', 'cross_segment_floor', 'cut_attention_floor',
-        'boundary_block_fraction': same semantics as replace-mode factory.
+      - 'isolation_edge0', 'isolation_edge1', 'cross_segment_floor', 'cut_attention_floor':
+        same semantics as replace-mode factory.
+
+    Note: the chain mask applies to ALL transformer blocks in append mode (no layer
+    gating). The early-vs-late layer differentiation (`boundary_block_fraction`) was
+    observed not to meaningfully affect output quality in this mode while adding a
+    knob to tune — removed for simplicity.
     """
 
     def factory(block_idx, total_blocks):
@@ -879,11 +884,10 @@ def make_chain_append_attention_mask_fn_factory(kf_state):
                 )
                 diag_state["first_call_logged"] = True
 
-            boundary_block_fraction = max(0.0, min(1.0, float(kf_state.get("boundary_block_fraction", 0.5))))
-            threshold = int(round(total_blocks * boundary_block_fraction))
-            if block_idx >= threshold:
-                _log_skip(f"past boundary_block_fraction (thr={threshold})")
-                return None
+            # NOTE: no per-block layer gating in append mode — the chain mask applies
+            # uniformly across all transformer blocks. The early-vs-late gating
+            # (boundary_block_fraction) was evaluated and didn't visibly improve quality
+            # in this mode; removed for simplicity.
 
             segments = kf_state.get("segments", [])
             if not segments:

@@ -311,14 +311,15 @@ def _convert_to_latent_lengths(pixel_lengths, temporal_stride, latent_frames):
     return result
 
 
-def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon, frame_offset=0, self_attn_mask_fn=None):
+def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon, frame_offset=0, self_attn_mask_fn_factory=None):
     """Prompt-relay encode. `frame_offset` (in latent frames) shifts the segments into the
     new region of an extension; with frame_offset=0 (default), behaves identically to the
     pure kijai formula. `build_segments` itself is left untouched — the shift is applied
     externally to the q_token_idx midpoints so the kijai math stays pristine.
 
-    `self_attn_mask_fn`: optional closure for LTX self-attention layer (Layer 3 keyframe
-    falloff). If provided, attn1 gets patched alongside attn2.
+    `self_attn_mask_fn_factory`: optional callable (block_idx, total_blocks) → mask_fn.
+    If provided, each LTX transformer block's attn1 gets a per-block mask_fn for Layer 3
+    keyframe falloff with layer-graded gating.
     """
     for name, val in (("global_prompt", global_prompt),
                       ("local_prompts", local_prompts),
@@ -381,7 +382,7 @@ def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_len
     mask_fn = create_mask_fn(q_token_idx, tokens_per_frame, total_latent_frames)
 
     patched = model.clone()
-    apply_patches(patched, arch, mask_fn, self_attn_mask_fn=self_attn_mask_fn)
+    apply_patches(patched, arch, mask_fn, self_attn_mask_fn_factory=self_attn_mask_fn_factory)
 
     return patched, conditioning
 
@@ -698,17 +699,20 @@ class LTXDirector(io.ComfyNode):
 
 
         # Layer 3 (keyframe self-attn falloff): shared mutable state. LTXDirectorGuide
-        # populates `latent_indices` after replace_latent_frames runs, and sets `kf_reach`
-        # / `sigma` from its own input parameters. The closure below reads kf_state at
-        # attention time, so the patch sees whatever LTXDirectorGuide wrote.
-        kf_state = {"latent_indices": [], "kf_reach": 1, "sigma": 0.5}
+        # populates `latent_indices` after replace_latent_frames runs, and sets `kf_reach`,
+        # `sigma`, `semantic_reach` from its own input parameters. The per-block closures
+        # below read kf_state at attention time, so the patches see whatever
+        # LTXDirectorGuide wrote.
+        kf_state = {"latent_indices": [], "kf_reach": 1, "sigma": 0.5, "semantic_reach": 0.5}
         guide_data["kf_state"] = kf_state
-        self_attn_mask_fn = make_kf_falloff_mask_fn(kf_state)
+
+        def _self_attn_factory(block_idx, total_blocks):
+            return make_kf_falloff_mask_fn(kf_state, block_idx=block_idx, total_blocks=total_blocks)
 
         patched, conditioning = _encode_relay(
             model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon,
             frame_offset=prior_latent_t,
-            self_attn_mask_fn=self_attn_mask_fn,
+            self_attn_mask_fn_factory=_self_attn_factory,
         )
 
         # --- Build Audio Output ---

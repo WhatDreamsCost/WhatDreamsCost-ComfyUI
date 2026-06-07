@@ -165,7 +165,7 @@ def _ltx_self_attn_forward(self, mask_fn, x, context=None, mask=None, pe=None, k
     return self.to_out(out)
 
 
-def make_kf_falloff_mask_fn(kf_state):
+def make_kf_falloff_mask_fn(kf_state, block_idx=None, total_blocks=None):
     """Factory returning a self-attn mask_fn closure over a mutable kf_state dict.
 
     Layer 3 (keyframe self-attn falloff). For each registered kf latent slot, queries
@@ -173,20 +173,38 @@ def make_kf_falloff_mask_fn(kf_state):
     penalty `(distance - kf_reach)^2 / (2 * sigma^2)` is added in log-space, sharply
     reducing the kf's influence on distant frames.
 
+    Layer-graded gating (semantic vs pixel separation): when `block_idx` and `total_blocks`
+    are provided, this closure only applies the falloff for early transformer blocks
+    (block_idx < total_blocks * kf_state['semantic_reach']). Late blocks return None,
+    letting the kf attend freely in those layers so its high-level semantic features
+    (composition, scene, lighting) propagate to surrounding frames while its pixel-level
+    content remains tightly localized by the early-block attenuation. Set semantic_reach=1.0
+    to apply falloff in all blocks (pixel-level dominance, current Layer 3 only). Set to
+    0.5 (default) to apply falloff in the first half of blocks and let the back half attend
+    freely. Set to 0.0 to disable falloff entirely.
+
     kf_state is a mutable dict shared between LTXDirector (which creates it and wires
-    this closure into the model patches) and LTXDirectorGuide (which populates it with
-    the actual kf latent indices after replace_latent_frames runs). The closure reads
-    kf_state at attention time, so updates from LTXDirectorGuide are visible during
+    these closures into the model patches per block) and LTXDirectorGuide (which populates
+    it with the actual kf latent indices after replace_latent_frames runs). The closure
+    reads kf_state at attention time, so updates from LTXDirectorGuide are visible during
     sampling without re-patching the model.
 
     Expected keys in kf_state:
       - 'latent_indices': list[int] of kf latent slot indices (empty → mask_fn returns None)
       - 'kf_reach': int, full-attention radius in latent frames (default 1)
       - 'sigma': float, Gaussian falloff sharpness (default 0.5)
+      - 'semantic_reach': float in [0, 1], fraction of (early) blocks that apply falloff
     """
     cache = {}
 
     def mask_fn(q, k, transformer_options):
+        # Layer-graded gating: skip falloff in late blocks for semantic propagation
+        if block_idx is not None and total_blocks is not None:
+            semantic_reach = float(kf_state.get("semantic_reach", 1.0))
+            semantic_reach = max(0.0, min(1.0, semantic_reach))
+            threshold = int(round(total_blocks * semantic_reach))
+            if block_idx >= threshold:
+                return None
         indices = kf_state.get("latent_indices", [])
         if not indices:
             return None
@@ -236,7 +254,9 @@ def make_kf_falloff_mask_fn(kf_state):
             mask_t[0, 0] += -penalty.view(Lq, 1) * kf_key_cols
 
         log.info(
-            "[LTX kf-falloff] Built self-attn mask Lq=%d, kf_slots=%s, reach=%d, sigma=%.2f, nonzero=%d/%d",
+            "[LTX kf-falloff] Block %s/%s: built self-attn mask Lq=%d, kf_slots=%s, reach=%d, sigma=%.2f, nonzero=%d/%d",
+            block_idx if block_idx is not None else "?",
+            total_blocks if total_blocks is not None else "?",
             Lq, list(kf_idx_tuple), kf_reach, sigma,
             int((mask_t < 0).sum().item()), mask_t.numel(),
         )
@@ -293,13 +313,15 @@ def _check_unpatched(model_clone, key):
         )
 
 
-def apply_patches(model_clone, arch, mask_fn, self_attn_mask_fn=None):
+def apply_patches(model_clone, arch, mask_fn, self_attn_mask_fn_factory=None):
     """Apply prompt-relay cross-attn patches and (optionally) the LTX self-attn falloff patch.
 
     `mask_fn`: closure for cross-attention temporal-cost (prompt-relay). Applied to attn2
         on LTX, cross_attn on Wan.
-    `self_attn_mask_fn`: optional closure for LTX self-attention (attn1). Used for the
-        keyframe falloff Layer 3. Pass `None` to skip self-attn patching entirely.
+    `self_attn_mask_fn_factory`: optional callable `(block_idx, total_blocks) -> mask_fn`.
+        If provided, each LTX transformer block's attn1 gets a per-block mask_fn from
+        this factory. The factory may inspect `block_idx` to decide whether/how strongly
+        to attenuate (layer-graded gating for Layer 3 kf falloff).
     """
     diffusion_model = model_clone.get_model_object("diffusion_model")
 
@@ -314,7 +336,9 @@ def apply_patches(model_clone, arch, mask_fn, self_attn_mask_fn=None):
         return
 
     if arch == "ltx":
-        for idx, block in enumerate(diffusion_model.transformer_blocks):
+        blocks = diffusion_model.transformer_blocks
+        total_blocks = len(blocks)
+        for idx, block in enumerate(blocks):
             # Cross-attention (prompt-relay) — attn2 + audio_attn2
             for attr in ("attn2", "audio_attn2"):
                 module = getattr(block, attr, None)
@@ -324,16 +348,18 @@ def apply_patches(model_clone, arch, mask_fn, self_attn_mask_fn=None):
                 _check_unpatched(model_clone, key)
                 model_clone.add_object_patch(key, _CrossAttnPatch(_ltx_forward, mask_fn).__get__(module, module.__class__))
 
-            # Self-attention (kf falloff) — attn1, only if requested
-            if self_attn_mask_fn is not None:
+            # Self-attention (kf falloff) — attn1, with per-block mask_fn from factory
+            if self_attn_mask_fn_factory is not None:
                 module = getattr(block, "attn1", None)
                 if module is not None:
-                    key = f"diffusion_model.transformer_blocks.{idx}.attn1.forward"
-                    _check_unpatched(model_clone, key)
-                    model_clone.add_object_patch(
-                        key,
-                        _CrossAttnPatch(_ltx_self_attn_forward, self_attn_mask_fn).__get__(module, module.__class__),
-                    )
+                    block_mask_fn = self_attn_mask_fn_factory(idx, total_blocks)
+                    if block_mask_fn is not None:
+                        key = f"diffusion_model.transformer_blocks.{idx}.attn1.forward"
+                        _check_unpatched(model_clone, key)
+                        model_clone.add_object_patch(
+                            key,
+                            _CrossAttnPatch(_ltx_self_attn_forward, block_mask_fn).__get__(module, module.__class__),
+                        )
         return
 
     raise ValueError(f"Unknown model arch: {arch}")

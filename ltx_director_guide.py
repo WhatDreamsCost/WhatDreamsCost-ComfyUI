@@ -29,6 +29,7 @@ class LTXDirectorGuide(LTXVAddGuide):
                 io.Float.Input("kf_softness", default=0.0, min=0.0, max=1.0, step=0.01, optional=True, tooltip="OPTIONAL pre-noise applied to each keyframe before it's written into the latent (variance-preserving blend with Gaussian noise). Default 0.0 = exact image at the keyframe's target frame (recommended for most workflows). Higher values give the model more freedom to interpolate — useful for second-pass refinement where the keyframe is an approximation. Note: >0.2 typically produces visible noise artifacts on faces/skin, so use sparingly."),
                 io.Int.Input("kf_reach", default=1, min=0, max=99, step=1, optional=True, tooltip="Layer 3 self-attention falloff radius in LATENT frames. Within `kf_reach` latent frames of a keyframe's target slot, queries get full attention to the kf. Beyond, a Gaussian penalty rapidly attenuates the kf's influence on distant frames. Default 1 ≈ 0.3s of full influence around each kf, then sharp dropoff. Set to a high value (e.g. 99) to disable falloff (LTX's natural RoPE decay only — wooden lead-up returns). Set to 0 for the tightest possible localization."),
                 io.Float.Input("kf_falloff_sigma", default=0.5, min=0.05, max=5.0, step=0.05, optional=True, tooltip="Gaussian sharpness for the keyframe attention falloff beyond `kf_reach`. Smaller = sharper dropoff. 0.5 (default) means at distance kf_reach+1 the kf's attention is reduced by exp(-2)≈0.13, at kf_reach+2 by exp(-8)≈0.0003 — essentially gone. Increase if you want a softer, longer-tailed transition."),
+                io.Float.Input("kf_semantic_reach", default=0.5, min=0.0, max=1.0, step=0.05, optional=True, tooltip="Layer-graded falloff: fraction of EARLY transformer blocks (from input toward output) where the kf attention falloff is applied. 0.5 (default) = falloff in first half of blocks (pixel-level localization), late half attends freely (semantic content propagates). 1.0 = falloff in ALL blocks (tightest pixel-AND-semantic localization, original Layer 3 behavior). 0.0 = falloff disabled entirely (RoPE decay only, kf may dominate widely). Lower values = kf's composition/lighting/scene info influences neighbors via late blocks, but its exact pixel content stays pinned at the target frame only."),
             ],
             outputs=[
                 io.Conditioning.Output(display_name="positive"),
@@ -38,7 +39,7 @@ class LTXDirectorGuide(LTXVAddGuide):
         )
 
     @classmethod
-    def execute(cls, positive, negative, vae, latent, guide_data, scale_by=1.0, upscale_method="bicubic", kf_softness=0.0, kf_reach=1, kf_falloff_sigma=0.5) -> io.NodeOutput:
+    def execute(cls, positive, negative, vae, latent, guide_data, scale_by=1.0, upscale_method="bicubic", kf_softness=0.0, kf_reach=1, kf_falloff_sigma=0.5, kf_semantic_reach=0.5) -> io.NodeOutput:
         scale_factors = vae.downscale_index_formula
 
         # Clone latents to avoid mutating upstream nodes
@@ -83,6 +84,7 @@ class LTXDirectorGuide(LTXVAddGuide):
             kf_state["latent_indices"] = []  # reset on each guide execution
             kf_state["kf_reach"] = int(kf_reach)
             kf_state["sigma"] = float(kf_falloff_sigma)
+            kf_state["semantic_reach"] = float(kf_semantic_reach)
 
         for idx, img_tensor in enumerate(images):
             f_idx = insert_frames[idx] if idx < len(insert_frames) else 0

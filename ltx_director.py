@@ -23,7 +23,7 @@ from .prompt_relay import (
     distribute_segment_lengths,
 )
 
-from .patches import detect_model_type, apply_patches
+from .patches import detect_model_type, apply_patches, make_kf_falloff_mask_fn
 
 log = logging.getLogger(__name__)
 
@@ -311,11 +311,14 @@ def _convert_to_latent_lengths(pixel_lengths, temporal_stride, latent_frames):
     return result
 
 
-def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon, frame_offset=0):
+def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon, frame_offset=0, self_attn_mask_fn=None):
     """Prompt-relay encode. `frame_offset` (in latent frames) shifts the segments into the
     new region of an extension; with frame_offset=0 (default), behaves identically to the
     pure kijai formula. `build_segments` itself is left untouched — the shift is applied
     externally to the q_token_idx midpoints so the kijai math stays pristine.
+
+    `self_attn_mask_fn`: optional closure for LTX self-attention layer (Layer 3 keyframe
+    falloff). If provided, attn1 gets patched alongside attn2.
     """
     for name, val in (("global_prompt", global_prompt),
                       ("local_prompts", local_prompts),
@@ -378,7 +381,7 @@ def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_len
     mask_fn = create_mask_fn(q_token_idx, tokens_per_frame, total_latent_frames)
 
     patched = model.clone()
-    apply_patches(patched, arch, mask_fn)
+    apply_patches(patched, arch, mask_fn, self_attn_mask_fn=self_attn_mask_fn)
 
     return patched, conditioning
 
@@ -694,9 +697,18 @@ class LTXDirector(io.ComfyNode):
                 )
 
 
+        # Layer 3 (keyframe self-attn falloff): shared mutable state. LTXDirectorGuide
+        # populates `latent_indices` after replace_latent_frames runs, and sets `kf_reach`
+        # / `sigma` from its own input parameters. The closure below reads kf_state at
+        # attention time, so the patch sees whatever LTXDirectorGuide wrote.
+        kf_state = {"latent_indices": [], "kf_reach": 1, "sigma": 0.5}
+        guide_data["kf_state"] = kf_state
+        self_attn_mask_fn = make_kf_falloff_mask_fn(kf_state)
+
         patched, conditioning = _encode_relay(
             model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon,
             frame_offset=prior_latent_t,
+            self_attn_mask_fn=self_attn_mask_fn,
         )
 
         # --- Build Audio Output ---

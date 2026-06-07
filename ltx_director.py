@@ -23,7 +23,7 @@ from .prompt_relay import (
     distribute_segment_lengths,
 )
 
-from .patches import detect_model_type, apply_patches, make_kf_falloff_mask_fn
+from .patches import detect_model_type, apply_patches, make_kf_falloff_mask_fn, make_kf_sigma_aware_mask_fn
 
 log = logging.getLogger(__name__)
 
@@ -311,15 +311,17 @@ def _convert_to_latent_lengths(pixel_lengths, temporal_stride, latent_frames):
     return result
 
 
-def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon, frame_offset=0, self_attn_mask_fn_factory=None):
+def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon, frame_offset=0, self_attn_mask_fn_factory=None, kf_inpaint_patch=None):
     """Prompt-relay encode. `frame_offset` (in latent frames) shifts the segments into the
     new region of an extension; with frame_offset=0 (default), behaves identically to the
     pure kijai formula. `build_segments` itself is left untouched — the shift is applied
     externally to the q_token_idx midpoints so the kijai math stays pristine.
 
-    `self_attn_mask_fn_factory`: optional callable (block_idx, total_blocks) → mask_fn.
-    If provided, each LTX transformer block's attn1 gets a per-block mask_fn for Layer 3
-    keyframe falloff with layer-graded gating.
+    `self_attn_mask_fn_factory`: optional callable (block_idx, total_blocks) → mask_fn for
+    Layer 3 keyframe attention falloff.
+
+    `kf_inpaint_patch`: optional replacement for scale_latent_inpaint for sigma-aware kf
+    noise injection (matches img2vid start-frame mechanism for mid-video keyframes).
     """
     for name, val in (("global_prompt", global_prompt),
                       ("local_prompts", local_prompts),
@@ -382,7 +384,11 @@ def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_len
     mask_fn = create_mask_fn(q_token_idx, tokens_per_frame, total_latent_frames)
 
     patched = model.clone()
-    apply_patches(patched, arch, mask_fn, self_attn_mask_fn_factory=self_attn_mask_fn_factory)
+    apply_patches(
+        patched, arch, mask_fn,
+        self_attn_mask_fn_factory=self_attn_mask_fn_factory,
+        kf_inpaint_patch=kf_inpaint_patch,
+    )
 
     return patched, conditioning
 
@@ -499,7 +505,18 @@ class LTXDirector(io.ComfyNode):
                 extend_from_audio_latent=None, use_custom_audio=False, prior_strength=1.0) -> io.NodeOutput:
 
         # --- Build guide_data from image segments FIRST (to derive output dimensions) ---
-        guide_data = {"images": [], "insert_frames": [], "strengths": [], "frame_rate": frame_rate}
+        # `reach_before_pixels` and `reach_after_pixels` capture each keyframe's per-side
+        # coverage (from the timeline's anchor tick + segment duration). The anchor tick is
+        # where the kf actually is; the segment extends left and right of it as the user's
+        # "reach handles." Empty / missing duration → 0 → backend falls back to global kf_reach.
+        guide_data = {
+            "images": [],
+            "insert_frames": [],
+            "strengths": [],
+            "reach_before_pixels": [],
+            "reach_after_pixels": [],
+            "frame_rate": frame_rate,
+        }
         derived_w, derived_h = custom_width, custom_height
         try:
             tdata = json.loads(timeline_data) if timeline_data else {}
@@ -553,7 +570,19 @@ class LTXDirector(io.ComfyNode):
 
                 strength = strengths[idx] if idx < len(strengths) else 1.0
                 guide_data["images"].append(tensor)
-                guide_data["insert_frames"].append(int(seg["start"]))
+                # `seg["start"]` is the timeline pixel where the segment block begins.
+                # `anchorOffset` (if present) tells us where the kf tick mark sits within the
+                # segment. The reach handles extend `anchorOffset` pixels to the left of the
+                # tick and `length - anchorOffset` pixels to the right.
+                seg_start_px = int(seg.get("start", 0))
+                seg_length_px = int(seg.get("length", 0))
+                anchor_offset_px = int(seg.get("anchorOffset", 0))
+                # Clamp anchor_offset to [0, length] so weird inputs don't produce negative reach.
+                anchor_offset_px = max(0, min(anchor_offset_px, seg_length_px))
+                anchor_pixel = seg_start_px + anchor_offset_px
+                guide_data["insert_frames"].append(int(anchor_pixel))
+                guide_data["reach_before_pixels"].append(int(anchor_offset_px))
+                guide_data["reach_after_pixels"].append(int(seg_length_px - anchor_offset_px))
                 guide_data["strengths"].append(float(strength))
             
             # If no images were loaded from the timeline, create a dummy image at strength 0
@@ -568,6 +597,8 @@ class LTXDirector(io.ComfyNode):
                 guide_data["images"].append(dummy_image)
                 guide_data["insert_frames"].append(0)
                 guide_data["strengths"].append(0.0)
+                guide_data["reach_before_pixels"].append(0)
+                guide_data["reach_after_pixels"].append(0)
                 
                 derived_w = w
                 derived_h = h
@@ -699,11 +730,30 @@ class LTXDirector(io.ComfyNode):
 
 
         # Layer 3 (keyframe self-attn falloff): shared mutable state. LTXDirectorGuide
-        # populates `latent_indices` after replace_latent_frames runs, and sets `kf_reach`,
-        # `sigma`, `semantic_reach` from its own input parameters. The per-block closures
-        # below read kf_state at attention time, so the patches see whatever
-        # LTXDirectorGuide wrote.
-        kf_state = {"latent_indices": [], "kf_reach": 1, "sigma": 0.5, "semantic_reach": 0.5}
+        # populates `kfs` (per-kf dicts: latent_idx, reach_before, reach_after, peak_strength)
+        # and sets `semantic_reach` from its own input parameters. The per-block closures below
+        # read kf_state at attention time, so the patches see whatever LTXDirectorGuide wrote.
+        # `tokens_per_frame` is a fallback used when grid_sizes isn't in transformer_options
+        # at attention time (self-attention sometimes doesn't get grid_sizes populated).
+        try:
+            _arch, _patch_size, _ = detect_model_type(model)
+        except Exception:
+            _patch_size = (1, 1, 1)
+        _samples_shape = latent["samples"].shape
+        _tokens_per_frame_fallback = (
+            (_samples_shape[3] // _patch_size[1]) * (_samples_shape[4] // _patch_size[2])
+        )
+        kf_state = {
+            "kfs": [],
+            "semantic_reach": 0.5,
+            "tokens_per_frame": int(_tokens_per_frame_fallback),
+            # `total_latent_frames` lets the self-attn mask_fn derive the *actual* tokens-per-frame
+            # at attention time as Lq / total_latent_frames. LTX's internal patchifier sometimes
+            # compresses spatially (e.g., 2x2), so the pre-patchify tokens_per_frame we cached
+            # above is the wrong number once attention runs — but total_latent_frames is invariant
+            # under the patchifier so the division gives the right answer.
+            "total_latent_frames": int(_samples_shape[2]),
+        }
         guide_data["kf_state"] = kf_state
 
         def _self_attn_factory(block_idx, total_blocks):
@@ -714,6 +764,14 @@ class LTXDirector(io.ComfyNode):
             frame_offset=prior_latent_t,
             self_attn_mask_fn_factory=_self_attn_factory,
         )
+
+        # Sigma-aware MASK schedule (NOT latent-noise injection — that broke LTX). The
+        # kf latent stays clean throughout sampling (matches LTX's training contract),
+        # but the BLEND MASK at kf positions starts loose (high sigma → more model
+        # influence) and tightens to its base value (low sigma → kf locks pixel-exact).
+        # Net effect: trajectory planning has room at early steps, kf "materializes"
+        # gradually, pixel-exact landing at the end. Works on both 5D and packed AV masks.
+        patched.set_model_denoise_mask_function(make_kf_sigma_aware_mask_fn(kf_state))
 
         # --- Build Audio Output ---
         audio_out = _build_combined_audio(timeline_data, ltxv_length, float(frame_rate))

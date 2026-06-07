@@ -27,9 +27,12 @@ class LTXDirectorGuide(LTXVAddGuide):
                 io.Float.Input("scale_by", default=1.0, min=0.01, max=8.0, step=0.01, tooltip="Scale the latent by this factor."),
                 io.Combo.Input("upscale_method", options=["nearest-exact", "bilinear", "area", "bicubic", "bislerp"], default="bicubic", tooltip="Method used to upscale/downscale the latent."),
                 io.Float.Input("kf_softness", default=0.0, min=0.0, max=1.0, step=0.01, optional=True, tooltip="OPTIONAL pre-noise applied to each keyframe before it's written into the latent (variance-preserving blend with Gaussian noise). Default 0.0 = exact image at the keyframe's target frame (recommended for most workflows). Higher values give the model more freedom to interpolate — useful for second-pass refinement where the keyframe is an approximation. Note: >0.2 typically produces visible noise artifacts on faces/skin, so use sparingly."),
-                io.Int.Input("kf_reach", default=1, min=0, max=99, step=1, optional=True, tooltip="Layer 3 self-attention falloff radius in LATENT frames. Within `kf_reach` latent frames of a keyframe's target slot, queries get full attention to the kf. Beyond, a Gaussian penalty rapidly attenuates the kf's influence on distant frames. Default 1 ≈ 0.3s of full influence around each kf, then sharp dropoff. Set to a high value (e.g. 99) to disable falloff (LTX's natural RoPE decay only — wooden lead-up returns). Set to 0 for the tightest possible localization."),
-                io.Float.Input("kf_falloff_sigma", default=0.5, min=0.05, max=5.0, step=0.05, optional=True, tooltip="Gaussian sharpness for the keyframe attention falloff beyond `kf_reach`. Smaller = sharper dropoff. 0.5 (default) means at distance kf_reach+1 the kf's attention is reduced by exp(-2)≈0.13, at kf_reach+2 by exp(-8)≈0.0003 — essentially gone. Increase if you want a softer, longer-tailed transition."),
+                io.Int.Input("kf_reach", default=1, min=0, max=99, step=1, optional=True, tooltip="FALLBACK kf coverage in latent frames, used when a timeline segment has zero `length` (no painted reach handle). Default 1 latent frame ≈ 0.3s symmetric coverage. When the timeline editor provides per-kf reach handles via segment durations + anchor tick marks, those win over this global default."),
+                io.Float.Input("kf_peak_strength", default=0.9, min=0.0, max=1.0, step=0.01, optional=True, tooltip="Maximum attention scale at the keyframe's target frame (the peak of the gradient). 0.9 (default) means even at the kf, attention to it is mildly attenuated — prevents the wooden 'full lock' look. 1.0 = no attenuation at the kf (RoPE attention runs at full strength, can produce locked/wooden output). Lower = always-softer kf influence. The gradient ramps linearly from this value at the kf to 0 at the edge of the kf's coverage zone (segment length on the timeline)."),
                 io.Float.Input("kf_semantic_reach", default=0.5, min=0.0, max=1.0, step=0.05, optional=True, tooltip="Layer-graded falloff: fraction of EARLY transformer blocks (from input toward output) where the kf attention falloff is applied. 0.5 (default) = falloff in first half of blocks (pixel-level localization), late half attends freely (semantic content propagates). 1.0 = falloff in ALL blocks (tightest pixel-AND-semantic localization, original Layer 3 behavior). 0.0 = falloff disabled entirely (RoPE decay only, kf may dominate widely). Lower values = kf's composition/lighting/scene info influences neighbors via late blocks, but its exact pixel content stays pinned at the target frame only."),
+                io.Float.Input("kf_max_mask_at_sigma1", default=0.5, min=0.0, max=1.0, step=0.05, optional=True, tooltip="Sigma-aware mask schedule: the maximum mask value at the keyframe's slot during the EARLIEST sampling steps (sigma≈1). 0.5 (default) means at step 0 the kf is 50% generated / 50% pinned. As sampling progresses, the mask returns to its base value (1-strength), locking the kf to pixel-exact at the final step. Higher (0.7-0.9) = more motion freedom early but model may invent content; lower (0.3-0.4) = tighter throughout. The kf latent stays CLEAN — only mask blend ratio varies."),
+                io.Combo.Input("kf_curve_shape", options=["sigmoid", "smoothstep", "power"], default="sigmoid", optional=True, tooltip="Shape of the sigma→mask schedule. 'sigmoid' (default) — S-curve with FLAT plateaus at both extremes: kf stays at max_mask for early sampling steps, sharp middle transition, then sits at base for late steps. Best for smooth visual transitions in/out of kf. 'smoothstep' — similar S-curve but exactly 0 at sigma=0 and 1 at sigma=1 (no asymptotic ends). 'power' — older curve, no early plateau; mask drops from sampling start. Try sigmoid first if you have abrupt transitions at the kf."),
+                io.Float.Input("kf_lock_curve", default=2.0, min=0.25, max=8.0, step=0.25, optional=True, tooltip="Steepness of the kf_curve_shape transition. Meaning depends on shape: For SIGMOID (default): higher = sharper S — kf stays loose longer at high sigma, then snaps to locked quickly. 2.0 = moderate S, 4.0 = steep, 8.0 = near-step-function. For SMOOTHSTEP: higher narrows the transition region around sigma=0.5. For POWER: exponent on sigma (legacy behavior). 2.0 default works for most workflows."),
             ],
             outputs=[
                 io.Conditioning.Output(display_name="positive"),
@@ -39,7 +42,7 @@ class LTXDirectorGuide(LTXVAddGuide):
         )
 
     @classmethod
-    def execute(cls, positive, negative, vae, latent, guide_data, scale_by=1.0, upscale_method="bicubic", kf_softness=0.0, kf_reach=1, kf_falloff_sigma=0.5, kf_semantic_reach=0.5) -> io.NodeOutput:
+    def execute(cls, positive, negative, vae, latent, guide_data, scale_by=1.0, upscale_method="bicubic", kf_softness=0.0, kf_reach=1, kf_peak_strength=0.9, kf_semantic_reach=0.5, kf_max_mask_at_sigma1=0.5, kf_curve_shape="sigmoid", kf_lock_curve=2.0) -> io.NodeOutput:
         scale_factors = vae.downscale_index_formula
 
         # Clone latents to avoid mutating upstream nodes
@@ -75,16 +78,23 @@ class LTXDirectorGuide(LTXVAddGuide):
         images = guide_data.get("images", [])
         insert_frames = guide_data.get("insert_frames", [])
         strengths = guide_data.get("strengths", [])
+        reach_before_pixels = guide_data.get("reach_before_pixels", [0] * len(images))
+        reach_after_pixels = guide_data.get("reach_after_pixels", [0] * len(images))
 
         # Layer 3 (self-attn kf falloff): kf_state is a mutable dict created by LTXDirector.
-        # We populate it with the latent indices of the kfs we place, plus user-tuned reach/sigma.
-        # The patch's closure reads this at attention time during sampling.
+        # We populate `kfs` (per-keyframe records) and global semantic_reach. The patch's
+        # closure reads this at attention time during sampling.
         kf_state = guide_data.get("kf_state", None)
         if kf_state is not None:
-            kf_state["latent_indices"] = []  # reset on each guide execution
-            kf_state["kf_reach"] = int(kf_reach)
-            kf_state["sigma"] = float(kf_falloff_sigma)
+            kf_state["kfs"] = []  # reset on each guide execution
             kf_state["semantic_reach"] = float(kf_semantic_reach)
+            kf_state["max_mask_at_sigma1"] = float(kf_max_mask_at_sigma1)
+            kf_state["curve_shape"] = str(kf_curve_shape)
+            kf_state["lock_curve"] = float(kf_lock_curve)
+
+        time_scale_factor = scale_factors[0]
+        # Global fallback reach in latent frames when the timeline segment provides no duration
+        fallback_reach = max(0, int(kf_reach))
 
         for idx, img_tensor in enumerate(images):
             f_idx = insert_frames[idx] if idx < len(insert_frames) else 0
@@ -118,8 +128,24 @@ class LTXDirectorGuide(LTXVAddGuide):
                 latent_image, noise_mask, t, latent_idx, strength,
             )
 
-            # Register this kf's latent slot for the self-attn falloff mask
+            # Register this kf in kf_state with its per-kf reach (from timeline segment duration).
+            # Pixel reach → latent reach via the VAE's temporal compression factor.
+            # If the segment has zero length on either side (or both), fall back to the global
+            # kf_reach so a kf without painted handles still has SOME coverage.
             if kf_state is not None:
-                kf_state["latent_indices"].append(int(latent_idx))
+                rb_pix = int(reach_before_pixels[idx]) if idx < len(reach_before_pixels) else 0
+                ra_pix = int(reach_after_pixels[idx]) if idx < len(reach_after_pixels) else 0
+                rb_lat = max(0, rb_pix // int(time_scale_factor))
+                ra_lat = max(0, ra_pix // int(time_scale_factor))
+                # Fallback: if both sides are zero on the timeline, use the global kf_reach symmetrically
+                if rb_lat == 0 and ra_lat == 0 and fallback_reach > 0:
+                    rb_lat = fallback_reach
+                    ra_lat = fallback_reach
+                kf_state["kfs"].append({
+                    "latent_idx": int(latent_idx),
+                    "reach_before": int(rb_lat),
+                    "reach_after": int(ra_lat),
+                    "peak_strength": float(kf_peak_strength),
+                })
 
         return io.NodeOutput(positive, negative, {"samples": latent_image, "noise_mask": noise_mask})

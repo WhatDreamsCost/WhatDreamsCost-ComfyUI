@@ -10,6 +10,8 @@ from .ltx_director import LTXDirector
 from .ltx_director_guide import LTXDirectorGuide
 from .ltx_chain_guide import LTXChainKeyframeGuide
 from .ltx_chain_append_guide import LTXChainKeyframeAppend
+from .ltx_storyboard import LTXStoryboard
+from .ltx_storyboard_guide import LTXStoryboardGuide
 from .audio_sequencer import AudioSequencer
 from comfy_api.latest import ComfyExtension, io
 from typing_extensions import override
@@ -22,6 +24,8 @@ class PromptRelay(ComfyExtension):
             LTXDirectorGuide,
             LTXChainKeyframeGuide,
             LTXChainKeyframeAppend,
+            LTXStoryboard,
+            LTXStoryboardGuide,
         ]
 
 async def comfy_entrypoint() -> PromptRelay:
@@ -38,6 +42,8 @@ NODE_CLASS_MAPPINGS = {
     "LTXDirectorGuide": LTXDirectorGuide,
     "LTXChainKeyframeGuide": LTXChainKeyframeGuide,
     "LTXChainKeyframeAppend": LTXChainKeyframeAppend,
+    "LTXStoryboard": LTXStoryboard,
+    "LTXStoryboardGuide": LTXStoryboardGuide,
     "LTXSequencerMirror": LTXSequencerMirror,
     "SpeechLengthCalculator": SpeechLengthCalculator,
     "AudioSequencer": AudioSequencer,
@@ -56,6 +62,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LTXDirectorGuide": "LTX Director Guide",
     "LTXChainKeyframeGuide": "LTX Chain Keyframe Guide",
     "LTXChainKeyframeAppend": "LTX Chain Keyframe Guide (Append)",
+    "LTXStoryboard": "LTX Storyboard",
+    "LTXStoryboardGuide": "LTX Storyboard Guide",
     "LTXSequencerMirror": "LTX Sequencer Mirror",
     "SpeechLengthCalculator": "Speech Length Calculator",
     "AudioSequencer": "Audio Sequencer",

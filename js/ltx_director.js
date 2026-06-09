@@ -4034,10 +4034,14 @@ const APPENDED_WIDGET_DEFAULTS = [
   ["segment_lengths", ""],
 ];
 
+// Node IDs that this timeline editor extension applies to. Add new orchestrator nodes
+// here to reuse the same UI; the rest of the extension runs identically for each.
+const TIMELINE_NODE_IDS = ["LTXDirector", "LTXStoryboard"];
+
 app.registerExtension({
   name: "LTXDirector",
   async beforeRegisterNodeDef(nodeType, nodeData, app) {
-    if (nodeData.name === "LTXDirector") {
+    if (TIMELINE_NODE_IDS.includes(nodeData.name)) {
 
       const onNodeCreated = nodeType.prototype.onNodeCreated;
       nodeType.prototype.onNodeCreated = function () {

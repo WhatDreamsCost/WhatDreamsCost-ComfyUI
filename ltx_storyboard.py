@@ -316,8 +316,13 @@ class LTXStoryboard(io.ComfyNode):
                     tooltip="Auto-populated from the JS timeline editor (comma-separated pixel-space frame counts).",
                 ),
                 io.Float.Input(
-                    "epsilon", default=0.0001, min=0.0001, max=0.99, step=0.0001,
-                    tooltip="Prompt relay decay parameter. Lower = sharper segment boundaries.",
+                    "epsilon", default=0.001, min=1e-6, max=0.99, step=1e-4,
+                    tooltip=(
+                        "Prompt relay penalty decay (passed to PromptRelayEncodeTimeline). "
+                        "0.001 is kijai's paper default — produces sharp segment boundaries. "
+                        "Values below ~0.1 all produce sharp boundaries; for softer/blended "
+                        "transitions between segment prompts, try 0.5 or higher."
+                    ),
                 ),
                 io.Float.Input(
                     "frame_rate", default=24, min=1, max=240, step=1, optional=True,
@@ -548,6 +553,24 @@ class LTXStoryboard(io.ComfyNode):
         except Exception as e:
             log.warning("[LTXStoryboard] empty-text negative encode failed (%s); using positive as negative fallback.", e)
             negative = positive
+
+        # ---- 6b. Attach frame_rate to both conditionings (mirrors LTXVConditioning) ----
+        # The user's validated workflow has an explicit LTXVConditioning node between
+        # PromptRelayEncodeTimeline and LTXVAddGuideMulti that attaches `frame_rate` to
+        # both positive AND negative. Without this, LTX's _prepare_positional_embeddings
+        # falls back to a stale/default frame_rate, which produces wooden motion —
+        # frame_rate is the LTX-native temporal RoPE scale knob (time_coord *= 1/fps),
+        # see `comfy/ldm/lightricks/model.py:895-907`. We replicate LTXVConditioning's body
+        # here so users don't need that intermediary node in the graph.
+        try:
+            import node_helpers
+            positive = node_helpers.conditioning_set_values(positive, {"frame_rate": float(frame_rate)})
+            negative = node_helpers.conditioning_set_values(negative, {"frame_rate": float(frame_rate)})
+        except Exception as e:
+            log.warning(
+                "[LTXStoryboard] Could not attach frame_rate to conditioning (%s); motion may be "
+                "wooden. Add a manual LTXVConditioning node downstream as a workaround.", e,
+            )
 
         # ---- 7. Combined audio output ----
         # _build_combined_audio takes the RAW timeline_data JSON string, not the parsed dict.

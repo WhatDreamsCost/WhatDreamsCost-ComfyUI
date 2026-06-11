@@ -170,24 +170,75 @@ def _build_video_latent(
     return {"samples": samples}, 0
 
 
-def _build_empty_audio_latent(audio_vae, duration_frames: int, frame_rate: float) -> dict | None:
-    """Generate an empty audio latent matching the video duration. Uses comfy_extras's
-    LTXVEmptyLatentAudio machinery so the shape matches what LTXVConcatAVLatent expects.
+def _build_empty_audio_latent(audio_vae, duration_frames: int, frame_rate: float, batch_size: int = 1) -> dict | None:
+    """Generate an empty audio latent matching the video duration. Produces a 4D tensor
+    `[B, C, num_audio_latents, audio_freq]` matching what LTXVConcatAVLatent + LTXAV's
+    process_timestep expect.
 
-    Returns None if no audio_vae supplied OR the LTXVEmptyLatentAudio class isn't available
-    (older Comfy without audio support).
+    Two paths in order of preference:
+      1. Call ComfyUI's `LTXVEmptyLatentAudio.execute()` — its current signature is
+         (frames_number, frame_rate, batch_size, audio_vae).
+      2. Construct directly from audio_vae attributes — mirrors the body of
+         LTXVEmptyLatentAudio.execute() in nodes_lt_audio.py:148-156. Used when the node
+         signature drifts (it has changed before — `batch_size` was added) so we don't
+         fall over on minor ComfyUI updates.
+
+    Returns None only if audio_vae is missing or BOTH paths fail in unexpected ways
+    (caller should treat None as "no audio path"; do NOT emit a sentinel 3D zero tensor
+    because LTXAV's process_timestep does 4D indexing on the resulting denoise_mask).
     """
     if audio_vae is None:
         return None
+
+    # Path 1: call the upstream node if available, with the current signature.
     try:
         import nodes as comfy_nodes_module
         cls = getattr(comfy_nodes_module, "NODE_CLASS_MAPPINGS", {}).get("LTXVEmptyLatentAudio")
-        if cls is None:
-            log.info("[LTXStoryboard] LTXVEmptyLatentAudio not available; skipping audio latent.")
-            return None
-        # Class method execute returns io.NodeOutput; index it
-        result = cls.execute(audio_vae=audio_vae, frames_number=duration_frames, frame_rate=int(round(frame_rate)))
-        return result[0]
+        if cls is not None:
+            try:
+                result = cls.execute(
+                    frames_number=duration_frames,
+                    frame_rate=int(round(frame_rate)),
+                    batch_size=batch_size,
+                    audio_vae=audio_vae,
+                )
+                return result[0]
+            except TypeError as e:
+                # Signature mismatch (older or newer ComfyUI) — fall through to direct
+                # construction below.
+                log.info(
+                    "[LTXStoryboard] LTXVEmptyLatentAudio signature didn't match (%s); "
+                    "falling back to direct latent construction.", e,
+                )
+    except Exception as e:
+        log.info("[LTXStoryboard] Could not invoke LTXVEmptyLatentAudio (%s); falling back to direct.", e)
+
+    # Path 2: build the latent ourselves from audio_vae attributes. Mirrors
+    # /weka/home-kateriw/ComfyUI/comfy_extras/nodes_lt_audio.py:148-156.
+    try:
+        z_channels = audio_vae.latent_channels
+        first_stage = audio_vae.first_stage_model
+        audio_freq = first_stage.latent_frequency_bins
+        num_audio_latents = first_stage.num_of_latents_from_frames(
+            duration_frames, int(round(frame_rate))
+        )
+        audio_latents = torch.zeros(
+            (batch_size, z_channels, num_audio_latents, audio_freq),
+            device=comfy.model_management.intermediate_device(),
+        )
+        log.info(
+            "[LTXStoryboard] Built audio latent directly: shape=%s (batch=%d, channels=%d, "
+            "T_lat=%d, freq=%d).",
+            tuple(audio_latents.shape), batch_size, z_channels, num_audio_latents, audio_freq,
+        )
+        return {"samples": audio_latents}
+    except AttributeError as e:
+        log.warning(
+            "[LTXStoryboard] audio_vae doesn't expose expected attributes for direct latent "
+            "construction (%s). Returning None — wire extend_from_audio_latent OR use a "
+            "compatible audio VAE.", e,
+        )
+        return None
     except Exception as e:
         log.warning("[LTXStoryboard] Failed to build empty audio latent: %s", e)
         return None
@@ -430,13 +481,26 @@ class LTXStoryboard(io.ComfyNode):
         )
 
         # ---- 4. Build audio latent (empty matching duration) ----
-        audio_latent = _build_empty_audio_latent(audio_vae, duration_frames, frame_rate)
-        # Extend mode: prefer the explicit extend_from_audio_latent if provided.
+        # Extend mode wins: an upstream-provided audio latent takes precedence.
         if extend_from_audio_latent is not None:
             audio_latent = extend_from_audio_latent
+        else:
+            audio_latent = _build_empty_audio_latent(audio_vae, duration_frames, frame_rate)
+
         if audio_latent is None:
-            # Trainer-compatible empty latent (avoid None on a Latent output).
-            audio_latent = {"samples": torch.zeros((1, 1, 1), device=comfy.model_management.intermediate_device())}
+            # Last-resort empty 4D tensor that matches LTX's expected audio latent rank.
+            # The previous (1,1,1) sentinel caused LTXAV.process_timestep to fail with
+            # "too many indices for tensor of dimension 3" because that path indexes
+            # audio_denoise_mask as `[:, :1, :, :1]` (4D). At minimum we need a 4D shape.
+            # Using a tiny placeholder (1, 1, 1, 1) keeps the downstream LTXVConcatAVLatent
+            # and process_timestep code paths from crashing when audio_vae is missing or
+            # incompatible. Wire `extend_from_audio_latent` or `audio_vae` for real audio.
+            log.warning(
+                "[LTXStoryboard] No audio latent could be built (audio_vae missing or "
+                "incompatible, and no extend_from_audio_latent provided). Emitting a tiny "
+                "4D placeholder to satisfy downstream rank-checks — audio output will be silence."
+            )
+            audio_latent = {"samples": torch.zeros((1, 1, 1, 1), device=comfy.model_management.intermediate_device())}
 
         # ---- 5. Call kijai's PromptRelayEncodeTimeline ----
         # If timeline has no segments (empty editor), `local_prompts` will likely be empty

@@ -1,6 +1,6 @@
-"""LTXStoryboard — UI orchestrator that wraps the validated multi-kf inference workflow.
+"""LTXStoryboard — single-node UI orchestrator for the validated multi-kf inference workflow.
 
-Replicates the functional behavior of:
+Replicates the chained behavior of:
     PromptRelayEncodeTimeline (kijai/ComfyUI-PromptRelay)
         → LTXVAddGuideMulti (comfyui-kjnodes)
 
@@ -13,8 +13,9 @@ What this node DOES:
        get a patched model + relayed positive conditioning
     4. Encodes an empty-text negative via CLIP (NOT ConditioningZeroOut — empty-text is the
        validated path that preserves motion)
-    5. Packs per-keyframe (image, frame_idx, strength) into a `guide_data` dict for the
-       sibling node `LTXStoryboardGuide` to consume
+    5. Runs LTXVAddGuideMulti's loop body inline (encode → get_latent_index → append_keyframe
+       per kf) so the positive/negative get keyframe_idxs and the latent gets the kf token block
+    6. Outputs everything ready for: LTXVConcatAVLatent → LTXVConditioning → CFGGuider
 
 What this node EXPLICITLY DOES NOT DO:
     - No chain attention mask (none of the old LTXDirector attn1 patches)
@@ -40,9 +41,11 @@ import torch
 from PIL import Image as _PilImage
 
 import comfy.model_management
+import comfy.utils
 import folder_paths
 
 from comfy_api.latest import io
+from comfy_extras.nodes_lt import LTXVAddGuide
 
 # Reuse the existing helpers verbatim — no copy-paste, just import.
 from .ltx_director import (
@@ -56,9 +59,6 @@ from .ltx_director import (
 log = logging.getLogger(__name__)
 
 
-# Custom socket types — match the existing LTXDirector contract so downstream nodes
-# (LTXStoryboardGuide, LTXSequencer-style consumers) compose with both.
-GuideData = io.Custom("GUIDE_DATA")
 # RelayOptions: kijai's globally-registered custom type. We declare it the same way kijai's
 # package does so the input port accepts their PromptRelayAdvancedOptions output natively.
 RelayOptions = io.Custom("RELAY_OPTIONS")
@@ -249,13 +249,12 @@ def _build_empty_audio_latent(audio_vae, duration_frames: int, frame_rate: float
 # ---------------------------------------------------------------------------
 
 class LTXStoryboard(io.ComfyNode):
-    """Timeline-editor UI orchestrator that wraps PromptRelayEncodeTimeline + the keyframe
-    extraction half of LTXVAddGuideMulti behind a single node. The downstream consumer is
-    `LTXStoryboardGuide` which takes `guide_data` + the patched model and finishes the
-    LTXVAddGuideMulti work.
+    """Single-node multi-kf orchestrator. Wraps PromptRelayEncodeTimeline + LTXVAddGuideMulti's
+    loop body in one node so the timeline editor produces ready-to-sample conditioning + latent
+    in a single hop. Wire outputs directly into LTXVConcatAVLatent → LTXVConditioning → CFGGuider.
 
-    Reuses the existing ltx_director.js timeline editor (one-line node-name registration
-    update). Functional behavior matches the validated `LTX Storyboard Best.json` workflow.
+    Reuses the existing ltx_director.js timeline editor. Functional behavior matches the
+    validated demo workflow (ltx-timeline-demo/demo/server/storyboard_builder.py).
     """
 
     @classmethod
@@ -265,15 +264,16 @@ class LTXStoryboard(io.ComfyNode):
             display_name="LTX Storyboard",
             category="WhatDreamsCost",
             description=(
-                "UI-orchestrator multi-kf node: wraps kijai's PromptRelayEncodeTimeline + the "
-                "kf-extraction half of KJNodes' LTXVAddGuideMulti behind a single timeline editor "
-                "(image + prompt + audio tracks). Outputs a relayed model + positive + a real "
-                "empty-text negative + guide_data for LTXStoryboardGuide downstream. No chain "
-                "mask, no sigma-aware schedule — pure UI wrapper over the validated workflow."
+                "Single-node multi-kf: kijai's PromptRelayEncodeTimeline + KJNodes' LTXVAddGuideMulti "
+                "loop body, behind one timeline editor (image + prompt + audio tracks). Outputs a "
+                "relayed model + positive/negative with keyframe_idxs applied + the latent with kf "
+                "token blocks grown on the temporal axis. Wire directly into "
+                "LTXVConcatAVLatent → LTXVConditioning → CFGGuider → SamplerCustomAdvanced."
             ),
             inputs=[
                 io.Model.Input("model"),
                 io.Clip.Input("clip"),
+                io.Vae.Input("vae", tooltip="Video VAE — used to encode each keyframe image into the latent (LTXVAddGuideMulti loop body)."),
                 io.Vae.Input("audio_vae", optional=True, tooltip="Optional. If provided, an empty audio latent matching duration_frames is generated."),
                 io.Latent.Input(
                     "extend_from_video_latent", optional=True,
@@ -358,14 +358,22 @@ class LTXStoryboard(io.ComfyNode):
                     "img_compression", default=18, min=0, max=100, step=1, optional=True,
                     tooltip="H.264 CRF applied to each guide image. 0 = no compression.",
                 ),
+                io.Float.Input(
+                    "scale_by", default=1.0, min=0.01, max=8.0, step=0.01, optional=True,
+                    tooltip="Pre-scale the latent before placing kfs (e.g. 0.5 for the validated 0.5× stage-1 pre-pass).",
+                ),
+                io.Combo.Input(
+                    "upscale_method", options=["nearest-exact", "bilinear", "area", "bicubic", "bislerp"],
+                    default="nearest-exact", optional=True,
+                    tooltip="Method used when scale_by != 1.0. nearest-exact matches the validated workflow's LatentUpscaleBy.",
+                ),
             ],
             outputs=[
                 io.Model.Output(display_name="model", tooltip="Model with kijai's prompt-relay attn2 patch applied."),
-                io.Conditioning.Output(display_name="positive", tooltip="Relayed positive conditioning."),
-                io.Conditioning.Output(display_name="negative", tooltip="Empty-text-encoded negative (always emitted, even when not configured — empty-text is the validated motion-preserving choice, NOT ConditioningZeroOut)."),
-                io.Latent.Output(display_name="video_latent", tooltip="The LTX video latent (empty or extend-mode passthrough)."),
+                io.Conditioning.Output(display_name="positive", tooltip="Relayed positive conditioning with keyframe_idxs appended."),
+                io.Conditioning.Output(display_name="negative", tooltip="Empty-text-encoded negative with keyframe_idxs appended (NOT ConditioningZeroOut — empty-text is the validated motion-preserving choice)."),
+                io.Latent.Output(display_name="video_latent", tooltip="LTX video latent with the kf token block grown on the temporal axis. Wire directly to LTXVConcatAVLatent → LTXVConditioning → sampler."),
                 io.Latent.Output(display_name="audio_latent", tooltip="Empty audio latent matching duration (only if audio_vae provided)."),
-                GuideData.Output(display_name="guide_data", tooltip="Bundle for LTXStoryboardGuide downstream."),
                 io.Float.Output(display_name="frame_rate"),
                 io.Audio.Output(display_name="combined_audio", tooltip="Combined audio waveform if use_custom_audio=True and timeline has audio segments; otherwise silence."),
             ],
@@ -376,6 +384,7 @@ class LTXStoryboard(io.ComfyNode):
         cls,
         model,
         clip,
+        vae,
         global_prompt: str,
         duration_frames: int,
         duration_seconds: float,
@@ -396,6 +405,8 @@ class LTXStoryboard(io.ComfyNode):
         resize_method: str = "maintain aspect ratio",
         divisible_by: int = 32,
         img_compression: int = 18,
+        scale_by: float = 1.0,
+        upscale_method: str = "nearest-exact",
     ) -> io.NodeOutput:
         # ---- 1. Parse timeline JSON ----
         try:
@@ -554,6 +565,55 @@ class LTXStoryboard(io.ComfyNode):
             log.warning("[LTXStoryboard] empty-text negative encode failed (%s); using positive as negative fallback.", e)
             negative = positive
 
+        # ---- 6b. Apply keyframes to latent (LTXVAddGuideMulti loop body) ----
+        # Mirrors comfyui-kjnodes/nodes/ltxv_nodes.py:62-97 — for each kf:
+        #   encode → get_latent_index → append_keyframe.
+        # Optionally pre-scales the latent via scale_by (the validated 0.5× stage-1 pre-pass).
+        scale_factors = vae.downscale_index_formula
+        latent_image = latent["samples"]
+        noise_mask = latent.get("noise_mask")
+        if noise_mask is None:
+            noise_mask = torch.ones_like(latent_image[:, :1])
+
+        if scale_by != 1.0:
+            B, C, F, H, W = latent_image.shape
+            tw = max(1, round(W * scale_by))
+            th = max(1, round(H * scale_by))
+            latent_4d = latent_image.permute(0, 2, 1, 3, 4).reshape(B * F, C, H, W)
+            latent_resized_4d = comfy.utils.common_upscale(latent_4d, tw, th, upscale_method, "disabled")
+            latent_image = latent_resized_4d.reshape(B, F, C, th, tw).permute(0, 2, 1, 3, 4)
+            if noise_mask is not None and noise_mask.ndim == 5:
+                mB, mC, mF, mH, mW = noise_mask.shape
+                mask_4d = noise_mask.permute(0, 2, 1, 3, 4).reshape(mB * mF, mC, mH, mW)
+                mask_resized_4d = comfy.utils.common_upscale(mask_4d, tw, th, "nearest-exact", "disabled")
+                noise_mask = mask_resized_4d.reshape(mB, mF, mC, th, tw).permute(0, 2, 1, 3, 4)
+
+        _, _, latent_length, latent_height, latent_width = latent_image.shape
+
+        for i, img_tensor in enumerate(guide_data["images"]):
+            f_idx = int(guide_data["insert_frames"][i])
+            strength = float(guide_data["strengths"][i])
+
+            image_1, t = LTXVAddGuide.encode(vae, latent_width, latent_height, img_tensor, scale_factors)
+            frame_idx, latent_idx = LTXVAddGuide.get_latent_index(positive, latent_length, len(image_1), f_idx, scale_factors)
+
+            if latent_idx + t.shape[2] > latent_length:
+                log.warning(
+                    "[LTXStoryboard] kf %d at pixel %d → latent_idx %d would exceed latent_length %d; skipping.",
+                    i, f_idx, latent_idx, latent_length,
+                )
+                continue
+
+            positive, negative, latent_image, noise_mask = LTXVAddGuide.append_keyframe(
+                positive, negative, frame_idx, latent_image, noise_mask, t, strength, scale_factors,
+            )
+            log.info(
+                "[LTXStoryboard] kf %d: pixel=%d (snapped=%d) → latent_idx=%d, strength=%.2f",
+                i, f_idx, frame_idx, latent_idx, strength,
+            )
+
+        latent = {"samples": latent_image, "noise_mask": noise_mask}
+
         # ---- 7. Combined audio output ----
         # _build_combined_audio takes the RAW timeline_data JSON string, not the parsed dict.
         if use_custom_audio and audio_segments:
@@ -579,7 +639,6 @@ class LTXStoryboard(io.ComfyNode):
             negative,
             latent,
             audio_latent,
-            guide_data,
             float(frame_rate),
             combined_audio,
         )

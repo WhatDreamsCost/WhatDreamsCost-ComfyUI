@@ -573,6 +573,9 @@ class LTXStoryboard(io.ComfyNode):
         # Mirrors comfyui-kjnodes/nodes/ltxv_nodes.py:62-97 — for each kf:
         #   encode → get_latent_index → append_keyframe.
         # Optionally pre-scales the latent via scale_by (the validated 0.5× stage-1 pre-pass).
+        # In extend mode, latent["noise_mask"] from upstream (LTXVAudioVideoMask) carries
+        # the prior-region lock (mask <= 0.05 = clean, do NOT denoise). MUST be scaled
+        # alongside samples — dropping it lets the model regenerate the prior frames.
         scale_factors = vae.downscale_index_formula
         if scale_by != 1.0:
             B, C, F, H, W = latent["samples"].shape
@@ -580,7 +583,20 @@ class LTXStoryboard(io.ComfyNode):
             th = max(1, round(H * scale_by))
             latent_4d = latent["samples"].permute(0, 2, 1, 3, 4).reshape(B * F, C, H, W)
             latent_resized_4d = comfy.utils.common_upscale(latent_4d, tw, th, upscale_method, "disabled")
-            latent = {"samples": latent_resized_4d.reshape(B, F, C, th, tw).permute(0, 2, 1, 3, 4)}
+            new_latent = {"samples": latent_resized_4d.reshape(B, F, C, th, tw).permute(0, 2, 1, 3, 4)}
+
+            upstream_mask = latent.get("noise_mask")
+            if upstream_mask is not None and upstream_mask.ndim == 5 and upstream_mask.shape[-1] > 1 and upstream_mask.shape[-2] > 1:
+                # Full-spatial mask (extend mode) — resize to match new latent dims.
+                # Use nearest-exact so the 0/1 prior-region values stay clean.
+                mB, mC, mF, mH, mW = upstream_mask.shape
+                mask_4d = upstream_mask.permute(0, 2, 1, 3, 4).reshape(mB * mF, mC, mH, mW)
+                mask_resized_4d = comfy.utils.common_upscale(mask_4d, tw, th, "nearest-exact", "disabled")
+                new_latent["noise_mask"] = mask_resized_4d.reshape(mB, mF, mC, th, tw).permute(0, 2, 1, 3, 4)
+            elif upstream_mask is not None:
+                # Broadcast mask [B, 1, F, 1, 1] — already spatially-invariant, keep as-is.
+                new_latent["noise_mask"] = upstream_mask
+            latent = new_latent
 
         latent_image = latent["samples"]
         noise_mask = get_noise_mask(latent)

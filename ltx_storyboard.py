@@ -59,6 +59,9 @@ from .ltx_director import (
 log = logging.getLogger(__name__)
 
 
+# Custom socket type — bundle of per-kf image+frame_idx+strength so the optional
+# stage-2 LTXStoryboardGuide can re-apply the same kfs after LTXVCropGuides + upsampler.
+GuideData = io.Custom("GUIDE_DATA")
 # RelayOptions: kijai's globally-registered custom type. We declare it the same way kijai's
 # package does so the input port accepts their PromptRelayAdvancedOptions output natively.
 RelayOptions = io.Custom("RELAY_OPTIONS")
@@ -376,6 +379,7 @@ class LTXStoryboard(io.ComfyNode):
                 io.Latent.Output(display_name="audio_latent", tooltip="Empty audio latent matching duration (only if audio_vae provided)."),
                 io.Float.Output(display_name="frame_rate"),
                 io.Audio.Output(display_name="combined_audio", tooltip="Combined audio waveform if use_custom_audio=True and timeline has audio segments; otherwise silence."),
+                GuideData.Output(display_name="guide_data", tooltip="Bundle of per-kf image+frame_idx+strength. Wire to LTXStoryboardGuide for stage-2 re-application after LTXVCropGuides + LTXVLatentUpsampler. Stage-1 already has kfs applied internally — this is only needed for the upsampled-latent re-anchor."),
             ],
         )
 
@@ -634,6 +638,7 @@ class LTXStoryboard(io.ComfyNode):
             audio_latent,
             float(frame_rate),
             combined_audio,
+            guide_data,
         )
 
 

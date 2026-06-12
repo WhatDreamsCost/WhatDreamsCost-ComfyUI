@@ -151,20 +151,6 @@ class LTXStoryboardGuide(LTXVAddGuide):
                 i, f_idx, frame_idx, latent_idx, strength,
             )
 
-        # Mirror the demo's order: re-attach frame_rate to BOTH conditionings AFTER the
-        # keyframe loop, exactly as the demo chains LTXVAddGuideMulti → LTXVConditioning.
-        # `conditioning_set_values` is merge-only (node_helpers.py:9 — shallow-copies the
-        # metadata dict and sets the key), so this composes cleanly with the keyframe_idxs
-        # the kf loop just appended.
-        fr = guide_data.get("frame_rate")
-        if fr is not None:
-            try:
-                import node_helpers
-                positive = node_helpers.conditioning_set_values(positive, {"frame_rate": float(fr)})
-                negative = node_helpers.conditioning_set_values(negative, {"frame_rate": float(fr)})
-            except Exception as e:
-                log.warning("[LTXStoryboardGuide] could not re-attach frame_rate (%s); upstream value preserved.", e)
-
         return io.NodeOutput(
             positive, negative, {"samples": latent_image, "noise_mask": noise_mask},
         )

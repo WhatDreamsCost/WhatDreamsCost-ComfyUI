@@ -643,6 +643,9 @@ class TimelineEditor {
       this.selectedIndex = 0;
     }
     this.updateUIFromSelection();
+    // Restore persisted global-prompt visibility before commitChanges re-serializes,
+    // otherwise the default-hidden state would overwrite the saved flag on reload.
+    this._restoreGlobalPromptVisibility();
     this.commitChanges(true);
     // Hide settings widgets by default to reduce node clutter.
     // Deferred so all widget types are finalized before we touch them.
@@ -2801,12 +2804,17 @@ class TimelineEditor {
       contiguousLengths[contiguousLengths.length - 1] += durationFrames - clampedCursor;
     }
 
+    // Persist the global-prompt enabled state alongside the timeline so it survives
+    // graph reloads (onConfigure) — its visibility is not part of ComfyUI's native
+    // widget serialization.
+    const gpWidget = this.node.widgets?.find(w => w.name === "global_prompt");
     const toSave = {
       segments: sortedSegments.map(s => {
         const { imgObj, ...rest } = s;
         return rest;
       }),
-      audioSegments: (this.timeline.audioSegments || []).map(s => ({ ...s }))
+      audioSegments: (this.timeline.audioSegments || []).map(s => ({ ...s })),
+      globalPromptVisible: !(gpWidget?.options && gpWidget.options.hidden)
     };
 
     const jsonStr = JSON.stringify(toSave);
@@ -3494,29 +3502,7 @@ class TimelineEditor {
       cb.checked = !(globalPromptWidget.options && globalPromptWidget.options.hidden);
       cb.style.cursor = "pointer";
       cb.addEventListener("change", () => {
-        const isVisible = cb.checked;
-        if (!globalPromptWidget.options) globalPromptWidget.options = {};
-        globalPromptWidget.options.hidden = !isVisible;
-
-        if (isVisible) {
-          delete globalPromptWidget.computeSize;
-          globalPromptWidget.hidden = false;
-          if (globalPromptWidget.element) globalPromptWidget.element.style.display = "";
-        } else {
-          globalPromptWidget.computeSize = () => [0, 0];
-          globalPromptWidget.hidden = true;
-          if (globalPromptWidget.element) globalPromptWidget.element.style.display = "none";
-        }
-
-        // Force refresh via display mode double-toggle trick
-        if (this.displayModeWidget) {
-          const origVal = this.displayModeWidget.value;
-          const otherVal = origVal === "frames" ? "seconds" : "frames";
-          this.displayModeWidget.value = otherVal;
-          if (this.displayModeWidget.callback) this.displayModeWidget.callback(otherVal);
-          this.displayModeWidget.value = origVal;
-          if (this.displayModeWidget.callback) this.displayModeWidget.callback(origVal);
-        }
+        this._setGlobalPromptVisible(cb.checked);
       });
       menu.appendChild(this._makeSettingRow("Use Global Prompt", cb));
     }
@@ -3566,6 +3552,44 @@ class TimelineEditor {
   dismissSettingsMenu() {
     if (this._settingsMenu) { this._settingsMenu.remove(); this._settingsMenu = null; }
     if (this._settingsDismisser) { document.removeEventListener("mousedown", this._settingsDismisser); this._settingsDismisser = null; }
+  }
+
+  // --- Global Prompt Visibility (persisted across reloads) ---
+
+  // Show or hide the global_prompt widget. Extracted so the settings checkbox and the
+  // restore path share one source of truth for the visibility logic.
+  _setGlobalPromptVisible(visible) {
+    const gp = this.node.widgets?.find(w => w.name === "global_prompt");
+    if (!gp) return;
+    if (!gp.options) gp.options = {};
+    gp.options.hidden = !visible;
+    if (visible) {
+      delete gp.computeSize;
+      gp.hidden = false;
+      if (gp.element) gp.element.style.display = "";
+    } else {
+      gp.computeSize = () => [0, 0];
+      gp.hidden = true;
+      if (gp.element) gp.element.style.display = "none";
+    }
+    // Force ComfyUI to re-measure the node via the display-mode double-toggle trick.
+    if (this.displayModeWidget) {
+      const origVal = this.displayModeWidget.value;
+      const otherVal = origVal === "frames" ? "seconds" : "frames";
+      this.displayModeWidget.value = otherVal;
+      if (this.displayModeWidget.callback) this.displayModeWidget.callback(otherVal);
+      this.displayModeWidget.value = origVal;
+      if (this.displayModeWidget.callback) this.displayModeWidget.callback(origVal);
+    }
+  }
+
+  // Restore the global-prompt enabled state from the flag persisted in timeline_data.
+  // Used by the editor constructor and onConfigure so the state survives graph reloads.
+  _restoreGlobalPromptVisibility() {
+    try {
+      const raw = JSON.parse(this.timelineDataWidget?.value || "{}");
+      if (raw.globalPromptVisible !== undefined) this._setGlobalPromptVisible(!!raw.globalPromptVisible);
+    } catch (e) { }
   }
 
 
@@ -3858,6 +3882,7 @@ app.registerExtension({
         setTimeout(() => {
           if (this._timelineEditor) {
             this._timelineEditor.timeline = parseInitial(this._timelineEditor.timelineDataWidget?.value);
+            this._timelineEditor._restoreGlobalPromptVisibility();
             this._timelineEditor.loadImages();
             this._timelineEditor.selectionType = "image";
             this._timelineEditor.selectedIndex = clamp(

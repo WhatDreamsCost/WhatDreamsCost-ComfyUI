@@ -572,32 +572,12 @@ class LTXStoryboard(io.ComfyNode):
         # ---- 6b. Apply keyframes to latent (LTXVAddGuideMulti loop body) ----
         # Mirrors comfyui-kjnodes/nodes/ltxv_nodes.py:62-97 — for each kf:
         #   encode → get_latent_index → append_keyframe.
-        # Optionally pre-scales the latent via scale_by (the validated 0.5× stage-1 pre-pass).
-        # In extend mode, latent["noise_mask"] from upstream (LTXVAudioVideoMask) carries
-        # the prior-region lock (mask <= 0.05 = clean, do NOT denoise). MUST be scaled
-        # alongside samples — dropping it lets the model regenerate the prior frames.
+        # The kf loop runs at the latent's native resolution. `scale_by` is applied
+        # AFTER, on the video latent only (audio latent untouched). This matches the
+        # validated workflow's wiring: PromptRelay + LTXVAddGuideMulti happen at the
+        # latent's native resolution, and any LatentUpscaleBy downstream operates on
+        # the conditioning-side output. Extend mode flows through identically.
         scale_factors = vae.downscale_index_formula
-        if scale_by != 1.0:
-            B, C, F, H, W = latent["samples"].shape
-            tw = max(1, round(W * scale_by))
-            th = max(1, round(H * scale_by))
-            latent_4d = latent["samples"].permute(0, 2, 1, 3, 4).reshape(B * F, C, H, W)
-            latent_resized_4d = comfy.utils.common_upscale(latent_4d, tw, th, upscale_method, "disabled")
-            new_latent = {"samples": latent_resized_4d.reshape(B, F, C, th, tw).permute(0, 2, 1, 3, 4)}
-
-            upstream_mask = latent.get("noise_mask")
-            if upstream_mask is not None and upstream_mask.ndim == 5 and upstream_mask.shape[-1] > 1 and upstream_mask.shape[-2] > 1:
-                # Full-spatial mask (extend mode) — resize to match new latent dims.
-                # Use nearest-exact so the 0/1 prior-region values stay clean.
-                mB, mC, mF, mH, mW = upstream_mask.shape
-                mask_4d = upstream_mask.permute(0, 2, 1, 3, 4).reshape(mB * mF, mC, mH, mW)
-                mask_resized_4d = comfy.utils.common_upscale(mask_4d, tw, th, "nearest-exact", "disabled")
-                new_latent["noise_mask"] = mask_resized_4d.reshape(mB, mF, mC, th, tw).permute(0, 2, 1, 3, 4)
-            elif upstream_mask is not None:
-                # Broadcast mask [B, 1, F, 1, 1] — already spatially-invariant, keep as-is.
-                new_latent["noise_mask"] = upstream_mask
-            latent = new_latent
-
         latent_image = latent["samples"]
         noise_mask = get_noise_mask(latent)
 
@@ -624,6 +604,28 @@ class LTXStoryboard(io.ComfyNode):
                 "[LTXStoryboard] kf %d: pixel=%d (snapped=%d) → latent_idx=%d, strength=%.2f",
                 i, f_idx, frame_idx, latent_idx, strength,
             )
+
+        # ---- 6c. Post-kf scale_by (video latent only, both fresh + extend) ----
+        # Applied AFTER the kf loop so kfs are encoded at native resolution; the
+        # downstream sampler sees the scaled latent. Audio latent is NOT scaled —
+        # it remains at its own native rate (audio_latent path is untouched).
+        # Both samples AND noise_mask must scale together to preserve the prior-region
+        # lock in extend mode (mask <= 0.05 → clean; if mask isn't scaled with samples,
+        # the prior frames get re-denoised). Broadcast masks [B,1,F,1,1] don't need
+        # spatial resizing.
+        if scale_by != 1.0:
+            B, C, F, H, W = latent_image.shape
+            tw = max(1, round(W * scale_by))
+            th = max(1, round(H * scale_by))
+            latent_4d = latent_image.permute(0, 2, 1, 3, 4).reshape(B * F, C, H, W)
+            latent_resized_4d = comfy.utils.common_upscale(latent_4d, tw, th, upscale_method, "disabled")
+            latent_image = latent_resized_4d.reshape(B, F, C, th, tw).permute(0, 2, 1, 3, 4)
+
+            if noise_mask is not None and noise_mask.ndim == 5 and noise_mask.shape[-1] > 1 and noise_mask.shape[-2] > 1:
+                mB, mC, mF, mH, mW = noise_mask.shape
+                mask_4d = noise_mask.permute(0, 2, 1, 3, 4).reshape(mB * mF, mC, mH, mW)
+                mask_resized_4d = comfy.utils.common_upscale(mask_4d, tw, th, "nearest-exact", "disabled")
+                noise_mask = mask_resized_4d.reshape(mB, mF, mC, th, tw).permute(0, 2, 1, 3, 4)
 
         latent = {"samples": latent_image, "noise_mask": noise_mask}
 

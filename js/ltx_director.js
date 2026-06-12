@@ -1508,6 +1508,67 @@ class TimelineEditor {
     this.fileInput.value = "";
   }
 
+  // --- Clip Type Conversion (right-click menu) ---
+  // Upload an image and attach it to an existing segment in place, turning it into
+  // an image clip while preserving start/length/prompt. Used by both "Replace Image"
+  // (segment is already an image) and "Add Image" (segment was text).
+  async _attachImageToSegment(file, seg) {
+    if (!file || !file.type.startsWith("image/") || !seg) return;
+    try {
+      const body = new FormData();
+      body.append("image", file);
+      const resp = await api.fetchApi("/upload/image", { method: "POST", body });
+      if (resp.status !== 200) return;
+
+      const data = await resp.json();
+      const filename = data.name;
+      const subfolder = data.subfolder || "";
+      seg.imageFile = subfolder ? subfolder + "/" + filename : filename;
+      seg.imageB64 = api.apiURL(`/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}`);
+      seg.type = "image";
+      delete seg.imgObj;
+
+      const img = new Image();
+      img.onload = () => { seg.imgObj = img; this.render(); };
+      img.src = seg.imageB64;
+
+      // Reflect the change in the side panel and the persisted widgets.
+      this.selectionType = "image";
+      this.selectedIndex = this.timeline.segments.findIndex(s => s.id === seg.id);
+      this.updateUIFromSelection();
+      this.commitChanges();
+    } catch (err) {
+      console.error("[PromptRelay] attach image to segment failed", err);
+    }
+  }
+
+  // Strip the image off a segment, turning it into a text clip. Preserves
+  // start/length/prompt; guide_strength self-heals via commitChanges().
+  _convertSegmentToText(seg) {
+    if (!seg) return;
+    seg.type = "text";
+    delete seg.imageFile;
+    delete seg.imageB64;
+    delete seg.imgObj;
+
+    this.selectionType = "image";
+    this.selectedIndex = this.timeline.segments.findIndex(s => s.id === seg.id);
+    this.updateUIFromSelection();
+    this.commitChanges();
+    this.render();
+  }
+
+  // Open a one-shot image picker and attach the chosen file to `seg`.
+  _pickImageForSegment(seg) {
+    const fi = document.createElement("input");
+    fi.type = "file";
+    fi.accept = "image/*";
+    fi.addEventListener("change", (ev) => {
+      if (ev.target.files?.[0]) this._attachImageToSegment(ev.target.files[0], seg);
+    });
+    fi.click();
+  }
+
   // --- Async Audio Upload Logic ---
   async handleAudioUpload(files, targetFrameStart = null) {
     const frameRate = this.getFrameRate();
@@ -2989,6 +3050,36 @@ class TimelineEditor {
         this.dismissContextMenu();
       };
       menu.appendChild(openBtn);
+
+      const replaceImgBtn = document.createElement("button");
+      replaceImgBtn.className = "pr-gap-menu-btn";
+      replaceImgBtn.innerHTML = `Replace Image…`;
+      replaceImgBtn.onclick = () => {
+        this.dismissContextMenu();
+        this._pickImageForSegment(seg);
+      };
+      menu.appendChild(replaceImgBtn);
+
+      const removeImgBtn = document.createElement("button");
+      removeImgBtn.className = "pr-gap-menu-btn";
+      removeImgBtn.innerHTML = `Remove Image (→ Text)`;
+      removeImgBtn.onclick = () => {
+        this._convertSegmentToText(seg);
+        this.dismissContextMenu();
+      };
+      menu.appendChild(removeImgBtn);
+    }
+
+    // Text clip → offer converting it into an image clip.
+    if (trackType === "text") {
+      const addImgBtn = document.createElement("button");
+      addImgBtn.className = "pr-gap-menu-btn";
+      addImgBtn.innerHTML = `Add Image (→ Image)…`;
+      addImgBtn.onclick = () => {
+        this.dismissContextMenu();
+        this._pickImageForSegment(seg);
+      };
+      menu.appendChild(addImgBtn);
     }
 
     if (trackType !== "audio") {

@@ -3507,6 +3507,56 @@ class TimelineEditor {
       menu.appendChild(this._makeSettingRow("Use Global Prompt", cb));
     }
 
+    // --- Save / Load Timeline (file + bundle) ---
+    const fileDivider = document.createElement("hr");
+    fileDivider.className = "pr-settings-divider";
+    menu.appendChild(fileDivider);
+
+    const makeFileRow = (label, onSave, onLoad) => {
+      const row = document.createElement("div");
+      row.className = "pr-settings-row";
+      const lbl = document.createElement("span");
+      lbl.className = "pr-settings-label";
+      lbl.textContent = label;
+      const btnWrap = document.createElement("div");
+      btnWrap.style.display = "flex";
+      btnWrap.style.gap = "6px";
+      const saveBtn = document.createElement("button");
+      saveBtn.className = "pr-settings-toggle-btn";
+      saveBtn.style.width = "auto";
+      saveBtn.textContent = "Save";
+      saveBtn.addEventListener("click", onSave);
+      const loadBtn = document.createElement("button");
+      loadBtn.className = "pr-settings-toggle-btn";
+      loadBtn.style.width = "auto";
+      loadBtn.textContent = "Load";
+      loadBtn.addEventListener("click", onLoad);
+      btnWrap.appendChild(saveBtn);
+      btnWrap.appendChild(loadBtn);
+      row.appendChild(lbl);
+      row.appendChild(btnWrap);
+      return row;
+    };
+
+    const pickFile = (accept, handler) => {
+      const fi = document.createElement("input");
+      fi.type = "file";
+      fi.accept = accept;
+      fi.addEventListener("change", (ev) => {
+        if (ev.target.files?.[0]) handler(ev.target.files[0]);
+        this.dismissSettingsMenu();
+      });
+      fi.click();
+    };
+
+    menu.appendChild(makeFileRow("Timeline File",
+      () => this.saveTimelineToFile(),
+      () => pickFile(".json,application/json", (f) => this.loadTimelineFromFile(f))));
+
+    menu.appendChild(makeFileRow("Bundle (zip)",
+      () => this.saveBundleToFile(),
+      () => pickFile(".zip,application/zip", (f) => this.loadBundleFromFile(f))));
+
 
     // --- Show/Hide on Node Toggle ---
     const toggleBtn = document.createElement("button");
@@ -3590,6 +3640,156 @@ class TimelineEditor {
       const raw = JSON.parse(this.timelineDataWidget?.value || "{}");
       if (raw.globalPromptVisible !== undefined) this._setGlobalPromptVisible(!!raw.globalPromptVisible);
     } catch (e) { }
+  }
+
+  // --- Timeline Serialization (save/load file + bundle) ---
+
+  // Build the serializable payload: the full timeline plus all node-level settings.
+  // Derived widgets (local_prompts/segment_lengths/guide_strength) are intentionally
+  // omitted — commitChanges() recomputes them on load.
+  _buildSerializationPayload() {
+    this.commitChanges(true); // ensure timeline_data is current before reading it
+    const node = this.node;
+    const getVal = (n) => node.widgets?.find(w => w.name === n)?.value;
+    const gpWidget = node.widgets?.find(w => w.name === "global_prompt");
+    let timeline = { segments: [], audioSegments: [] };
+    try { timeline = JSON.parse(this.timelineDataWidget?.value || "{}"); } catch (e) { }
+    return {
+      format: "ltx-director-timeline",
+      version: 1,
+      timeline,
+      settings: {
+        global_prompt: gpWidget?.value || "",
+        global_prompt_visible: !(gpWidget?.options && gpWidget.options.hidden),
+        duration_frames: getVal("duration_frames"),
+        duration_seconds: getVal("duration_seconds"),
+        frame_rate: getVal("frame_rate"),
+        display_mode: getVal("display_mode"),
+        epsilon: getVal("epsilon"),
+        divisible_by: getVal("divisible_by"),
+        img_compression: getVal("img_compression"),
+        custom_width: getVal("custom_width"),
+        custom_height: getVal("custom_height"),
+        resize_method: getVal("resize_method"),
+        use_custom_audio: getVal("use_custom_audio"),
+      },
+    };
+  }
+
+  _downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  // Apply a parsed payload to the node: settings, global prompt, then re-hydrate the
+  // timeline (mirrors the onConfigure restore path). Shared by file-load and bundle-load.
+  _applyLoadedPayload(payload) {
+    if (!payload || payload.format !== "ltx-director-timeline") {
+      console.warn("[PromptRelay] Not an LTX Director timeline file; ignoring.");
+      return false;
+    }
+    const node = this.node;
+    const s = payload.settings || {};
+    const setVal = (n, v) => {
+      if (v === undefined) return;
+      const w = node.widgets?.find(x => x.name === n);
+      if (!w) return;
+      w.value = v;
+      if (w.callback) { try { w.callback(v, app.canvas, node, null, null); } catch (e) { } }
+    };
+    setVal("duration_frames", s.duration_frames);
+    setVal("duration_seconds", s.duration_seconds);
+    setVal("frame_rate", s.frame_rate);
+    setVal("display_mode", s.display_mode);
+    setVal("epsilon", s.epsilon);
+    setVal("divisible_by", s.divisible_by);
+    setVal("img_compression", s.img_compression);
+    setVal("custom_width", s.custom_width);
+    setVal("custom_height", s.custom_height);
+    setVal("resize_method", s.resize_method);
+    setVal("use_custom_audio", s.use_custom_audio);
+
+    const gp = node.widgets?.find(w => w.name === "global_prompt");
+    if (gp && s.global_prompt !== undefined) gp.value = s.global_prompt;
+    if (s.global_prompt_visible !== undefined) this._setGlobalPromptVisible(!!s.global_prompt_visible);
+
+    const timeline = payload.timeline || { segments: [], audioSegments: [] };
+    const json = JSON.stringify(timeline);
+    if (this.timelineDataWidget) this.timelineDataWidget.value = json;
+    this.timeline = parseInitial(json);
+
+    // Rebuild any missing image preview URLs (e.g. after a bundle re-paths imageFile).
+    for (const seg of this.timeline.segments) {
+      if (seg.imageFile && !seg.imageB64) {
+        const idx = seg.imageFile.lastIndexOf("/");
+        const sub = idx >= 0 ? seg.imageFile.slice(0, idx) : "";
+        const fname = idx >= 0 ? seg.imageFile.slice(idx + 1) : seg.imageFile;
+        seg.imageB64 = api.apiURL(`/view?filename=${encodeURIComponent(fname)}&type=input&subfolder=${encodeURIComponent(sub)}`);
+      }
+    }
+
+    this.loadImages();
+    this.selectionType = "image";
+    this.selectedIndex = this.timeline.segments.length ? 0 : -1;
+    this.updateUIFromSelection();
+    this.commitChanges();
+    this.render();
+    return true;
+  }
+
+  // --- Timeline File (lightweight JSON; media referenced by filename) ---
+  saveTimelineToFile() {
+    const payload = this._buildSerializationPayload();
+    this._downloadBlob(
+      new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
+      "ltx_director_timeline.json"
+    );
+  }
+
+  loadTimelineFromFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      let payload;
+      try { payload = JSON.parse(reader.result); }
+      catch (e) { console.error("[PromptRelay] Invalid timeline JSON", e); return; }
+      this._applyLoadedPayload(payload);
+    };
+    reader.readAsText(file);
+  }
+
+  // --- Bundle (portable zip; media packaged + staged into input/<bundleName>/) ---
+  async saveBundleToFile() {
+    const payload = this._buildSerializationPayload();
+    payload.bundleName = "ltx_director_bundle";
+    try {
+      const resp = await api.fetchApi("/ltx_director/save_bundle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (resp.status !== 200) { console.error("[PromptRelay] save_bundle failed", resp.status); return; }
+      const blob = await resp.blob();
+      this._downloadBlob(blob, "ltx_director_bundle.zip");
+    } catch (err) {
+      console.error("[PromptRelay] save bundle error", err);
+    }
+  }
+
+  async loadBundleFromFile(file) {
+    try {
+      const body = new FormData();
+      body.append("bundle", file);
+      const resp = await api.fetchApi("/ltx_director/load_bundle", { method: "POST", body });
+      if (resp.status !== 200) { console.error("[PromptRelay] load_bundle failed", resp.status); return; }
+      const data = await resp.json();
+      this._applyLoadedPayload(data.payload);
+    } catch (err) {
+      console.error("[PromptRelay] load bundle error", err);
+    }
   }
 
 

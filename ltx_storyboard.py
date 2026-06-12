@@ -416,6 +416,7 @@ class LTXStoryboard(io.ComfyNode):
             "strengths": [],
             "reach_before_pixels": [],
             "reach_after_pixels": [],
+            "frame_rate": float(frame_rate),
         }
 
         derived_w = custom_width if custom_width > 0 else 768

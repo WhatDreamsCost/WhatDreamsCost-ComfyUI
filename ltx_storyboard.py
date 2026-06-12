@@ -45,7 +45,7 @@ import comfy.utils
 import folder_paths
 
 from comfy_api.latest import io
-from comfy_extras.nodes_lt import LTXVAddGuide
+from comfy_extras.nodes_lt import LTXVAddGuide, get_noise_mask
 
 # Reuse the existing helpers verbatim — no copy-paste, just import.
 from .ltx_director import (
@@ -570,23 +570,16 @@ class LTXStoryboard(io.ComfyNode):
         #   encode → get_latent_index → append_keyframe.
         # Optionally pre-scales the latent via scale_by (the validated 0.5× stage-1 pre-pass).
         scale_factors = vae.downscale_index_formula
-        latent_image = latent["samples"]
-        noise_mask = latent.get("noise_mask")
-        if noise_mask is None:
-            noise_mask = torch.ones_like(latent_image[:, :1])
-
         if scale_by != 1.0:
-            B, C, F, H, W = latent_image.shape
+            B, C, F, H, W = latent["samples"].shape
             tw = max(1, round(W * scale_by))
             th = max(1, round(H * scale_by))
-            latent_4d = latent_image.permute(0, 2, 1, 3, 4).reshape(B * F, C, H, W)
+            latent_4d = latent["samples"].permute(0, 2, 1, 3, 4).reshape(B * F, C, H, W)
             latent_resized_4d = comfy.utils.common_upscale(latent_4d, tw, th, upscale_method, "disabled")
-            latent_image = latent_resized_4d.reshape(B, F, C, th, tw).permute(0, 2, 1, 3, 4)
-            if noise_mask is not None and noise_mask.ndim == 5:
-                mB, mC, mF, mH, mW = noise_mask.shape
-                mask_4d = noise_mask.permute(0, 2, 1, 3, 4).reshape(mB * mF, mC, mH, mW)
-                mask_resized_4d = comfy.utils.common_upscale(mask_4d, tw, th, "nearest-exact", "disabled")
-                noise_mask = mask_resized_4d.reshape(mB, mF, mC, th, tw).permute(0, 2, 1, 3, 4)
+            latent = {"samples": latent_resized_4d.reshape(B, F, C, th, tw).permute(0, 2, 1, 3, 4)}
+
+        latent_image = latent["samples"]
+        noise_mask = get_noise_mask(latent)
 
         _, _, latent_length, latent_height, latent_width = latent_image.shape
 

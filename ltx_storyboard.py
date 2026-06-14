@@ -173,6 +173,32 @@ def _build_video_latent(
     return {"samples": samples}, 0
 
 
+def _encode_audio_to_latent(audio_vae, audio_dict: dict | None) -> dict | None:
+    """Encode an audio waveform dict to an audio latent dict via the LTX audio VAE.
+
+    Mirrors comfy_extras/nodes_audio.py:VAEEncodeAudio.execute() exactly — same
+    resample-then-encode flow that LTXVAudioVAEEncode inherits. Used to turn the
+    timeline editor's combined audio waveform into a real (non-empty) audio latent
+    that drives the model's audio-conditioning path during sampling.
+
+    Returns None if encoding fails (caller should fall back to the empty-audio path).
+    """
+    if audio_vae is None or audio_dict is None:
+        return None
+    try:
+        sample_rate = audio_dict["sample_rate"]
+        waveform = audio_dict["waveform"]
+        vae_sample_rate = getattr(audio_vae, "audio_sample_rate", 44100)
+        if vae_sample_rate != sample_rate:
+            import torchaudio
+            waveform = torchaudio.functional.resample(waveform, sample_rate, vae_sample_rate)
+        t = audio_vae.encode(waveform.movedim(1, -1))
+        return {"samples": t}
+    except Exception as e:
+        log.warning("[LTXStoryboard] _encode_audio_to_latent failed (%s).", e)
+        return None
+
+
 def _build_empty_audio_latent(audio_vae, duration_frames: int, frame_rate: float, batch_size: int = 1) -> dict | None:
     """Generate an empty audio latent matching the video duration. Produces a 4D tensor
     `[B, C, num_audio_latents, audio_freq]` matching what LTXVConcatAVLatent + LTXAV's
@@ -500,10 +526,37 @@ class LTXStoryboard(io.ComfyNode):
             divisible_by=divisible_by,
         )
 
-        # ---- 4. Build audio latent (empty matching duration) ----
-        # Extend mode wins: an upstream-provided audio latent takes precedence.
+        # ---- 4a. Build combined audio waveform ----
+        # Needed for both the `combined_audio` output AND (when use_custom_audio=True
+        # with audio_vae available) for the conditioning audio latent itself.
+        if use_custom_audio and audio_segments:
+            try:
+                ltxv_length = duration_frames + 1
+                combined_audio = _build_combined_audio(timeline_data or "", ltxv_length, float(frame_rate))
+            except Exception as e:
+                log.warning("[LTXStoryboard] _build_combined_audio failed (%s); emitting silence.", e)
+                combined_audio = _silence_audio(duration_frames, frame_rate)
+        else:
+            combined_audio = _silence_audio(duration_frames, frame_rate)
+
+        # ---- 4b. Build audio latent ----
+        # Priority:
+        #   1. extend_from_audio_latent — upstream-provided latent (extend mode) wins.
+        #   2. use_custom_audio + audio_segments + audio_vae → encode combined_audio to
+        #      a REAL audio latent that drives LTX's audio-conditioning path during sampling.
+        #   3. Empty audio latent matching duration (silence).
         if extend_from_audio_latent is not None:
             audio_latent = extend_from_audio_latent
+        elif use_custom_audio and audio_segments and audio_vae is not None:
+            audio_latent = _encode_audio_to_latent(audio_vae, combined_audio)
+            if audio_latent is not None:
+                log.info(
+                    "[LTXStoryboard] Custom audio encoded to latent: shape=%s",
+                    tuple(audio_latent["samples"].shape),
+                )
+            else:
+                log.warning("[LTXStoryboard] Custom audio encode returned None; falling back to empty latent.")
+                audio_latent = _build_empty_audio_latent(audio_vae, duration_frames, frame_rate)
         else:
             audio_latent = _build_empty_audio_latent(audio_vae, duration_frames, frame_rate)
 
@@ -622,19 +675,7 @@ class LTXStoryboard(io.ComfyNode):
 
         latent = {"samples": latent_image, "noise_mask": noise_mask}
 
-        # ---- 7. Combined audio output ----
-        # _build_combined_audio takes the RAW timeline_data JSON string, not the parsed dict.
-        if use_custom_audio and audio_segments:
-            try:
-                ltxv_length = duration_frames + 1
-                combined_audio = _build_combined_audio(timeline_data or "", ltxv_length, float(frame_rate))
-            except Exception as e:
-                log.warning("[LTXStoryboard] _build_combined_audio failed (%s); emitting silence.", e)
-                combined_audio = _silence_audio(duration_frames, frame_rate)
-        else:
-            combined_audio = _silence_audio(duration_frames, frame_rate)
-
-        # ---- 8. Diagnostic log + return ----
+        # ---- 7. Diagnostic log + return ----
         log.info(
             "[LTXStoryboard] done: %d kfs, prior_latent_t=%d, frame_rate=%.1f, audio=%s",
             len(guide_data["images"]), prior_latent_t, frame_rate,

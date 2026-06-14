@@ -1,0 +1,249 @@
+--- Launching ComfyUI ---
+    COMFY_DIR=/admin/home-kateriw/ComfyUI
+    VENV=/admin/home-kateriw/venvComfy310
+    TORCH_VER=2.12.0
+--- Starting ComfyUI (Wait for initialization) ---
+--- Retrieving Tunnel URL ---
+
+
+
+################################################################
+###                                                          ###
+###  COMFYUI IS READY!                                       ###
+###  URL: https://planners-repeat-obituaries-composed.trycloudflare.com
+###                                                          ###
+################################################################
+
+
+
+[START] Security scan
+[DONE] Security scan
+** ComfyUI startup time: 2026-06-13 17:52:56.423
+** Platform: Linux
+** Python version: 3.12.3 (main, Mar 23 2026, 19:04:32) [GCC 13.3.0]
+** Python executable: /admin/home-kateriw/venvComfy310/bin/python3
+** ComfyUI Path: /admin/home-kateriw/ComfyUI
+** ComfyUI Base Folder Path: /admin/home-kateriw/ComfyUI
+** User directory: /admin/home-kateriw/ComfyUI/user
+** ComfyUI-Manager config path: /admin/home-kateriw/ComfyUI/user/__manager/config.ini
+** Log path: /admin/home-kateriw/ComfyUI/user/comfyui.log
+[ComfyUI-Manager] Using GitPython backend
+[QwenVL Debug] SAGE_ATTENTION_AVAILABLE: False
+[QwenVL Debug] CUDA capability: 9.0
+[QwenVL Debug] Final ATTENTION_MODES: ['auto', 'sage', 'flash_attention_2', 'sdpa']
+[QwenVL] NOTE: SageAttention option shown for testing. Install with: pip install sageattention
+[QwenVL Debug] SAGE_ATTENTION_AVAILABLE: False
+[QwenVL Debug] CUDA capability: 9.0
+[QwenVL Debug] Final ATTENTION_MODES: ['auto', 'sage', 'flash_attention_2', 'sdpa']
+[QwenVL] NOTE: SageAttention option shown for testing. Install with: pip install sageattention
+Error loading module AILab_QwenVL_GGUF_PromptEnhancer: No module named 'llama_cpp'
+Error loading module AILab_QwenVL_GGUF: No module named 'llama_cpp'
+[92m[ComfyUI-FL-LTXTools] Loaded successfully! Nodes: Motion Boost[0m
+LOADED 5 FONTS
+
+
+███╗   ███╗ █████╗  ██████╗██╗  ██╗██╗███╗   ██╗███████╗               
+████╗ ████║██╔══██╗██╔════╝██║  ██║██║████╗  ██║██╔════╝               
+██╔████╔██║███████║██║     ███████║██║██╔██╗ ██║█████╗                 
+██║╚██╔╝██║██╔══██║██║     ██╔══██║██║██║╚██╗██║██╔══╝                 
+██║ ╚═╝ ██║██║  ██║╚██████╗██║  ██║██║██║ ╚████║███████╗               
+╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝╚══════╝               
+                                                                       
+██████╗ ███████╗██╗     ██╗   ██╗███████╗██╗ ██████╗ ███╗   ██╗███████╗
+██╔══██╗██╔════╝██║     ██║   ██║██╔════╝██║██╔═══██╗████╗  ██║██╔════╝
+██║  ██║█████╗  ██║     ██║   ██║███████╗██║██║   ██║██╔██╗ ██║███████╗
+██║  ██║██╔══╝  ██║     ██║   ██║╚════██║██║██║   ██║██║╚██╗██║╚════██║
+██████╔╝███████╗███████╗╚██████╔╝███████║██║╚██████╔╝██║ ╚████║███████║
+╚═════╝ ╚══════╝╚══════╝ ╚═════╝ ╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝
+                                                                       
+
+
+FETCH DATA from: /admin/home-kateriw/ComfyUI/user/__manager/cache/3351870820_custom-node-list.json [DONE]
+
+Depthcrafter Nodes Loaded
+
+Crypto library not found. Please install pycryptodome.
+flash_attn is not installed.
+Megatron-core is not installed.
+flash_attn is not installed.
+WARNING: turbo_diffusion_ops CUDA extensions not available, using PyTorch fallback (slower)
+
+============================================================
+ComfyUI TurboDiffusion I2V Node
+============================================================
+Version: 0.1.0
+Loaded 5 nodes:
+  - TurboWan I2V Sampler (TurboWanSampler)
+  - Save Video (TurboDiffusionSaveVideo)
+  - TurboWan Model Loader (Quantized) (TurboWanModelLoader)
+  - TurboDiffusion I2V Sampler (TurboDiffusionI2VSampler)
+  - TurboWan VAE Loader (TurboWanVAELoader)
+
+Features:
+  - TurboWan Model Loader: Official TurboDiffusion model loading
+  - Supports int8 block-wise quantized .pth models
+  - SageSLA/SLA attention optimization for faster inference
+  - Attention top-k tuning (0.01-1.0)
+
+Requires:
+  - TurboDiffusion Python package (manual install)
+  - Quantized .pth models from HuggingFace
+============================================================
+
+⚠️  SeedVR2 optimizations check: SageAttention ❌ | Flash Attention ❌ | Triton ✅
+💡 Optional: pip install sageattention flash-attn
+🔧 Conv3d workaround active: PyTorch 2.12.0, cuDNN 92000 (fixing VAE 3x memory bug)
+📊 Initial CUDA memory: 139.09GB free / 139.80GB total
+(RES4LYF) Init
+(RES4LYF) Importing beta samplers.
+(RES4LYF) Importing legacy samplers.
+[DazzleNodes] Starting web resource sync...
+[DazzleNodes] Sync script path: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-dazzlenodes/scripts/sync_web_files.py
+[DazzleNodes] Sync script exists: True
+[DazzleNodes] Executing: /admin/home-kateriw/venvComfy310/bin/python3 /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-dazzlenodes/scripts/sync_web_files.py
+[DazzleNodes] Sync output:
+[DazzleNodes]   [DazzleNodes] Syncing web resources...
+[DazzleNodes]   [DazzleNodes] Web resources up-to-date (cached)
+[DazzleNodes] [OK] Web resource sync completed successfully
+[DazzleNodes] Loading node collection...
+[SmartResCalc] Module loaded, DEBUG_ENABLED = False
+[SmartResCalc] Registered API endpoint: /smart-resolution/get-dimensions
+[SmartResCalc] Registered API endpoint: /smart-resolution/calculate-dimensions
+[FitMaskToImage] Loaded v0.2.3-alpha_main_13-20251115-c870bf7
+[PreviewBridgeExtended] Loaded v0.3.3-alpha_main_15-20260112-010d5c7
+[DazzleNodes] [OK] Loaded 4 nodes: Smart Resolution Calculator (1 nodes), Fit Mask to Image (1 nodes), Plasma Noise Generators (17 nodes), Preview Bridge Extended (1 nodes)
+[DazzleNodes] [OK] 20 node(s) available
+[94mAdaptive LoRA Scheduler Node: [92mLoaded[0m
+[ComfyUI-3DGS] Loaded successfully.
+Eden_Comfy_Pipelines: WARNING: Could not find OPENAI_API_KEY in .env, disabling gpt prompt generation.
+
+    [32m🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱[0m
+    [1m🌱 Eden ComfyUI Pack maintained by [32mhttps://eden.art/  🌱[0m
+    [32m🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱🌱[0m
+    
+[34m[ComfyUI-Easy-Use] server: [0mv1.3.6 [92mLoaded[0m
+[34m[ComfyUI-Easy-Use] web root: [0m/weka/home-kateriw/ComfyUI/custom_nodes/comfyui-easy-use/web_version/v2 [92mLoaded[0m
+flash_attn is not installed.
+flash_attn is not installed.
+WARNING: turbo_diffusion_ops CUDA extensions not available, using PyTorch fallback (slower)
+
+============================================================
+ComfyUI TurboDiffusion I2V Node
+============================================================
+Version: 0.1.0
+Loaded 6 nodes:
+  - TurboWan I2V Sampler (TurboWanSampler)
+  - Save Video (TurboDiffusionSaveVideo)
+  - TurboWan Model Loader (Quantized) (TurboWanModelLoader)
+  - TurboDiffusion I2V Sampler (TurboDiffusionI2VSampler)
+  - TurboWan VAE Loader (TurboWanVAELoader)
+  - TurboWan LoRA Loader (TurboWanLoRALoader)
+
+Features:
+  - TurboWan Model Loader: Official TurboDiffusion model loading
+  - TurboWan LoRA Loader: Merge LoRA weights into unquantized models
+  - Supports int8 block-wise quantized .pth models
+  - SageSLA/SLA attention optimization for faster inference
+  - Attention top-k tuning (0.01-1.0)
+
+Requires:
+  - TurboDiffusion Python package (manual install)
+  - Quantized .pth models from HuggingFace
+============================================================
+
+
+======================================================================
+[SAM3] ComfyUI SAM3 Node - Loading (TBG)
+======================================================================
+[SAM3] SAM3 Python package detected.
+[SAM3] Registered 6 nodes:
+[SAM3]  - TBG SAM3 Model Loader (TBGLoadSAM3Model)
+[SAM3]  - TBG SAM3 Model Loader and Downloader (TBGSAM3ModelLoaderAdvanced)
+[SAM3]  - TBG SAM3 Segmentation (TBGSam3Segmentation)
+[SAM3]  - TBG SAM3 Batch Selector (TBGSam3SegmentationBatch)
+[SAM3]  - TBG SAM3 Selector (TBGSAM3PromptCollector)
+[SAM3]  - TBG SAM3 Depth Map (TBGSAM3DepthMap)
+======================================================================
+[TripleKSampler] ✓ WanVideo wrapper available - TripleWVSampler nodes registered
+Web extensions folder found at /admin/home-kateriw/ComfyUI/web/extensions/ComfyLiterals
+Error loading module AILab_QwenVL_GGUF_PromptEnhancer: No module named 'llama_cpp'
+✅ creaprompt_api registering endpoints
+------------------------------------------
+[34mComfyroll Studio v1.76 : [92m 175 Nodes Loaded[0m
+------------------------------------------
+** For changes, please see patch notes at https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes/blob/main/Patch_Notes.md
+** For help, please see the wiki at https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes/wiki
+------------------------------------------
+[34mWAS Node Suite: [0mOpenCV Python FFMPEG support is enabled[0m
+[34mWAS Node Suite [93mWarning: [0m`ffmpeg_bin_path` is not set in `/admin/home-kateriw/ComfyUI/custom_nodes/was-node-suite-comfyui/was_suite_config.json` config file. Will attempt to use system ffmpeg binaries if available.[0m
+[34mWAS Node Suite: [0mFinished.[0m [32mLoaded[0m [0m220[0m [32mnodes successfully.[0m
+
+	[3m[93m"Art is the language of the heart and the window to the soul."[0m[3m - Unknown[0m
+
+here: /weka/home-kateriw/ComfyUI/custom_nodes/ComfyUI-tbox
+Using ckpts path: /weka/home-kateriw/ComfyUI/custom_nodes/ComfyUI-tbox/../../models/annotator
+Using symlinks: False
+Using ort providers: ['CUDAExecutionProvider', 'DirectMLExecutionProvider', 'OpenVINOExecutionProvider', 'ROCMExecutionProvider', 'CPUExecutionProvider']
+DWPose: Onnxruntime with acceleration providers detected
+[Crystools [0;32mINFO[0m] Crystools version: 1.27.4
+[Crystools [0;32mINFO[0m] Platform release: 6.14.0-1018-aws
+[Crystools [0;32mINFO[0m] JETSON: Not detected.
+[Crystools [0;32mINFO[0m] CPU: Intel(R) Xeon(R) Platinum 8488C - Arch: x86_64 - OS: Linux 6.14.0-1018-aws
+[Crystools [0;32mINFO[0m] pynvml (NVIDIA) initialized.
+[Crystools [0;32mINFO[0m] GPU/s:
+[Crystools [0;32mINFO[0m] 0) NVIDIA H200
+[Crystools [0;32mINFO[0m] 1) NVIDIA H200
+[Crystools [0;32mINFO[0m] 2) NVIDIA H200
+[Crystools [0;32mINFO[0m] 3) NVIDIA H200
+[Crystools [0;32mINFO[0m] 4) NVIDIA H200
+[Crystools [0;32mINFO[0m] 5) NVIDIA H200
+[Crystools [0;32mINFO[0m] 6) NVIDIA H200
+[Crystools [0;32mINFO[0m] 7) NVIDIA H200
+[Crystools [0;32mINFO[0m] NVIDIA Driver: 595.58.03
+[34mIb Custom Nodes: [92mLoaded[0m
+[92m[save_image_extended] AVIF is supported! Woohoo![0m
+[92m[save_image_extended][0m JXL is not supported. To add it: pip install jxlpy[0m
+[92m[save_image_extended][0m                       You will need a valid MSVC env to build the wheel[0m
+[92m[save_image_extended][0m version: 2.64[0m
+
+[92m[rgthree-comfy] Loaded 48 magnificent nodes. 🎉[0m
+
+[33m[rgthree-comfy] ComfyUI's new Node 2.0 rendering may be incompatible with some rgthree-comfy nodes and features, breaking some rendering as well as losing the ability to access a node's properties (a vital part of many nodes). It also appears to run MUCH more slowly spiking CPU usage and causing jankiness and unresponsiveness, especially with large workflows. Personally I am not planning to use the new Nodes 2.0 and, unfortunately, am not able to invest the time to investigate and overhaul rgthree-comfy where needed. If you have issues when Nodes 2.0 is enabled, I'd urge you to switch it off as well and join me in hoping ComfyUI is not planning to deprecate the existing, stable canvas rendering all together.
+[0m
+Error loading /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-rmbg/py/AILab_SAM3Segment.py: No module named 'sam3.model_builder'
+Error loading /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-rmbg/py/AILab_SAM3Segment.py: No module named 'sam3.model_builder'
+[34m[ComfyUI-RMBG][0m v[93m3.0.0[0m | [93m42 nodes[0m [92mLoaded[0m
+Could not find efficiency nodes
+Loaded comfyui_controlnet_aux nodes from /weka/home-kateriw/ComfyUI/custom_nodes/comfyui_controlnet_aux
+Could not find AdvancedControlNet nodes
+Could not find AnimateDiff nodes
+Loaded IPAdapter nodes from /weka/home-kateriw/ComfyUI/custom_nodes/comfyui_ipadapter_plus
+Loaded VideoHelperSuite from /weka/home-kateriw/ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite
+Loaded ImpactPack nodes from /weka/home-kateriw/ComfyUI/custom_nodes/comfyui-impact-pack
+[93m⚠️  GGUF functionality unavailable - install llama-cpp-python for GGUF support[0m
+[96m📖 Installation guide: https://github.com/1038lab/ComfyUI-MiniCPM/tree/main/llama_cpp_install[0m
+[92m✅ MiniCPM loaded: 2 nodes from 1 modules[0m
+[93m⏭️  Skipped: AILab_MiniCPM_GGUF[0m
+Failed to auto update `Quality of Life Suit` 
+[33mQualityOfLifeSuit_Omar92_DIR:[0m /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-QualityOfLifeSuit_Omar92
+[Filmworld] Detected Debian multi-arch Python headers (/usr/include/x86_64-linux-gnu/python3.12/pyconfig.h). Forcing CC=/usr/bin/gcc CXX=/usr/bin/g++ for gsplat JIT compatibility. Set FILMWORLD_NO_COMPILER_OVERRIDE=1 to disable this override.
+ComfyUI-Multiband loaded: 15 nodes registered
+[SCG_LocalVLM] PyTorch threads set to 8 (override with PYTORCH_THREADS env var)
+[SCG_LocalVLM] GPU: NVIDIA H200 (SM 9.0)
+[SCG_LocalVLM] Loaded 3 custom VL models and 0 custom text models from custom_models.json
+[1;35m
+### [START] ComfyUI AlekPet Nodes [1;34mv1.0.92[0m[1;35m ###[0m
+[92mNode -> ChatGLMNode: [93mChatGLM4TranslateCLIPTextEncodeNode, ChatGLM4TranslateTextNode, ChatGLM4InstructNode, ChatGLM4InstructMediaNode, ChatGLMImageGenerateNode, ChatGLMVideoGenerateNode[0m [92m[92m[Loading][0m[0m
+[92mNode -> IDENode: [93mIDENode[0m [92m[92m[Loading][0m[0m
+[92mNode -> ArgosTranslateNode: [93mArgosTranslateCLIPTextEncodeNode, ArgosTranslateTextNode[0m [92m[92m[Loading][0m[0m
+[92mNode -> PainterNode: [93mPainterNode[0m [92m[92m[Loading][0m[0m
+[92mNode -> GoogleTranslateNode: [93mGoogleTranslateCLIPTextEncodeNode, GoogleTranslateTextNode[0m [92m[92m[Loading][0m[0m
+[92mNode -> DeepTranslatorNode: [93mDeepTranslatorCLIPTextEncodeNode, DeepTranslatorTextNode[0m [92m[92m[Loading][0m[0m
+[92mNode -> PoseNode: [93mPoseNode[0m [92m[92m[Loading][0m[0m
+[92mNode -> ExtrasNode: [93mPreviewTextNode, HexToHueNode, ColorsCorrectNode[0m [92m[92m[Loading][0m[0m
+[1;35m### [END] ComfyUI AlekPet Nodes ###[0m
+--- Shutting down job ---
+
+[Distributed] Master shutting down, stopping all managed workers...
+
+[Distributed] Master shutting down, stopping all managed workers...

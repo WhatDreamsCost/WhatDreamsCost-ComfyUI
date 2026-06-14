@@ -1,0 +1,447 @@
+/admin/home-kateriw/venvComfy310/lib/python3.12/site-packages/torch/cuda/__init__.py:63: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+[32m[INFO][0m setup plugin alembic.autogenerate.schemas
+[32m[INFO][0m setup plugin alembic.autogenerate.tables
+[32m[INFO][0m setup plugin alembic.autogenerate.types
+[32m[INFO][0m setup plugin alembic.autogenerate.constraints
+[32m[INFO][0m setup plugin alembic.autogenerate.defaults
+[32m[INFO][0m setup plugin alembic.autogenerate.comments
+[32m[INFO][0m [ComfyUI-Manager] Using uv as Python module for pip operations.
+Using Python 3.12.3 environment at: /admin/home-kateriw/venvComfy310
+Using Python 3.12.3 environment at: /admin/home-kateriw/venvComfy310
+Using Python 3.12.3 environment at: /admin/home-kateriw/venvComfy310
+[32m[INFO][0m [PRE] ComfyUI-Manager
+[comfy-env] comfyui-sharp: no isolation envs
+[comfy-env] prestartup complete
+[comfy-env] ComfyUI-DepthAnythingV3: no isolation envs
+[comfy-env] prestartup complete
+[comfy-env] comfyui-sam3: 1 isolation env(s):
+[comfy-env]   nodes -> /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-sam3/nodes
+[comfy-env] Workspace: /admin/home-kateriw/.ce
+[comfy-env]     env: /admin/home-kateriw/.ce/.pixi/envs/sam3-nodes  [OK]
+[comfy-env] prestartup complete
+[comfy-env] ComfyUI-GeometryPack: 1 isolation env(s):
+[comfy-env]   nodes -> /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-GeometryPack/nodes
+[comfy-env]     env: /admin/home-kateriw/.ce/.pixi/envs/geometrypack-nodes  [OK]
+[comfy-env] prestartup complete
+[32m[INFO][0m 
+Prestartup times for custom nodes:
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/rgthree-comfy
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-easy-use
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-sam3
+[32m[INFO][0m    0.3 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-DepthAnythingV3
+[32m[INFO][0m    0.6 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-sharp
+[32m[INFO][0m    0.9 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-GeometryPack
+[32m[INFO][0m 
+/admin/home-kateriw/venvComfy310/lib/python3.12/site-packages/torch/cuda/__init__.py:63: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+[32m[INFO][0m Found comfy_kitchen backend triton: {'available': True, 'disabled': True, 'unavailable_reason': None, 'capabilities': ['apply_rope', 'apply_rope1', 'apply_rope_split_half', 'apply_rope_split_half1', 'dequantize_nvfp4', 'dequantize_per_tensor_fp8', 'quantize_mxfp8', 'quantize_nvfp4', 'quantize_per_tensor_fp8']}
+[32m[INFO][0m Found comfy_kitchen backend eager: {'available': True, 'disabled': False, 'unavailable_reason': None, 'capabilities': ['apply_rope', 'apply_rope1', 'apply_rope_split_half', 'apply_rope_split_half1', 'dequantize_mxfp8', 'dequantize_nvfp4', 'dequantize_per_tensor_fp8', 'gemv_awq_w4a16', 'quantize_mxfp8', 'quantize_nvfp4', 'quantize_per_tensor_fp8', 'quantize_svdquant_w4a4', 'scaled_mm_mxfp8', 'scaled_mm_nvfp4', 'scaled_mm_svdquant_w4a4', 'stochastic_rounding_fp8']}
+[32m[INFO][0m Found comfy_kitchen backend cuda: {'available': True, 'disabled': False, 'unavailable_reason': None, 'capabilities': ['apply_rope', 'apply_rope1', 'apply_rope_split_half', 'apply_rope_split_half1', 'dequantize_nvfp4', 'dequantize_per_tensor_fp8', 'gemv_awq_w4a16', 'quantize_mxfp8', 'quantize_nvfp4', 'quantize_per_tensor_fp8', 'quantize_svdquant_w4a4', 'scaled_mm_nvfp4', 'scaled_mm_svdquant_w4a4', 'stochastic_rounding_fp8']}
+[32m[INFO][0m Checkpoint files will always be loaded safely.
+[32m[INFO][0m Total VRAM 143158 MB, total RAM 2047942 MB
+[32m[INFO][0m pytorch version: 2.12.0+cu130
+[32m[INFO][0m Set vram state to: NORMAL_VRAM
+[32m[INFO][0m Device: cuda:0 NVIDIA H200 : cudaMallocAsync
+[32m[INFO][0m Using async weight offloading with 2 streams
+[32m[INFO][0m Enabled pinned memory 1843148.0
+[32m[INFO][0m Using pytorch attention
+aimdo: /project/src-posix/cuda-funchooks.c:52:DEBUG:aimdo_setup_hooks: hooks successfully installed
+aimdo: /project/src/control.c:239:INFO:comfy-aimdo inited for GPU: NVIDIA H200 (VRAM: 143157 MB)
+[32m[INFO][0m DynamicVRAM support detected and enabled
+[32m[INFO][0m Python version: 3.12.3 (main, Mar 23 2026, 19:04:32) [GCC 13.3.0]
+[32m[INFO][0m ComfyUI version: 0.22.0
+[32m[INFO][0m comfy-aimdo version: 0.4.7
+[32m[INFO][0m comfy-kitchen version: 0.2.10
+[32m[INFO][0m comfyui-frontend-package version: 1.44.19
+[32m[INFO][0m comfyui-workflow-templates version: 0.9.92
+[32m[INFO][0m comfyui-embedded-docs version: 0.5.2
+[32m[INFO][0m comfy-kitchen version: 0.2.10
+[32m[INFO][0m comfy-aimdo version: 0.4.7
+[32m[INFO][0m [Prompt Server] web root: /admin/home-kateriw/venvComfy310/lib/python3.12/site-packages/comfyui_frontend_package/static
+[32m[INFO][0m Asset seeder disabled
+[32m[INFO][0m [START] ComfyUI-Manager
+[32m[INFO][0m ### Loading: ComfyUI-Manager (V4.2.1)
+[32m[INFO][0m [ComfyUI-Manager] network_mode: public
+[32m[INFO][0m ### ComfyUI Version: v0.22.0-90-g0b610bd6 | Released on '2026-06-01'
+[1m[33m[WARNING][0m [ComfyUI-Manager] The matrix sharing feature has been disabled because the `matrix-nio` dependency is not installed.
+	To use this feature, please run the following command:
+	/admin/home-kateriw/venvComfy310/bin/python3 -m pip install matrix-nio
+
+[32m[INFO][0m [ComfyUI-Manager] Legacy UI is enabled.
+[32m[INFO][0m [ComfyUI-Manager] default cache updated: https://raw.githubusercontent.com/Comfy-Org/ComfyUI-Manager/main/model-list.json
+[32m[INFO][0m [ComfyUI-Manager] default cache updated: https://raw.githubusercontent.com/Comfy-Org/ComfyUI-Manager/main/alter-list.json
+[32m[INFO][0m [ComfyUI-Manager] default cache updated: https://raw.githubusercontent.com/Comfy-Org/ComfyUI-Manager/main/github-stats.json
+[32m[INFO][0m [ComfyUI-Manager] default cache updated: https://raw.githubusercontent.com/Comfy-Org/ComfyUI-Manager/main/extension-node-map.json
+[32m[INFO][0m [ComfyUI-Manager] default cache updated: https://raw.githubusercontent.com/Comfy-Org/ComfyUI-Manager/main/custom-node-list.json
+/admin/home-kateriw/venvComfy310/lib/python3.12/site-packages/cupy/_environment.py:447: UserWarning: 
+--------------------------------------------------------------------------------
+
+  CuPy may not function correctly because multiple CuPy packages are installed
+  in your environment:
+
+    cupy, cupy-cuda12x
+
+  Follow these steps to resolve this issue:
+
+    1. For all packages listed above, run the following command to remove all
+       existing CuPy installations:
+
+         $ pip uninstall <package_name>
+
+      If you previously installed CuPy via conda, also run the following:
+
+         $ conda uninstall cupy
+
+    2. Install the appropriate CuPy package.
+       Refer to the Installation Guide for detailed instructions.
+
+         https://docs.cupy.dev/en/stable/install.html
+
+--------------------------------------------------------------------------------
+
+  warnings.warn(f'''
+/admin/home-kateriw/venvComfy310/lib/python3.12/site-packages/timm/models/layers/__init__.py:49: FutureWarning: Importing from timm.models.layers is deprecated, please import via timm.layers
+  warnings.warn(f"Importing from {__name__} is deprecated, please import via timm.layers", FutureWarning)
+[32m[INFO][0m No OpenGL_accelerate module loaded: No module named 'OpenGL_accelerate'
+[32m[INFO][0m FETCH ComfyRegistry Data [DONE]
+[32m[INFO][0m [ComfyUI-Manager] default cache updated: https://api.comfy.org/nodes
+[32m[INFO][0m [ComfyUI-Manager] All startup tasks have been completed.
+[1m[31m[ERROR][0m bitsandbytes library load error: Configured CUDA binary not found at /admin/home-kateriw/venvComfy310/lib/python3.12/site-packages/bitsandbytes/libbitsandbytes_cuda130.so
+ If you are using Intel CPU/XPU, please install intel_extension_for_pytorch to enable required ops
+Traceback (most recent call last):
+  File "/admin/home-kateriw/venvComfy310/lib/python3.12/site-packages/bitsandbytes/cextension.py", line 318, in <module>
+    lib = get_native_library()
+          ^^^^^^^^^^^^^^^^^^^^
+  File "/admin/home-kateriw/venvComfy310/lib/python3.12/site-packages/bitsandbytes/cextension.py", line 282, in get_native_library
+    raise RuntimeError(f"Configured {BNB_BACKEND} binary not found at {cuda_binary_path}")
+RuntimeError: Configured CUDA binary not found at /admin/home-kateriw/venvComfy310/lib/python3.12/site-packages/bitsandbytes/libbitsandbytes_cuda130.so
+flash_attn is installed but failed to import: No module named 'flash_attn_2_cuda'. Falling back to native PyTorch attention.
+[32m[INFO][0m ### Loading: ComfyUI-Impact-Pack (V8.28.2)
+[32m[INFO][0m [Impact Pack] Wildcard total size (0.00 MB) is within cache limit (50.00 MB). Using full cache mode.
+[32m[INFO][0m [Impact Pack] Wildcards loading done.
+[32m[INFO][0m ComfyUI-Env-Manager v0.1.0 routes registered
+[32m[INFO][0m Using pytorch attention
+[1m[33m[WARNING][0m Traceback (most recent call last):
+  File "/admin/home-kateriw/ComfyUI/nodes.py", line 2212, in load_custom_node
+    module_spec.loader.exec_module(module)
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/admin/home-kateriw/ComfyUI/custom_nodes/api_loaders.py", line 9, in <module>
+    from stability.telemetry import Profiler
+ModuleNotFoundError: No module named 'stability.telemetry'
+
+[1m[33m[WARNING][0m Cannot import /admin/home-kateriw/ComfyUI/custom_nodes/api_loaders.py module for custom nodes: No module named 'stability.telemetry'
+[1m[33m[WARNING][0m Traceback (most recent call last):
+  File "/admin/home-kateriw/ComfyUI/nodes.py", line 2212, in load_custom_node
+    module_spec.loader.exec_module(module)
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/admin/home-kateriw/ComfyUI/custom_nodes/audio.py", line 19, in <module>
+    from stable_audio_tools.inference.generation import (
+ModuleNotFoundError: No module named 'stable_audio_tools'
+
+[1m[33m[WARNING][0m Cannot import /admin/home-kateriw/ComfyUI/custom_nodes/audio.py module for custom nodes: No module named 'stable_audio_tools'
+[32m[INFO][0m ### Loading: ComfyUI-Inspire-Pack (V1.23)
+[1m[33m[WARNING][0m Traceback (most recent call last):
+  File "/admin/home-kateriw/ComfyUI/nodes.py", line 2212, in load_custom_node
+    module_spec.loader.exec_module(module)
+  File "<frozen importlib._bootstrap_external>", line 991, in exec_module
+  File "<frozen importlib._bootstrap_external>", line 1128, in get_code
+  File "<frozen importlib._bootstrap_external>", line 1186, in get_data
+FileNotFoundError: [Errno 2] No such file or directory: '/admin/home-kateriw/ComfyUI/custom_nodes/flowrvs/__init__.py'
+
+[1m[33m[WARNING][0m Cannot import /admin/home-kateriw/ComfyUI/custom_nodes/flowrvs module for custom nodes: [Errno 2] No such file or directory: '/admin/home-kateriw/ComfyUI/custom_nodes/flowrvs/__init__.py'
+[1m[33m[WARNING][0m Warning: Could not load sageattention: No module named 'sageattention'
+[1m[33m[WARNING][0m sageattention package is not installed, sageattention will not be available
+[1m[33m[WARNING][0m Traceback (most recent call last):
+  File "/admin/home-kateriw/ComfyUI/nodes.py", line 2212, in load_custom_node
+    module_spec.loader.exec_module(module)
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/admin/home-kateriw/ComfyUI/custom_nodes/caption.py", line 54, in <module>
+    from lmdeploy import VisionConfig, pipeline
+ModuleNotFoundError: No module named 'lmdeploy'
+
+[1m[33m[WARNING][0m Cannot import /admin/home-kateriw/ComfyUI/custom_nodes/caption.py module for custom nodes: No module named 'lmdeploy'
+[32m[INFO][0m ### Loading: ComfyUI-Impact-Subpack (V1.3.5)
+[32m[INFO][0m [Impact Pack/Subpack] Using folder_paths to determine whitelist path: /admin/home-kateriw/ComfyUI/user/default/ComfyUI-Impact-Subpack/model-whitelist.txt
+[32m[INFO][0m [Impact Pack/Subpack] Ensured whitelist directory exists: /admin/home-kateriw/ComfyUI/user/default/ComfyUI-Impact-Subpack
+[32m[INFO][0m [Impact Pack/Subpack] Loaded 0 model(s) from whitelist: /admin/home-kateriw/ComfyUI/user/default/ComfyUI-Impact-Subpack/model-whitelist.txt
+[32m[INFO][0m [Impact Subpack] ultralytics_bbox: /admin/home-kateriw/ComfyUI/models/ultralytics/bbox
+[32m[INFO][0m [Impact Subpack] ultralytics_segm: /admin/home-kateriw/ComfyUI/models/ultralytics/segm
+[comfy-env] Version: 0.3.89
+[comfy-env] register_nodes: ComfyUI-DepthAnythingV3
+[comfy-env] ComfyUI source dir: /admin/home-kateriw/ComfyUI
+[comfy-env] Importing nodes (root)...
+[comfy-env] Imported nodes root: 15 nodes
+[comfy-env] Registered 15 total nodes
+[comfy-env] Version: 0.3.89
+[comfy-env] register_nodes: comfyui-sam3
+[comfy-env] ComfyUI source dir: /admin/home-kateriw/ComfyUI
+[comfy-env] Scanning nodes metadata (isolation root)...
+[comfy-env] Cache hit for nodes: 15 nodes
+[comfy-env] Scanned nodes root: 15 nodes (0.0s)
+[comfy-env] Registered proxy route: POST /sam3/interactive_segment_one -> nodes.sam3_interactive._api_segment_one
+[comfy-env] Imported nodes root: 15 nodes (isolation)
+[comfy-env] Registered 15 total nodes
+[36;20m[comfyui_controlnet_aux] | INFO -> Using ckpts path: /weka/home-kateriw/ComfyUI/custom_nodes/comfyui_controlnet_aux/ckpts[0m
+[36;20m[comfyui_controlnet_aux] | INFO -> Using symlinks: False[0m
+[36;20m[comfyui_controlnet_aux] | INFO -> Using ort providers: ['CUDAExecutionProvider', 'DirectMLExecutionProvider', 'OpenVINOExecutionProvider', 'ROCMExecutionProvider', 'CPUExecutionProvider', 'CoreMLExecutionProvider'][0m
+[32m[INFO][0m ### Loading: ComfyUI-Impact-Pack (V8.28.2)
+[32m[INFO][0m ### Loading: ComfyUI-Impact-Pack (V8.28.2)
+[32m[INFO][0m [Impact Pack] Wildcard total size (0.00 MB) is within cache limit (50.00 MB). Using full cache mode.
+[32m[INFO][0m [Impact Pack] Wildcards loading done.
+[32m[INFO][0m [Impact Pack] Wildcard total size (0.00 MB) is within cache limit (50.00 MB). Using full cache mode.
+[32m[INFO][0m [Impact Pack] Wildcards loading done.
+[32m[INFO][0m ComfyUI-GGUF: Allowing full torch compile
+[32m[INFO][0m ComfyUI-GGUF: Allowing full torch compile
+[1m[33m[WARNING][0m Traceback (most recent call last):
+  File "/admin/home-kateriw/ComfyUI/nodes.py", line 2212, in load_custom_node
+    module_spec.loader.exec_module(module)
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI_RH_QwenImageI2L/__init__.py", line 1, in <module>
+    from .nodes import NODE_CLASS_MAPPINGS
+  File "/admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI_RH_QwenImageI2L/nodes.py", line 4, in <module>
+    from diffsynth.pipelines.qwen_image import (
+ModuleNotFoundError: No module named 'diffsynth.pipelines.qwen_image'
+
+[1m[33m[WARNING][0m Cannot import /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI_RH_QwenImageI2L module for custom nodes: No module named 'diffsynth.pipelines.qwen_image'
+[36;20m[/admin/home-kateriw/ComfyUI/custom_nodes/comfy-mtb] | INFO -> loaded [96m105[0m nodes successfuly[0m
+[36;20m[/admin/home-kateriw/ComfyUI/custom_nodes/comfy-mtb] | INFO -> Some nodes (3) could not be loaded. This can be ignored, but go to http://127.0.0.1:8199/mtb if you want more information.[0m
+[36;20m[/admin/home-kateriw/ComfyUI/custom_nodes/comfyui_controlnet_aux] | INFO -> Using ckpts path: /weka/home-kateriw/ComfyUI/custom_nodes/comfyui_controlnet_aux/ckpts[0m
+[36;20m[/admin/home-kateriw/ComfyUI/custom_nodes/comfyui_controlnet_aux] | INFO -> Using symlinks: False[0m
+[36;20m[/admin/home-kateriw/ComfyUI/custom_nodes/comfyui_controlnet_aux] | INFO -> Using ort providers: ['CUDAExecutionProvider', 'DirectMLExecutionProvider', 'OpenVINOExecutionProvider', 'ROCMExecutionProvider', 'CPUExecutionProvider', 'CoreMLExecutionProvider'][0m
+[32m[INFO][0m [MultiGPU Core Patching] Patching mm.soft_empty_cache for Comprehensive Memory Management (VRAM + CPU + Store Pruning)
+[MultiGPU Core Patching] Patching mm.get_torch_device, mm.text_encoder_device, mm.unet_offload_device
+[MultiGPU DEBUG] Initial current_device: cuda:0
+[MultiGPU DEBUG] Initial current_text_encoder_device: cuda:0
+[MultiGPU DEBUG] Initial current_unet_offload_device: cpu
+[MultiGPU] Initiating custom_node Registration. . .
+-----------------------------------------------
+custom_node                   Found     Nodes
+-----------------------------------------------
+ComfyUI-LTXVideo                  Y         1
+ComfyUI-Florence2                 N         0
+ComfyUI_bitsandbytes_NF4          N         0
+x-flux-comfyui                    N         0
+ComfyUI-MMAudio                   N         0
+ComfyUI-GGUF                      Y        18
+PuLID_ComfyUI                     N         0
+ComfyUI-WanVideoWrapper           Y        20
+-----------------------------------------------
+[MultiGPU] Registration complete. Final mappings: CheckpointLoaderAdvancedMultiGPU, CheckpointLoaderAdvancedDisTorch2MultiGPU, UNetLoaderLP, UNETLoaderMultiGPU, VAELoaderMultiGPU, CLIPLoaderMultiGPU, DualCLIPLoaderMultiGPU, TripleCLIPLoaderMultiGPU, QuadrupleCLIPLoaderMultiGPU, CLIPVisionLoaderMultiGPU, CheckpointLoaderSimpleMultiGPU, ControlNetLoaderMultiGPU, DiffusersLoaderMultiGPU, DiffControlNetLoaderMultiGPU, UNETLoaderDisTorch2MultiGPU, VAELoaderDisTorch2MultiGPU, CLIPLoaderDisTorch2MultiGPU, DualCLIPLoaderDisTorch2MultiGPU, TripleCLIPLoaderDisTorch2MultiGPU, QuadrupleCLIPLoaderDisTorch2MultiGPU, CLIPVisionLoaderDisTorch2MultiGPU, CheckpointLoaderSimpleDisTorch2MultiGPU, ControlNetLoaderDisTorch2MultiGPU, DiffusersLoaderDisTorch2MultiGPU, DiffControlNetLoaderDisTorch2MultiGPU, LTXVLoaderMultiGPU, UnetLoaderGGUFDisTorchMultiGPU, UnetLoaderGGUFAdvancedDisTorchMultiGPU, CLIPLoaderGGUFDisTorchMultiGPU, DualCLIPLoaderGGUFDisTorchMultiGPU, TripleCLIPLoaderGGUFDisTorchMultiGPU, QuadrupleCLIPLoaderGGUFDisTorchMultiGPU, UnetLoaderGGUFDisTorch2MultiGPU, UnetLoaderGGUFAdvancedDisTorch2MultiGPU, CLIPLoaderGGUFDisTorch2MultiGPU, DualCLIPLoaderGGUFDisTorch2MultiGPU, TripleCLIPLoaderGGUFDisTorch2MultiGPU, QuadrupleCLIPLoaderGGUFDisTorch2MultiGPU, UnetLoaderGGUFMultiGPU, UnetLoaderGGUFAdvancedMultiGPU, CLIPLoaderGGUFMultiGPU, DualCLIPLoaderGGUFMultiGPU, TripleCLIPLoaderGGUFMultiGPU, QuadrupleCLIPLoaderGGUFMultiGPU, LoadWanVideoT5TextEncoderMultiGPU, WanVideoTextEncodeMultiGPU, WanVideoTextEncodeCachedMultiGPU, WanVideoTextEncodeSingleMultiGPU, WanVideoVAELoaderMultiGPU, WanVideoTinyVAELoaderMultiGPU, WanVideoBlockSwapMultiGPU, WanVideoImageToVideoEncodeMultiGPU, WanVideoDecodeMultiGPU, WanVideoModelLoaderMultiGPU, WanVideoSamplerMultiGPU, WanVideoVACEEncodeMultiGPU, WanVideoEncodeMultiGPU, LoadWanVideoClipTextEncoderMultiGPU, WanVideoClipVisionEncodeMultiGPU, WanVideoControlnetLoaderMultiGPU, FantasyTalkingModelLoaderMultiGPU, Wav2VecModelLoaderMultiGPU, WanVideoUni3C_ControlnetLoaderMultiGPU, DownloadAndLoadWav2VecModelMultiGPU
+[32m[INFO][0m loading...
+[32m[INFO][0m calling register_nodes
+[comfy-env] Version: 0.3.89
+[comfy-env] register_nodes: ComfyUI-GeometryPack
+[comfy-env] ComfyUI source dir: /admin/home-kateriw/ComfyUI
+[comfy-env] Scanning nodes metadata (isolation root)...
+[comfy-env] Cache hit for nodes: 125 nodes
+[comfy-env] Scanned nodes root: 125 nodes (0.6s)
+[comfy-env] Imported nodes root: 125 nodes (isolation)
+[comfy-env] Registered 125 total nodes
+[1m[33m[WARNING][0m Traceback (most recent call last):
+  File "/admin/home-kateriw/ComfyUI/nodes.py", line 2212, in load_custom_node
+    module_spec.loader.exec_module(module)
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/admin/home-kateriw/ComfyUI/custom_nodes/tensorrt_load.py", line 15, in <module>
+    import comfy.testing.supported_models
+ModuleNotFoundError: No module named 'comfy.testing'
+
+[1m[33m[WARNING][0m Cannot import /admin/home-kateriw/ComfyUI/custom_nodes/tensorrt_load.py module for custom nodes: No module named 'comfy.testing'
+[32m[INFO][0m ('Looking for cached Spacy xx_sent_ud_sm.',)
+[32m[INFO][0m 
+Import times for custom nodes:
+[32m[INFO][0m    0.0 seconds (IMPORT FAILED): /admin/home-kateriw/ComfyUI/custom_nodes/flowrvs
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/loader_optional.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/clip_sd23.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/api_model_loader_nodes.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/sd3.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/upscale_lcm.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/controlnet_lora.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/pixel_detector.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/websocket_image_save.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/attn2_multiply.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/sd35_flash.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/nsfw_classifier.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/attention_scale.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/clip_sdxl.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/vision_load.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/latent_batch.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/random_list_resolver.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/loader_cached.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/reference_only.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ad_models.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/vision_output.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/model_merging.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/pickscore.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/model_merge_attention.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/nodes_ip2p.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/nodes_save_animation.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/latent.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/clipdrop.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/weights_multiply.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/math_nodes.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/pixelsmile-conditioning-interpolation
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/scale-image-to-total-pixels-advanced
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-EsesImageCompare
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/flowmatching-inverter
+[32m[INFO][0m    0.0 seconds (IMPORT FAILED): /admin/home-kateriw/ComfyUI/custom_nodes/caption.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI_3DGaussianSplatting
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyQwenAdaptiveVLM
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/untwistingrope
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/reservedvram
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfy-plasma
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/nodes_video_model.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-SAI_API
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui_ttp_toolset
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-Tensor-Operations
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUi-Untwisting-RoPE-kw
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/cg-use-everywhere
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyKW_FaithfulUpscale
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-detail-daemon
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-QwenVL-MultiImage
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui_creaprompt
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-BFSNodes
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-logic
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui_segment_anything_plus
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-Env-Manager
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-post-processing-nodes
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/masquerade-nodes-comfyui
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui_ipadapter_plus
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-ollama
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-AnyDeviceOffload
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-TBG-Takeaways
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-inpaint-cropandstitch
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/Jurdns-Frequency-Split-comfyNodes
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-MiniCPM
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-PromptRelay
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI_Ib_CustomNodes
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-Dynamic-Lora-Scheduler
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-qwen35
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-inpainteasy
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyUI_FrequencySeparation_RGB-HSV
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-GGUF
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/SCG_LocalVLM
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-SCAIL-Pose
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfy-asset-downloader
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyKW_L2P_FaithfulUpscale
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-GaussianViewer
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/erosdiffusion-eulerflowmatchingdiscretescheduler
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui_lg_samplingutils
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-FuncAsTexture-CoiiNode
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-simple-json-node
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-seedvr2-tilingupscaler
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-QualityOfLifeSuit_Omar92
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-SelectStringFromListWithIndex
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-WanAnimatePreprocess
+[32m[INFO][0m    0.0 seconds (IMPORT FAILED): /admin/home-kateriw/ComfyUI/custom_nodes/api_loaders.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-FL-LTXTools
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/wwaa-customnodes
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-inpaint-nodes
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/LanPaint
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI_essentials
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui_essentials
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-video-matting
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-multigpu
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyKW_PhaseAlign
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyMath
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyLiterals
+[32m[INFO][0m    0.0 seconds (IMPORT FAILED): /admin/home-kateriw/ComfyUI/custom_nodes/audio.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-Panorama-Stickers
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-Zlycoris
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui_ultimatesdupscale
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-custom-scripts
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI_QwenVL
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-MelBandRoFormer
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-ViewCrafter
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/virtuoso-nodes
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-Distributed
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-kjnodes
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-KJNodes
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-Multiband
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-Filmworld
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI_Qwen3-VL-Instruct
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/derfuu_comfyui_moddednodes
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-yaser-nodes
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyUI-Realtime-Lora
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-frame-interpolation
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-rapidfire
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/basic_data_handling
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-segment-anything-2
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui_lg_tools
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/tripleksampler
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/flashvsr_ultra_fast
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui_controlnet_aux
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/rgthree-comfy
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI_Comfyroll_CustomNodes
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-inspire-pack
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/Comfyui_turbodiffusion_lora
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/save-image-extended-comfyui
+[32m[INFO][0m    0.2 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-logicutils
+[32m[INFO][0m    0.2 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-DramaBox
+[32m[INFO][0m    0.2 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-GIMM-VFI
+[32m[INFO][0m    0.2 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui_birefnet_ll
+[32m[INFO][0m    0.3 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-dynamicprompts
+[32m[INFO][0m    0.3 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui_layerstyle
+[32m[INFO][0m    0.3 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/Comfyui_turbodiffusion
+[32m[INFO][0m    0.4 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-sam3
+[32m[INFO][0m    0.4 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-HyMotion
+[32m[INFO][0m    0.4 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-dazzlenodes
+[32m[INFO][0m    0.4 seconds (IMPORT FAILED): /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI_RH_QwenImageI2L
+[32m[INFO][0m    0.4 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI_LayerStyle_Advance
+[32m[INFO][0m    0.5 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfy-mtb
+[32m[INFO][0m    0.5 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-sam2
+[32m[INFO][0m    0.5 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-rmbg
+[32m[INFO][0m    0.5 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/Boyonodes
+[32m[INFO][0m    0.5 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-easy-use
+[32m[INFO][0m    0.6 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-Flowty-LDSR
+[32m[INFO][0m    0.6 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-sharp
+[32m[INFO][0m    0.7 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-art-venture
+[32m[INFO][0m    0.7 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/seedvr2_videoupscaler
+[32m[INFO][0m    0.7 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/tbg-sam3
+[32m[INFO][0m    0.9 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-DepthAnythingV3
+[32m[INFO][0m    0.9 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-impact-pack
+[32m[INFO][0m    0.9 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/RES4LYF
+[32m[INFO][0m    1.0 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-WanVideoWrapper
+[32m[INFO][0m    1.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/WhatDreamsCost-ComfyUI
+[32m[INFO][0m    1.4 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-impact-subpack
+[32m[INFO][0m    1.4 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-QwenVL
+[32m[INFO][0m    1.5 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-tbox
+[32m[INFO][0m    1.5 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-Lyra2
+[32m[INFO][0m    1.7 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-UntwistRoPE
+[32m[INFO][0m    1.7 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui_faceanalysis
+[32m[INFO][0m    2.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/eden_comfy_pipelines
+[32m[INFO][0m    2.3 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-tensorops
+[32m[INFO][0m    2.6 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-Crystools
+[32m[INFO][0m    2.6 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-LTXVideo
+[32m[INFO][0m    3.4 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/api_nodes.py
+[32m[INFO][0m    4.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/was-node-suite-comfyui
+[32m[INFO][0m    5.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui_nvidia_rtx_nodes
+[32m[INFO][0m    7.5 seconds (IMPORT FAILED): /admin/home-kateriw/ComfyUI/custom_nodes/tensorrt_load.py
+[32m[INFO][0m    7.6 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-GeometryPack
+[32m[INFO][0m    8.1 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-QwenVL-Mod
+[32m[INFO][0m    8.3 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/ComfyUI-Image-Filters
+[32m[INFO][0m   13.5 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui_custom_nodes_alekpet
+[32m[INFO][0m   17.3 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui_fill-nodes
+[32m[INFO][0m   91.7 seconds: /admin/home-kateriw/ComfyUI/custom_nodes/comfyui-depthcrafter-nodes
+[32m[INFO][0m 
+[32m[INFO][0m Context impl SQLiteImpl.
+[32m[INFO][0m Will assume non-transactional DDL.
+[32m[INFO][0m Using RAM pressure cache.
+[32m[INFO][0m Starting server
+
+[32m[INFO][0m To see the GUI go to: http://127.0.0.1:8199
+slurmstepd: error: *** REASON: burst_buffer/lua: Stage-out in progress ***
+slurmstepd: error: *** JOB 795452 ON ip-172-17-48-173 CANCELLED AT 2026-06-13T17:59:11 ***
+slurmstepd: error: *** REASON: burst_buffer/lua: Stage-out in progress ***
+Traceback (most recent call last):
+  File "/admin/home-kateriw/ComfyUI/main.py", line 533, in <module>
+    event_loop.run_until_complete(x)
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 685, in run_until_complete
+    raise RuntimeError('Event loop stopped before Future completed.')
+RuntimeError: Event loop stopped before Future completed.

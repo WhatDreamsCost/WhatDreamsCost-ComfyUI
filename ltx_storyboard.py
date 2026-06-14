@@ -529,14 +529,33 @@ class LTXStoryboard(io.ComfyNode):
         # ---- 4a. Build combined audio waveform ----
         # Needed for both the `combined_audio` output AND (when use_custom_audio=True
         # with audio_vae available) for the conditioning audio latent itself.
+        log.info(
+            "[LTXStoryboard] AUDIO DECISION INPUTS: use_custom_audio=%s, "
+            "len(audio_segments)=%d, audio_vae=%s, extend_from_audio_latent=%s",
+            use_custom_audio, len(audio_segments),
+            "wired" if audio_vae is not None else "MISSING",
+            "wired" if extend_from_audio_latent is not None else "none",
+        )
         if use_custom_audio and audio_segments:
             try:
                 ltxv_length = duration_frames + 1
                 combined_audio = _build_combined_audio(timeline_data or "", ltxv_length, float(frame_rate))
+                wf = combined_audio.get("waveform")
+                if wf is not None:
+                    peak = float(wf.abs().max().item()) if wf.numel() > 0 else 0.0
+                    log.info(
+                        "[LTXStoryboard] combined_audio built: waveform shape=%s, sample_rate=%s, peak_abs=%.4f%s",
+                        tuple(wf.shape), combined_audio.get("sample_rate"), peak,
+                        " (SILENT — _build_combined_audio returned zeros)" if peak < 1e-6 else "",
+                    )
             except Exception as e:
                 log.warning("[LTXStoryboard] _build_combined_audio failed (%s); emitting silence.", e)
                 combined_audio = _silence_audio(duration_frames, frame_rate)
         else:
+            log.info(
+                "[LTXStoryboard] Skipping _build_combined_audio (use_custom_audio=%s, audio_segments=%d) — emitting silence waveform.",
+                use_custom_audio, len(audio_segments),
+            )
             combined_audio = _silence_audio(duration_frames, frame_rate)
 
         # ---- 4b. Build audio latent ----
@@ -547,17 +566,26 @@ class LTXStoryboard(io.ComfyNode):
         #   3. Empty audio latent matching duration (silence).
         if extend_from_audio_latent is not None:
             audio_latent = extend_from_audio_latent
+            log.info("[LTXStoryboard] audio_latent path: EXTEND (using upstream extend_from_audio_latent).")
         elif use_custom_audio and audio_segments and audio_vae is not None:
             audio_latent = _encode_audio_to_latent(audio_vae, combined_audio)
             if audio_latent is not None:
+                samples = audio_latent["samples"]
+                peak_latent = float(samples.abs().max().item()) if samples.numel() > 0 else 0.0
                 log.info(
-                    "[LTXStoryboard] Custom audio encoded to latent: shape=%s",
-                    tuple(audio_latent["samples"].shape),
+                    "[LTXStoryboard] audio_latent path: CUSTOM-ENCODED. shape=%s, peak_abs=%.4f%s",
+                    tuple(samples.shape), peak_latent,
+                    " (latent looks silent — encode may have collapsed to zeros)" if peak_latent < 1e-4 else "",
                 )
             else:
-                log.warning("[LTXStoryboard] Custom audio encode returned None; falling back to empty latent.")
+                log.warning("[LTXStoryboard] audio_latent path: CUSTOM ENCODE RETURNED None; falling back to empty latent.")
                 audio_latent = _build_empty_audio_latent(audio_vae, duration_frames, frame_rate)
         else:
+            why = []
+            if not use_custom_audio: why.append("use_custom_audio=False")
+            if not audio_segments: why.append("no audio segments in timeline_data")
+            if audio_vae is None: why.append("audio_vae not wired")
+            log.info("[LTXStoryboard] audio_latent path: EMPTY (reason: %s).", ", ".join(why))
             audio_latent = _build_empty_audio_latent(audio_vae, duration_frames, frame_rate)
 
         if audio_latent is None:

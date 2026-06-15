@@ -160,10 +160,63 @@ async def extract_video_frames(request):
         if not frames_result:
             return web.Response(status=422, text="No frames could be extracted")
 
+        # --- Audio extraction ---
+        # Re-open the container for the audio pass so we don't have to manage
+        # interleaved seek state between video and audio streams.
+        audio_file_rel = None
+        try:
+            audio_container = av.open(real_candidate)
+            if audio_container.streams.audio:
+                audio_stream = audio_container.streams.audio[0]
+                audio_stream.thread_type = "AUTO"
+                resampler = av.AudioResampler(format="fltp", layout="stereo", rate=44100)
+
+                chunks = []
+                for frame in audio_container.decode(audio_stream):
+                    for rf in resampler.resample(frame):
+                        chunks.append(rf.to_ndarray())  # [2, N] float32
+
+                # Flush resampler
+                for rf in resampler.resample(None):
+                    chunks.append(rf.to_ndarray())
+
+                if chunks:
+                    import numpy as _np
+                    waveform = _np.concatenate(chunks, axis=1)  # [2, total_samples]
+
+                    audio_filename = f"{stem}.wav"
+                    audio_path = os.path.join(out_dir, audio_filename)
+                    real_audio_path = os.path.realpath(audio_path)
+                    if os.path.commonpath([real_out_dir, real_audio_path]) == real_out_dir:
+                        # Write WAV with wave module (always available, no extra deps)
+                        import wave as _wave
+                        import struct as _struct
+                        channels = waveform.shape[0]
+                        total_samples = waveform.shape[1]
+                        sample_rate = 44100
+                        # Interleave channels and convert to int16
+                        interleaved = waveform.T.reshape(-1)  # [total_samples * channels]
+                        # Clamp and convert float32 → int16
+                        interleaved = _np.clip(interleaved, -1.0, 1.0)
+                        pcm = (interleaved * 32767).astype(_np.int16)
+                        with _wave.open(audio_path, "wb") as wf:
+                            wf.setnchannels(channels)
+                            wf.setsampwidth(2)  # int16 = 2 bytes
+                            wf.setframerate(sample_rate)
+                            wf.writeframes(pcm.tobytes())
+
+                        audio_file_rel = f"{stem}/{audio_filename}"
+            audio_container.close()
+        except Exception as e:
+            # Audio extraction is best-effort — don't fail the whole request
+            import logging as _log
+            _log.getLogger(__name__).warning("[LTXDirectorVideo] Audio extraction skipped: %s", e)
+
         return web.json_response({
             "clipName": stem,
             "frames": frames_result,
             "totalPixelFrames": total_px,
+            "audioFile": audio_file_rel,  # None if video has no audio or extraction failed
         })
 
     except Exception as e:

@@ -1654,7 +1654,7 @@ class TimelineEditor {
         const subfolder = uploadData.subfolder || "";
         const videoFile = subfolder ? subfolder + "/" + uploadData.name : uploadData.name;
 
-        // 2. Extract guide frames via backend route
+        // 2. Extract guide frames (and audio) via backend route
         const extractResp = await api.fetchApi("/ltx_director/extract_video_frames", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1664,7 +1664,7 @@ class TimelineEditor {
           console.error("[PromptRelay] Frame extraction failed:", extractResp.status, await extractResp.text());
           continue;
         }
-        const { frames, totalPixelFrames } = await extractResp.json();
+        const { frames, totalPixelFrames, audioFile } = await extractResp.json();
         if (!frames || frames.length === 0) continue;
 
         const newLength = totalPixelFrames;
@@ -1721,6 +1721,24 @@ class TimelineEditor {
         });
 
         this.timeline.segments.push(seg);
+
+        // 6. If the backend extracted audio, add a matching audio segment
+        if (audioFile) {
+          const audioSeg = {
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            type: "audio",
+            start: newStart,
+            length: newLength,
+            trimStart: 0,
+            audioDurationFrames: newLength,
+            audioFile,
+            fileName: audioFile.split("/").pop(),
+            waveformPeaks: [],
+          };
+          this.timeline.audioSegments.push(audioSeg);
+          this.timeline.audioSegments.sort((a, b) => a.start - b.start);
+        }
+
         this.commitChanges();
 
       } catch (err) {
@@ -3251,6 +3269,20 @@ class TimelineEditor {
         fi.click();
       };
       menu.appendChild(imgBtn);
+
+      const vidBtn = document.createElement("button");
+      vidBtn.className = "pr-gap-menu-btn";
+      vidBtn.innerHTML = `${ICONS.play} Video Segment`;
+      vidBtn.onclick = () => {
+        this.dismissContextMenu();
+        const fi = document.createElement("input");
+        fi.type = "file"; fi.accept = "video/*";
+        fi.addEventListener("change", (ev) => {
+          if (ev.target.files?.[0]) this.handleVideoUpload([ev.target.files[0]], gap.frameStart);
+        });
+        fi.click();
+      };
+      menu.appendChild(vidBtn);
     }
 
     document.body.appendChild(menu);

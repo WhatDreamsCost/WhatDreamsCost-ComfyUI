@@ -1,6 +1,7 @@
 from comfy_extras.nodes_lt import LTXVAddGuide
 import torch
 import comfy.utils
+import comfy.model_management
 from comfy_api.latest import io
 from .ltx_director import GuideData
 
@@ -71,6 +72,15 @@ class LTXDirectorGuide(LTXVAddGuide):
         images = guide_data.get("images", [])
         insert_frames = guide_data.get("insert_frames", [])
         strengths = guide_data.get("strengths", [])
+
+        # Pre-load the VAE onto the compute device once before encoding all guide
+        # frames. Without this, each cls.encode() call triggers load_models_gpu
+        # internally — for a video segment with N latent frames that means N
+        # separate load calls, each with memory-requirement checks and potential
+        # model shuffling.  Loading once here makes subsequent per-frame calls
+        # find the patcher already resident and reduces them to cheap no-ops.
+        if images and hasattr(vae, "patcher"):
+            comfy.model_management.load_models_gpu([vae.patcher])
 
         for idx, img_tensor in enumerate(images):
             f_idx = insert_frames[idx] if idx < len(insert_frames) else 0

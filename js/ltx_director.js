@@ -1722,18 +1722,48 @@ class TimelineEditor {
 
         this.timeline.segments.push(seg);
 
-        // 6. If the backend extracted audio, add a matching audio segment
+        // 6. If the backend extracted audio, decode it for peaks then add a matching audio segment
         if (audioFile) {
+          const audioFilename = audioFile.split("/").pop();
+          const audioSubfolder = audioFile.includes("/") ? audioFile.substring(0, audioFile.lastIndexOf("/")) : "";
+          const audioViewUrl = api.apiURL(`/view?filename=${encodeURIComponent(audioFilename)}&type=input&subfolder=${encodeURIComponent(audioSubfolder)}`);
+
+          let waveformPeaks = [];
+          let audioDurationFrames = newLength;
+
+          try {
+            const audioResp = await fetch(audioViewUrl);
+            const arrayBuffer = await audioResp.arrayBuffer();
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+            audioDurationFrames = Math.max(1, Math.ceil(audioBuffer.duration * frameRate));
+
+            // Compute 200-point peak waveform — same as handleAudioUpload
+            const channelData = audioBuffer.getChannelData(0);
+            const numPeaks = 200;
+            const step = Math.max(1, Math.floor(channelData.length / numPeaks));
+            for (let i = 0; i < numPeaks; i++) {
+              let max = 0;
+              for (let j = 0; j < step; j++) {
+                const val = Math.abs(channelData[i * step + j] || 0);
+                if (val > max) max = val;
+              }
+              waveformPeaks.push(max);
+            }
+          } catch (e) {
+            console.warn("[PromptRelay] Could not decode audio for waveform peaks:", e);
+          }
+
           const audioSeg = {
             id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
             type: "audio",
             start: newStart,
             length: newLength,
             trimStart: 0,
-            audioDurationFrames: newLength,
+            audioDurationFrames,
             audioFile,
-            fileName: audioFile.split("/").pop(),
-            waveformPeaks: [],
+            fileName: audioFilename,
+            waveformPeaks,
           };
           this.timeline.audioSegments.push(audioSeg);
           this.timeline.audioSegments.sort((a, b) => a.start - b.start);

@@ -411,7 +411,7 @@ class LTXDirector(io.ComfyNode):
                 ),
                 io.String.Input(
                     "local_prompts", multiline=True, default="",
-                    tooltip="Auto-populated from the timeline editor.",
+                    tooltip="Auto-populated from the Local Prompt track. Empty means use only global prompt conditioning.",
                 ),
                 io.String.Input(
                     "segment_lengths", default="",
@@ -476,24 +476,58 @@ class LTXDirector(io.ComfyNode):
                 divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
                 use_custom_audio=False) -> io.NodeOutput:
 
-        # --- Build guide_data from image segments FIRST (to derive output dimensions) ---
-        guide_data = {"images": [], "insert_frames": [], "strengths": [], "frame_rate": frame_rate}
+        # --- Build guide_data from keyframe segments FIRST (to derive output dimensions) ---
+        guide_data = {"images": [], "insert_frames": [], "strengths": [], "frame_rate": frame_rate, "references": [], "controls": []}
         derived_w, derived_h = custom_width, custom_height
         try:
             tdata = json.loads(timeline_data) if timeline_data else {}
-            img_segs = [
+            keyframe_segs = [
                 s for s in tdata.get("segments", [])
                 if s.get("type", "image") == "image"
                 and (s.get("imageFile") or s.get("imageB64"))
                 and int(s.get("start", 0)) < duration_frames  # exclude segments fully outside duration
             ]
-            img_segs.sort(key=lambda s: s["start"])
+            keyframe_segs.sort(key=lambda s: s["start"])
+
+            reference_segs = [
+                s for s in tdata.get("referenceImages", [])
+                if s.get("imageFile") or s.get("imageB64")
+            ]
+            control_segs = [
+                s for s in tdata.get("controlSegments", [])
+                if int(s.get("start", 0)) < duration_frames
+            ]
 
             strengths = []
             if guide_strength.strip():
                 strengths = [float(x.strip()) for x in guide_strength.split(",") if x.strip()]
 
-            for idx, seg in enumerate(img_segs):
+            for idx, seg in enumerate(reference_segs):
+                try:
+                    ref_tensor = _load_image_tensor(seg)
+                    guide_data["references"].append({
+                        "name": seg.get("refName") or f"@Ref{idx + 1}",
+                        "image": ref_tensor,
+                        "imageFile": seg.get("imageFile", ""),
+                        "note": seg.get("note", ""),
+                    })
+                except Exception as e:
+                    log.warning("[PromptRelay] Could not load reference image %d: %s", idx + 1, e)
+
+            for seg in control_segs:
+                start = int(seg.get("start", 0))
+                length = int(seg.get("length", 0))
+                if length <= 0:
+                    continue
+                guide_data["controls"].append({
+                    "type": seg.get("controlType", "camera_depth"),
+                    "start": start,
+                    "length": min(length, duration_frames - start),
+                    "strength": float(seg.get("strength", 0.75)),
+                    "prompt": seg.get("prompt", ""),
+                })
+
+            for idx, seg in enumerate(keyframe_segs):
                 tensor = _load_image_tensor(seg)
 
                 # Apply resize
@@ -529,26 +563,19 @@ class LTXDirector(io.ComfyNode):
                     derived_h = tensor.shape[1]
                     derived_w = tensor.shape[2]
 
-                strength = strengths[idx] if idx < len(strengths) else 1.0
+                strength = strengths[idx] if idx < len(strengths) else float(seg.get("guideStrength", 1.0))
                 guide_data["images"].append(tensor)
                 guide_data["insert_frames"].append(int(seg["start"]))
                 guide_data["strengths"].append(float(strength))
-            
-            # If no images were loaded from the timeline, create a dummy image at strength 0
-            # to prevent artifacts in text-to-video mode.
+
+            # Keyframe channel is intentionally allowed to be empty. In that case no
+            # guide frames are emitted to LTXDirectorGuide; only output dimensions are
+            # derived from explicit custom_width/custom_height or a sane default.
             if not guide_data["images"]:
                 w = derived_w if derived_w > 0 else 768
                 h = derived_h if derived_h > 0 else 512
-                w = (w // 32) * 32
-                h = (h // 32) * 32
-                
-                dummy_image = torch.zeros((1, h, w, 3), dtype=torch.float32)
-                guide_data["images"].append(dummy_image)
-                guide_data["insert_frames"].append(0)
-                guide_data["strengths"].append(0.0)
-                
-                derived_w = w
-                derived_h = h
+                derived_w = max(32, (w // 32) * 32)
+                derived_h = max(32, (h // 32) * 32)
         except Exception as e:
             log.warning("[PromptRelay] Could not build guide_data: %s", e)
 
@@ -571,9 +598,14 @@ class LTXDirector(io.ComfyNode):
         else:
             latent = optional_latent
 
-        patched, conditioning = _encode_relay(
-            model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon,
-        )
+        if local_prompts and local_prompts.strip():
+            patched, conditioning = _encode_relay(
+                model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon,
+            )
+        else:
+            patched = model
+            conditioning = clip.encode_from_tokens_scheduled(clip.tokenize(global_prompt or ""))
+            log.info("[PromptRelay] No local prompts supplied; using global prompt conditioning without temporal Prompt Relay patches.")
 
         # --- Build Audio Output ---
         audio_out = _build_combined_audio(timeline_data, ltxv_length, float(frame_rate))

@@ -483,8 +483,8 @@ class LTXDirector(io.ComfyNode):
             tdata = json.loads(timeline_data) if timeline_data else {}
             img_segs = [
                 s for s in tdata.get("segments", [])
-                if s.get("type", "image") == "image"
-                and (s.get("imageFile") or s.get("imageB64"))
+                if s.get("type", "image") in ("image", "video")
+                and (s.get("imageFile") or s.get("imageB64") or s.get("frames"))
                 and int(s.get("start", 0)) < duration_frames  # exclude segments fully outside duration
             ]
             img_segs.sort(key=lambda s: s["start"])
@@ -493,46 +493,53 @@ class LTXDirector(io.ComfyNode):
             if guide_strength.strip():
                 strengths = [float(x.strip()) for x in guide_strength.split(",") if x.strip()]
 
-            for idx, seg in enumerate(img_segs):
-                tensor = _load_image_tensor(seg)
+            def snap(val, div):
+                return max(div, (val // div) * div)
 
-                # Apply resize
+            def _process_tensor(tensor):
+                """Resize + compress a [1,H,W,3] tensor using the execute() parameters."""
                 src_h, src_w = tensor.shape[1], tensor.shape[2]
-
-                def snap(val, div):
-                    return max(div, (val // div) * div)
-
                 if custom_width > 0 and custom_height > 0:
-                    # Both dimensions set — apply selected resize_method (pad, crop, stretch, maintain AR)
                     tensor = _resize_image(tensor, custom_width, custom_height, resize_method, divisible_by)
                 elif custom_width > 0:
-                    # Width only — scale height from AR, snap both, then resize to exact dimensions
                     tgt_w = snap(custom_width, divisible_by)
                     tgt_h = snap(int(src_h * tgt_w / src_w), divisible_by)
                     tensor = _resize_image(tensor, tgt_w, tgt_h, "stretch to fit", divisible_by)
                 elif custom_height > 0:
-                    # Height only — scale width from AR, snap both, then resize to exact dimensions
                     tgt_h = snap(custom_height, divisible_by)
                     tgt_w = snap(int(src_w * tgt_h / src_h), divisible_by)
                     tensor = _resize_image(tensor, tgt_w, tgt_h, "stretch to fit", divisible_by)
                 else:
-                    # Both zero — keep original dimensions, just snap to divisible_by
                     tensor = _resize_image(tensor, src_w, src_h, "maintain aspect ratio", divisible_by)
-
-
-                # Apply compression
                 if img_compression > 0:
                     tensor = _compress_image(tensor, img_compression)
+                return tensor
 
-                # Record dimensions of the first processed image for latent generation
-                if idx == 0:
-                    derived_h = tensor.shape[1]
-                    derived_w = tensor.shape[2]
-
+            for idx, seg in enumerate(img_segs):
                 strength = strengths[idx] if idx < len(strengths) else 1.0
-                guide_data["images"].append(tensor)
-                guide_data["insert_frames"].append(int(seg["start"]))
-                guide_data["strengths"].append(float(strength))
+
+                if seg.get("type") == "video":
+                    # Expand one video segment into one guide entry per extracted frame.
+                    # All frames share the segment's single guide_strength value.
+                    for frame in seg.get("frames", []):
+                        abs_frame = int(seg["start"]) + int(frame.get("insertFrame", 0))
+                        if abs_frame >= duration_frames:
+                            continue
+                        tensor = _load_image_tensor(frame)
+                        tensor = _process_tensor(tensor)
+                        if not guide_data["images"]:
+                            derived_h, derived_w = tensor.shape[1], tensor.shape[2]
+                        guide_data["images"].append(tensor)
+                        guide_data["insert_frames"].append(abs_frame)
+                        guide_data["strengths"].append(float(strength))
+                else:
+                    tensor = _load_image_tensor(seg)
+                    tensor = _process_tensor(tensor)
+                    if not guide_data["images"]:
+                        derived_h, derived_w = tensor.shape[1], tensor.shape[2]
+                    guide_data["images"].append(tensor)
+                    guide_data["insert_frames"].append(int(seg["start"]))
+                    guide_data["strengths"].append(float(strength))
             
             # If no images were loaded from the timeline, create a dummy image at strength 0
             # to prevent artifacts in text-to-video mode.

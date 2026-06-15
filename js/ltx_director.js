@@ -863,10 +863,22 @@ class TimelineEditor {
     this.audioFileInput.style.display = "none";
     this.audioFileInput.addEventListener("change", (e) => this.handleAudioUpload(e.target.files));
 
+    this.videoFileInput = document.createElement("input");
+    this.videoFileInput.type = "file";
+    this.videoFileInput.accept = "video/*";
+    this.videoFileInput.multiple = true;
+    this.videoFileInput.style.display = "none";
+    this.videoFileInput.addEventListener("change", (e) => this.handleVideoUpload(e.target.files));
+
     const uploadBtn = document.createElement("button");
     uploadBtn.className = "pr-btn";
     uploadBtn.innerHTML = `${ICONS.upload} Add Image`;
     uploadBtn.addEventListener("click", () => this.fileInput.click());
+
+    const uploadVideoBtn = document.createElement("button");
+    uploadVideoBtn.className = "pr-btn";
+    uploadVideoBtn.innerHTML = `${ICONS.play} Add Video`;
+    uploadVideoBtn.addEventListener("click", () => this.videoFileInput.click());
 
     const uploadAudioBtn = document.createElement("button");
     uploadAudioBtn.className = "pr-btn";
@@ -885,7 +897,9 @@ class TimelineEditor {
 
     actionGroup.appendChild(this.fileInput);
     actionGroup.appendChild(this.audioFileInput);
+    actionGroup.appendChild(this.videoFileInput);
     actionGroup.appendChild(uploadBtn);
+    actionGroup.appendChild(uploadVideoBtn);
     actionGroup.appendChild(addTextBtn);
     actionGroup.appendChild(uploadAudioBtn);
     actionGroup.appendChild(deleteBtn);
@@ -1124,15 +1138,19 @@ class TimelineEditor {
       if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
         const imageFiles = [];
         const audioFiles = [];
+        const videoFiles = [];
         for (let file of e.dataTransfer.files) {
           if (file.type.startsWith("audio/")) audioFiles.push(file);
-          if (file.type.startsWith("image/")) imageFiles.push(file);
+          else if (file.type.startsWith("video/")) videoFiles.push(file);
+          else if (file.type.startsWith("image/")) imageFiles.push(file);
         }
 
         // Let implicit intent handle mixing drops: use the track we hovered over
         // for the first type we process, or fallback.
-        if (audioFiles.length > 0 && (targetTrack === "audio" || imageFiles.length === 0)) {
+        if (audioFiles.length > 0 && (targetTrack === "audio" || (imageFiles.length === 0 && videoFiles.length === 0))) {
           this.handleAudioUpload(audioFiles, targetFrameStart);
+        } else if (videoFiles.length > 0 && imageFiles.length === 0) {
+          this.handleVideoUpload(videoFiles, targetFrameStart);
         } else if (imageFiles.length > 0) {
           this.handleImageUpload(imageFiles, targetFrameStart);
         }
@@ -1614,6 +1632,104 @@ class TimelineEditor {
     this.audioFileInput.value = "";
   }
 
+  // --- Async Video Upload Logic ---
+  // Uploads a video file, calls the backend extraction route, and places a single
+  // "video" segment on the image track whose frames array drives guide_data in execute().
+  async handleVideoUpload(files, targetFrameStart = null) {
+    const frameRate = this.getFrameRate();
+
+    for (let file of files) {
+      if (!file.type.startsWith("video/")) continue;
+
+      try {
+        // 1. Upload the video file to the ComfyUI input directory
+        const uploadBody = new FormData();
+        uploadBody.append("image", file);
+        const uploadResp = await api.fetchApi("/upload/image", { method: "POST", body: uploadBody });
+        if (uploadResp.status !== 200) {
+          console.error("[PromptRelay] Video upload failed:", uploadResp.status);
+          continue;
+        }
+        const uploadData = await uploadResp.json();
+        const subfolder = uploadData.subfolder || "";
+        const videoFile = subfolder ? subfolder + "/" + uploadData.name : uploadData.name;
+
+        // 2. Extract guide frames via backend route
+        const extractResp = await api.fetchApi("/ltx_director/extract_video_frames", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ videoFile, frameRate }),
+        });
+        if (extractResp.status !== 200) {
+          console.error("[PromptRelay] Frame extraction failed:", extractResp.status, await extractResp.text());
+          continue;
+        }
+        const { frames, totalPixelFrames } = await extractResp.json();
+        if (!frames || frames.length === 0) continue;
+
+        const newLength = totalPixelFrames;
+        const currentDuration = this.getVisualDurationFrames();
+
+        // 3. Determine start position
+        let newStart = targetFrameStart;
+        if (newStart === null) {
+          newStart = 0;
+          this.timeline.segments.sort((a, b) => a.start - b.start);
+          for (const existing of this.timeline.segments) {
+            if (newStart + newLength <= existing.start) break;
+            newStart = Math.max(newStart, existing.start + existing.length);
+          }
+        }
+
+        // Grow timeline to accommodate the full clip
+        this.growTimelineIfNeeded(newStart + newLength);
+
+        // 4. Apply center-drag physics to push neighbours (mirrors handleImageUpload)
+        if (targetFrameStart !== null) {
+          const tempId = "TEMP_" + Date.now();
+          this.timeline.segments.push({ id: tempId, start: newStart, length: newLength, type: "temp" });
+          const result = this._applyCenterDragPhysics(this.timeline.segments, tempId, newStart, newStart + newLength / 2, currentDuration, currentDuration, 1);
+          for (const shifted of result) {
+            const orig = this.timeline.segments.find(s => s.id === shifted.id);
+            if (orig) orig.start = shifted.resolvedStart !== undefined ? shifted.resolvedStart : shifted.start;
+          }
+          const tempSeg = this.timeline.segments.find(s => s.id === tempId);
+          newStart = tempSeg.start;
+          this.timeline.segments = this.timeline.segments.filter(s => s.id !== tempId);
+          targetFrameStart = newStart + newLength;
+        }
+
+        // 5. Build the video segment (one segment, all guide frames inside)
+        const seg = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          start: newStart,
+          length: newLength,
+          type: "video",
+          videoFile,
+          imageB64: frames[0].viewUrl,  // first frame as thumbnail
+          frames,
+          prompt: "",
+          guideStrength: 1.0,
+        };
+
+        // Load thumbnail imgObj for canvas rendering (mirrors handleImageUpload)
+        await new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => { seg.imgObj = img; resolve(); };
+          img.onerror = () => resolve();
+          img.src = frames[0].viewUrl;
+        });
+
+        this.timeline.segments.push(seg);
+        this.commitChanges();
+
+      } catch (err) {
+        console.error("[PromptRelay] Video upload failed", err);
+      }
+    }
+    if (this.videoFileInput) this.videoFileInput.value = "";
+  }
+
   deleteSelectedSegment() {
     if (this.selectionType === "audio") {
       if (this.timeline.audioSegments.length === 0 || this.selectedIndex === -1) return;
@@ -1861,6 +1977,24 @@ class TimelineEditor {
           }
         }
         this.ctx.restore();
+
+        // --- Filmstrip indicator for video segments ---
+        if (seg.type === "video" && pxWidth > 18) {
+          const fsW = 10, fsH = this.blockHeight - 2;
+          this.ctx.save();
+          this.ctx.beginPath();
+          this.ctx.rect(startX + 1, RULER_HEIGHT + 1, fsW, fsH);
+          this.ctx.clip();
+          this.ctx.fillStyle = "rgba(0,0,0,0.75)";
+          this.ctx.fillRect(startX + 1, RULER_HEIGHT + 1, fsW, fsH);
+          const holeH = 4, holeW = 6;
+          this.ctx.fillStyle = "rgba(255,255,255,0.85)";
+          const holeCount = Math.floor(fsH / (holeH * 2 + 2));
+          for (let k = 0; k < holeCount; k++) {
+            this.ctx.fillRect(startX + 3, RULER_HEIGHT + 1 + k * (holeH * 2 + 2) + 2, holeW, holeH);
+          }
+          this.ctx.restore();
+        }
 
         // --- Prompt subtitle overlay ---
         if (seg.prompt && seg.type !== "ghost" && pxWidth > 24) {
@@ -3163,8 +3297,22 @@ class TimelineEditor {
       fi.click();
     });
 
+    const vidBtn = document.createElement("button");
+    vidBtn.className = "pr-gap-menu-btn";
+    vidBtn.innerHTML = `${ICONS.play} Video Segment`;
+    vidBtn.addEventListener("click", () => {
+      this.dismissGapMenu();
+      const fi = document.createElement("input");
+      fi.type = "file"; fi.accept = "video/*";
+      fi.addEventListener("change", (ev) => {
+        if (ev.target.files?.[0]) this.handleVideoUpload([ev.target.files[0]], gap.frameStart);
+      });
+      fi.click();
+    });
+
     menu.appendChild(textBtn);
     menu.appendChild(imgBtn);
+    menu.appendChild(vidBtn);
     const currentTrack = gap.track === "audio" ? "audio" : "image";
     if (this._copiedSegment && this._copiedSegmentTrack === currentTrack) {
       const pasteBtn = document.createElement("button");

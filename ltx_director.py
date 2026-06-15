@@ -626,22 +626,45 @@ class LTXDirector(io.ComfyNode):
                         
                         if latent_samples.numel() == 0:
                             raise ValueError("Encoded audio latent is empty (0 elements).")
-                        
-                        # 2. Create solid mask with value 0.0 (0 means keep/use conditioning, 1 means generate noise)
-                        mask = torch.full(
-                            (1, latent_samples.shape[-2], latent_samples.shape[-1]), 
-                            0.0, 
-                            dtype=torch.float32, 
-                            device=comfy.model_management.intermediate_device()
+
+                        # 2. Per-position noise mask — 0.0 where audio segments cover the
+                        # timeline (keep the encoded audio), 1.0 everywhere else (let the
+                        # model generate audio freely).  A flat 0.0 mask would force the
+                        # model to reproduce silence for uncovered regions, producing no audio
+                        # after the clip ends.
+                        num_audio_latents = latent_samples.shape[-2]
+                        audio_freq = latent_samples.shape[-1]
+                        dev = comfy.model_management.intermediate_device()
+                        mask = torch.ones(
+                            (1, 1, num_audio_latents, audio_freq),
+                            dtype=torch.float32, device=dev,
                         )
-                        
+                        audio_latent_fps = num_audio_latents / (ltxv_length / float(frame_rate))
+                        try:
+                            tdata = json.loads(timeline_data)
+                            for seg in tdata.get("audioSegments", []):
+                                seg_start = float(seg.get("start", 0))
+                                seg_len   = float(seg.get("length", 0))
+                                lat_s = int(seg_start / float(frame_rate) * audio_latent_fps)
+                                lat_e = min(
+                                    int(math.ceil((seg_start + seg_len) / float(frame_rate) * audio_latent_fps)),
+                                    num_audio_latents,
+                                )
+                                if lat_e > lat_s:
+                                    mask[:, :, lat_s:lat_e, :] = 0.0
+                        except Exception:
+                            mask.fill_(0.0)  # fall back to full conditioning
+
                         # 3. Set Latent Noise Mask
                         audio_latent = {
                             "samples": latent_samples,
                             "type": "audio",
-                            "noise_mask": mask.reshape((-1, 1, mask.shape[-2], mask.shape[-1]))
+                            "noise_mask": mask,
                         }
-                        log.info("[PromptRelay] Generated custom audio latent with noise mask (value=0.0).")
+                        log.info(
+                            "[PromptRelay] Custom audio latent: %d/%d latent frames conditioned.",
+                            int((mask == 0.0).all(dim=-1).sum()), num_audio_latents,
+                        )
                     else:
                         raise ValueError("No audio waveform to encode.")
                 except Exception as e:

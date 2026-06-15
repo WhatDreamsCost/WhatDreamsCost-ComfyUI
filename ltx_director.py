@@ -409,6 +409,10 @@ class LTXDirector(io.ComfyNode):
                     "use_custom_audio", default=False, optional=True,
                     tooltip="Toggle between using timeline audio (ON) and generating audio from scratch (OFF).",
                 ),
+                io.Float.Input(
+                    "audio_blend_secs", default=1.0, min=0.0, max=10.0, step=0.1, optional=True,
+                    tooltip="Seconds over which the custom audio fades into model-generated audio at each segment boundary. 0 = hard cut.",
+                ),
                 io.String.Input(
                     "local_prompts", multiline=True, default="",
                     tooltip="Auto-populated from the timeline editor.",
@@ -474,7 +478,7 @@ class LTXDirector(io.ComfyNode):
                 frame_rate=24, display_mode="seconds",
                 custom_width=768, custom_height=512, resize_method="maintain aspect ratio",
                 divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
-                use_custom_audio=False) -> io.NodeOutput:
+                use_custom_audio=False, audio_blend_secs=1.0) -> io.NodeOutput:
 
         # --- Build guide_data from image segments FIRST (to derive output dimensions) ---
         guide_data = {"images": [], "insert_frames": [], "strengths": [], "frame_rate": frame_rate}
@@ -640,6 +644,7 @@ class LTXDirector(io.ComfyNode):
                             dtype=torch.float32, device=dev,
                         )
                         audio_latent_fps = num_audio_latents / (ltxv_length / float(frame_rate))
+                        blend_frames = max(0, int(round(float(audio_blend_secs) * audio_latent_fps)))
                         try:
                             tdata = json.loads(timeline_data)
                             for seg in tdata.get("audioSegments", []):
@@ -650,8 +655,19 @@ class LTXDirector(io.ComfyNode):
                                     int(math.ceil((seg_start + seg_len) / float(frame_rate) * audio_latent_fps)),
                                     num_audio_latents,
                                 )
-                                if lat_e > lat_s:
-                                    mask[:, :, lat_s:lat_e, :] = 0.0
+                                if lat_e <= lat_s:
+                                    continue
+                                # Fully conditioned core
+                                mask[:, :, lat_s:lat_e, :] = 0.0
+                                # Trailing ramp: taper from 0→1 over the last
+                                # blend_frames positions so the model can blend
+                                # smoothly into freely-generated audio rather
+                                # than cutting hard at the segment boundary.
+                                if blend_frames > 0:
+                                    ramp_s = max(lat_s, lat_e - blend_frames)
+                                    ramp_len = lat_e - ramp_s
+                                    for i in range(ramp_len):
+                                        mask[:, :, ramp_s + i, :] = (i + 1) / (ramp_len + 1)
                         except Exception:
                             mask.fill_(0.0)  # fall back to full conditioning
 

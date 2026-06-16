@@ -2907,6 +2907,7 @@
               "Node name for S&R": "ShezwDirectorICLoRAGuide"
             },
             "widgets_values": [
+              1.0,
               0.0,
               "disabled",
               false,
@@ -4167,6 +4168,7 @@
               "Node name for S&R": "ShezwDirectorICLoRAGuide"
             },
             "widgets_values": [
+              1.0,
               0.0,
               "disabled",
               false,

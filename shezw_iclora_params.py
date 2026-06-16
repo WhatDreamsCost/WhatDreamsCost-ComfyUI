@@ -226,6 +226,18 @@ class ShezwDirectorICLoRAGuide(io.ComfyNode):
                 default_strength=0.0, crop="disabled",
                 use_tiled_encode=False, tile_size=256, tile_overlap=64,
                 reference_strength=0.35, max_references=8) -> io.NodeOutput:
+        latent_downscale_factor = max(1.0, float(latent_downscale_factor or 1.0))
+        default_strength = max(0.0, min(1.0, float(default_strength or 0.0)))
+        crop = crop if crop in {"disabled", "center"} else "disabled"
+        use_tiled_encode = bool(use_tiled_encode)
+        tile_size = max(64, min(512, int(tile_size or 256)))
+        tile_size = max(64, round(tile_size / 32) * 32)
+        tile_overlap = max(16, min(256, int(tile_overlap or 64)))
+        tile_overlap = max(16, round(tile_overlap / 16) * 16)
+        tile_overlap = min(tile_overlap, tile_size)
+        reference_strength = max(0.0, min(1.0, float(reference_strength or 0.35)))
+        max_references = max(0, min(8, int(max_references or 8)))
+
         scale_factors = vae.downscale_index_formula
         latent_image = latent["samples"]
         noise_mask = nodes_lt.get_noise_mask(latent)

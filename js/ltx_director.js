@@ -836,6 +836,7 @@ class TimelineEditor {
     }
     this.updateUIFromSelection();
     this.commitChanges(true);
+    this.updateLongAutoUI();
     // Hide settings widgets by default to reduce node clutter.
     // Deferred so all widget types are finalized before we touch them.
     setTimeout(() => this.hideSettingsWidgets(), 0);
@@ -1076,6 +1077,62 @@ class TimelineEditor {
     return plan;
   }
 
+  async queueCurrentGraphPrompt() {
+    if (typeof app?.queuePrompt === "function") {
+      try {
+        return await app.queuePrompt(0, 1);
+      } catch (err) {
+        try {
+          return await app.queuePrompt(0);
+        } catch (_err) {
+          throw err;
+        }
+      }
+    }
+    throw new Error("ComfyUI queuePrompt API is unavailable in this frontend build.");
+  }
+
+  updateLongAutoUI() {
+    if (!this.queueAllCutsBtn) return;
+    const isLongAuto = !!(this.timeline.meta && this.timeline.meta.longAuto);
+    this.queueAllCutsBtn.style.display = isLongAuto ? "" : "none";
+    if (this._isQueueingAllCuts) {
+      this.queueAllCutsBtn.disabled = true;
+      this.queueAllCutsBtn.innerHTML = `${ICONS.pause} Queueing Cuts...`;
+    } else {
+      this.queueAllCutsBtn.disabled = false;
+      this.queueAllCutsBtn.innerHTML = `${ICONS.play} Queue All Cuts`;
+    }
+  }
+
+  async queueAllCutSegments() {
+    if (this._isQueueingAllCuts) return;
+    const plan = this.getLongAutoPlan();
+    if (!plan.length) return;
+
+    if (!this.timeline.meta) this.timeline.meta = {};
+    const prevIndex = this.timeline.meta.activeSegmentIndex || 0;
+    this._isQueueingAllCuts = true;
+    this.updateLongAutoUI();
+
+    try {
+      for (const seg of plan) {
+        this.timeline.meta.activeSegmentIndex = seg.index;
+        this.commitChanges(true);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await this.queueCurrentGraphPrompt();
+      }
+    } catch (err) {
+      console.error("[Shezw LongAuto] Failed to queue all cuts", err);
+      throw err;
+    } finally {
+      this.timeline.meta.activeSegmentIndex = prevIndex;
+      this._isQueueingAllCuts = false;
+      this.commitChanges();
+      this.updateLongAutoUI();
+    }
+  }
+
   // Sync the zoom slider's max attribute to the current getMaxZoom() value,
   // clamping zoomLevel if it now exceeds the new max.
   updateZoomSliderMax() {
@@ -1216,6 +1273,13 @@ class TimelineEditor {
     addControlBtn.innerHTML = `${ICONS.control} Add IC-Control`;
     addControlBtn.addEventListener("click", () => this.addControlSegmentFreeSpace());
 
+    this.queueAllCutsBtn = document.createElement("button");
+    this.queueAllCutsBtn.className = "pr-btn";
+    this.queueAllCutsBtn.innerHTML = `${ICONS.play} Queue All Cuts`;
+    this.queueAllCutsBtn.title = "Queue every planned long-auto cut as an individual render";
+    this.queueAllCutsBtn.style.display = "none";
+    this.queueAllCutsBtn.addEventListener("click", () => this.queueAllCutSegments());
+
     const addCutBtn = document.createElement("button");
     addCutBtn.className = "pr-btn";
     addCutBtn.innerHTML = `${ICONS.cut} Add Cut`;
@@ -1235,6 +1299,7 @@ class TimelineEditor {
     actionGroup.appendChild(addTextBtn);
     actionGroup.appendChild(addCameraBtn);
     actionGroup.appendChild(addControlBtn);
+    actionGroup.appendChild(this.queueAllCutsBtn);
     actionGroup.appendChild(addCutBtn);
     actionGroup.appendChild(uploadAudioBtn);
     actionGroup.appendChild(deleteBtn);
@@ -3721,6 +3786,7 @@ class TimelineEditor {
 
     const jsonStr = JSON.stringify(toSave);
     if (this.timelineDataWidget) this.timelineDataWidget.value = jsonStr;
+    this.updateLongAutoUI();
 
     if (this.localPromptsWidget) {
       this.localPromptsWidget.value = contiguousPrompts.join(" | ");

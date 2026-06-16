@@ -782,6 +782,7 @@ class TimelineEditor {
     this.timeline = { segments: [], promptSegments: [], referenceImages: [], cameraSegments: [], controlSegments: [], audioSegments: [], cutSegments: [], meta: {} };
     this.selectionType = "image"; // "image", "prompt", "reference", "camera", "control", "audio", or "cut"
     this.selectedIndex = -1;
+    this.multiSelection = [];
 
     // Interactions
     this._isDragging = false;
@@ -797,6 +798,8 @@ class TimelineEditor {
     this._lastWidth = 0;
     this._hoveredGapIdx = -1;
     this._isHovering = false;
+    this._boxSelectStart = null;
+    this._boxSelectRect = null;
 
     // Playback state
     this.currentFrame = 0;
@@ -960,6 +963,18 @@ class TimelineEditor {
     else if (track === "camera") this.timeline.cameraSegments = arr;
     else if (track === "prompt") this.timeline.promptSegments = arr;
     else this.timeline.segments = arr;
+  }
+
+  clearMultiSelection() {
+    this.multiSelection = [];
+  }
+
+  isMultiSelected(track, id) {
+    return (this.multiSelection || []).some((item) => item.track === track && item.id === id);
+  }
+
+  isSegmentSelected(track, id, primaryId = null) {
+    return id === primaryId || this.isMultiSelected(track, id);
   }
 
   // Grow the timeline duration to fit `requiredFrames` if it is currently shorter.
@@ -2346,6 +2361,22 @@ class TimelineEditor {
   }
 
   deleteSelectedSegment() {
+    if ((this.multiSelection || []).length > 1) {
+      for (const track of ["image", "prompt", "camera", "control", "audio", "cut"]) {
+        const selectedIds = new Set(this.multiSelection.filter((item) => item.track === track).map((item) => item.id));
+        if (!selectedIds.size) continue;
+        const filtered = this.getTrackArray(track).filter((seg) => !selectedIds.has(seg.id));
+        this.setTrackArray(track, filtered);
+      }
+      this.clearMultiSelection();
+      this.selectedIndex = -1;
+      this.updateUIFromSelection();
+      this.commitChanges();
+      this.render();
+      this.renderReferenceChannel();
+      return;
+    }
+
     if (this.selectionType === "cut") {
       if ((this.timeline.cutSegments || []).length === 0 || this.selectedIndex === -1) return;
       this.timeline.cutSegments.splice(this.selectedIndex, 1);
@@ -2376,6 +2407,7 @@ class TimelineEditor {
       this.timeline.segments.splice(this.selectedIndex, 1);
       this.selectedIndex = Math.max(-1, this.selectedIndex - 1);
     }
+    this.clearMultiSelection();
     this.updateUIFromSelection();
     this.commitChanges();
     this.render();
@@ -2694,7 +2726,7 @@ class TimelineEditor {
       const seg = sortedSegments[i];
       const startX = (seg.start / totalFrames) * width;
       const pxWidth = (seg.length / totalFrames) * width;
-      const isSelected = (this.selectionType === "image" && seg.id === activeSegId);
+      const isSelected = this.isSegmentSelected("image", seg.id, this.selectionType === "image" ? activeSegId : null);
 
       const originalSeg = this.timeline.segments.find(s => s.id === seg.id);
       const imgObj = originalSeg ? originalSeg.imgObj : seg.imgObj;
@@ -2845,7 +2877,7 @@ class TimelineEditor {
       const seg = sortedPromptSegments[i];
       const startX = (seg.start / totalFrames) * width;
       const pxWidth = (seg.length / totalFrames) * width;
-      const isSelected = (this.selectionType === "prompt" && seg.id === activePromptSegId);
+      const isSelected = this.isSegmentSelected("prompt", seg.id, this.selectionType === "prompt" ? activePromptSegId : null);
       const trackY = this.getTrackY("prompt");
 
       if ((this._isDragging && this.selectionType === "prompt" && seg.id === this._dragTargetId) || (this._ghostSegmentId && seg.id === this._ghostSegmentId)) {
@@ -2863,7 +2895,7 @@ class TimelineEditor {
       const seg = sortedCameraSegments[i];
       const startX = (seg.start / totalFrames) * width;
       const pxWidth = (seg.length / totalFrames) * width;
-      const isSelected = (this.selectionType === "camera" && seg.id === activeCameraSegId);
+      const isSelected = this.isSegmentSelected("camera", seg.id, this.selectionType === "camera" ? activeCameraSegId : null);
       const trackY = this.getTrackY("camera");
 
       if ((this._isDragging && this.selectionType === "camera" && seg.id === this._dragTargetId) || (this._ghostSegmentId && seg.id === this._ghostSegmentId)) {
@@ -2881,7 +2913,7 @@ class TimelineEditor {
       const seg = sortedControlSegments[i];
       const startX = (seg.start / totalFrames) * width;
       const pxWidth = (seg.length / totalFrames) * width;
-      const isSelected = (this.selectionType === "control" && seg.id === activeControlSegId);
+      const isSelected = this.isSegmentSelected("control", seg.id, this.selectionType === "control" ? activeControlSegId : null);
       const trackY = this.getTrackY("control");
 
       if ((this._isDragging && this.selectionType === "control" && seg.id === this._dragTargetId) || (this._ghostSegmentId && seg.id === this._ghostSegmentId)) {
@@ -2899,7 +2931,7 @@ class TimelineEditor {
       const seg = sortedAudioSegments[i];
       const startX = (seg.start / totalFrames) * width;
       const pxWidth = (seg.length / totalFrames) * width;
-      const isSelected = (this.selectionType === "audio" && seg.id === activeAudioSegId);
+      const isSelected = this.isSegmentSelected("audio", seg.id, this.selectionType === "audio" ? activeAudioSegId : null);
       const trackY = this.getTrackY("audio");
 
       if ((this._isDragging && this.selectionType === "audio" && seg.id === this._dragTargetId) || (this._ghostSegmentId && seg.id === this._ghostSegmentId)) {
@@ -3110,6 +3142,18 @@ class TimelineEditor {
     this.ctx.roundRect(hBarX, hBarY, hBarW, hBarH, 2);
     this.ctx.fill();
 
+    if (this._boxSelectRect) {
+      const r = this._boxSelectRect;
+      this.ctx.save();
+      this.ctx.fillStyle = "rgba(120, 180, 255, 0.16)";
+      this.ctx.strokeStyle = "rgba(160, 210, 255, 0.9)";
+      this.ctx.lineWidth = 1.5;
+      this.ctx.setLineDash([5, 3]);
+      this.ctx.fillRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+      this.ctx.strokeRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+      this.ctx.restore();
+    }
+
     this.updatePlayerUI();
   }
 
@@ -3300,7 +3344,7 @@ class TimelineEditor {
     for (const cut of cuts) {
       const frame = clamp(Math.round(cut.start ?? cut.frame ?? 0), 0, totalFrames);
       const x = (frame / totalFrames) * width;
-      const selected = cut.id === activeCutSegId;
+      const selected = this.isSegmentSelected("cut", cut.id, activeCutSegId);
 
       ctx.save();
       ctx.strokeStyle = selected ? "#ffef8a" : "rgba(255, 210, 75, 0.82)";
@@ -3359,6 +3403,7 @@ class TimelineEditor {
   snapFrameToCut(frame, opts = {}) {
     const totalFrames = opts.totalFrames ?? this.getVisualDurationFrames();
     const toleranceFrames = opts.toleranceFrames ?? this.getCutSnapToleranceFrames();
+    const ignoreCutId = opts.ignoreCutId || null;
     if (!toleranceFrames || !(this.timeline.cutSegments || []).length) {
       return clamp(frame, 0, totalFrames);
     }
@@ -3366,6 +3411,7 @@ class TimelineEditor {
     let bestFrame = null;
     let bestDistance = Infinity;
     for (const cut of this.timeline.cutSegments || []) {
+      if (ignoreCutId && cut.id === ignoreCutId) continue;
       const cutFrame = clamp(Math.round(cut.start ?? cut.frame ?? 0), 0, totalFrames);
       const distance = Math.abs(frame - cutFrame);
       if (distance <= toleranceFrames && distance < bestDistance) {
@@ -3374,6 +3420,43 @@ class TimelineEditor {
       }
     }
     return bestFrame === null ? clamp(frame, 0, totalFrames) : bestFrame;
+  }
+
+  normalizeRect(a, b) {
+    return {
+      x1: Math.min(a.x, b.x),
+      y1: Math.min(a.y, b.y),
+      x2: Math.max(a.x, b.x),
+      y2: Math.max(a.y, b.y),
+    };
+  }
+
+  collectBoxSelection(rect) {
+    const width = this.canvas.offsetWidth || this._lastWidth || 0;
+    const totalFrames = this.getVisualDurationFrames();
+    if (!width || totalFrames <= 0) return [];
+
+    const selected = [];
+    const intersects = (ax1, ay1, ax2, ay2) => ax2 >= rect.x1 && ax1 <= rect.x2 && ay2 >= rect.y1 && ay1 <= rect.y2;
+    for (const track of ["image", "prompt", "camera", "control", "audio"]) {
+      const y = this.getTrackY(track);
+      const h = this.getTrackHeight(track);
+      const arr = this.getTrackArray(track);
+      arr.forEach((seg, index) => {
+        const x1 = (seg.start / totalFrames) * width;
+        const x2 = ((seg.start + seg.length) / totalFrames) * width;
+        if (intersects(x1, y, x2, y + h)) selected.push({ track, index, id: seg.id });
+      });
+    }
+
+    if (rect.y2 >= RULER_HEIGHT && rect.y1 <= this.canvasHeight) {
+      (this.timeline.cutSegments || []).forEach((cut, index) => {
+        const frame = clamp(Math.round(cut.start ?? cut.frame ?? 0), 0, totalFrames);
+        const x = (frame / totalFrames) * width;
+        if (x >= rect.x1 && x <= rect.x2) selected.push({ track: "cut", index, id: cut.id });
+      });
+    }
+    return selected;
   }
 
   getHitTest(mouseX, mouseY) {
@@ -3519,11 +3602,21 @@ class TimelineEditor {
 
     const hit = this.getHitTest(x, y);
     if (!hit) {
-      // Only deselect if they clicked the same track but hit empty space
-      const clickedTrack = this.getTrackTypeAtY(y);
-      if (this.selectionType === clickedTrack) {
-        this.selectedIndex = -1;
-        this.updateUIFromSelection();
+      if (y >= RULER_HEIGHT && y <= this.canvasHeight) {
+        this._isDragging = true;
+        this._dragType = "box_select";
+        this._boxSelectStart = { x, y };
+        this._boxSelectRect = this.normalizeRect(this._boxSelectStart, { x, y });
+        this.clearMultiSelection();
+        document.body.style.userSelect = "none";
+      } else {
+        // Only deselect if they clicked the same track but hit empty space
+        const clickedTrack = this.getTrackTypeAtY(y);
+        if (this.selectionType === clickedTrack) {
+          this.selectedIndex = -1;
+          this.clearMultiSelection();
+          this.updateUIFromSelection();
+        }
       }
       this.render();
       return;
@@ -3546,12 +3639,20 @@ class TimelineEditor {
     if (hit.type === "cut") {
       this.selectionType = "cut";
       this.selectedIndex = hit.index;
+      this.clearMultiSelection();
       this.updateUIFromSelection();
+      this._isDragging = true;
+      this._dragType = "cut_move";
+      this._dragStartX = x;
+      this._dragTargetId = (this.timeline.cutSegments || [])[hit.index]?.id || null;
+      this._dragInitialTimeline = JSON.parse(JSON.stringify(this.timeline.cutSegments || []));
+      document.body.style.userSelect = "none";
       this.render();
       return;
     }
 
     this.selectionType = hit.track;
+    this.clearMultiSelection();
     const targetArray = this.getTrackArray(hit.track);
 
     if (hit.type === "joint") {
@@ -3676,6 +3777,14 @@ class TimelineEditor {
       return;
     }
 
+    if (this._dragType === "box_select") {
+      this.canvas.style.cursor = "crosshair";
+      this._boxSelectRect = this.normalizeRect(this._boxSelectStart, { x: mouseX, y: mouseY });
+      this.multiSelection = this.collectBoxSelection(this._boxSelectRect);
+      this.render();
+      return;
+    }
+
     if (this._dragType === "playhead") {
       this.canvas.style.cursor = "ew-resize";
       const logicalWidth = this.canvas.offsetWidth;
@@ -3686,6 +3795,23 @@ class TimelineEditor {
       if (this.isPlaying) {
         this.playAudio(); // Scrub (restart from new position)
       }
+      return;
+    }
+
+    if (this._dragType === "cut_move") {
+      this.canvas.style.cursor = "ew-resize";
+      const logicalWidth = this.canvas.offsetWidth;
+      const totalFrames = this.getVisualDurationFrames();
+      const dragDelta = Math.round((mouseX - this._dragStartX) * (totalFrames / logicalWidth));
+      const initialCut = (this._dragInitialTimeline || []).find((cut) => cut.id === this._dragTargetId);
+      const cut = (this.timeline.cutSegments || []).find((item) => item.id === this._dragTargetId);
+      if (!initialCut || !cut) return;
+      const initialFrame = Math.round(initialCut.start ?? initialCut.frame ?? 0);
+      let nextFrame = this.snapFrameToCut(initialFrame + dragDelta, { totalFrames, ignoreCutId: this._dragTargetId });
+      nextFrame = clamp(Math.round(nextFrame), 0, Math.max(0, totalFrames - 1));
+      cut.start = nextFrame;
+      cut.frame = nextFrame;
+      this.render();
       return;
     }
 
@@ -3877,6 +4003,53 @@ class TimelineEditor {
   onMouseUp(e) {
     document.body.style.userSelect = "";
     if (this._isDragging) {
+      if (this._dragType === "box_select") {
+        const picked = this.collectBoxSelection(this._boxSelectRect || { x1: 0, y1: 0, x2: 0, y2: 0 });
+        this.multiSelection = picked;
+        if (picked.length) {
+          const primary = picked[picked.length - 1];
+          this.selectionType = primary.track;
+          this.selectedIndex = this.getTrackArray(primary.track).findIndex((seg) => seg.id === primary.id);
+        } else {
+          this.selectedIndex = -1;
+        }
+        this._isDragging = false;
+        this._dragType = null;
+        this._boxSelectStart = null;
+        this._boxSelectRect = null;
+        this.canvas.style.cursor = "default";
+        this.updateUIFromSelection();
+        this.render();
+        return;
+      }
+
+      if (this._dragType === "cut_move") {
+        const movedId = this._dragTargetId;
+        const tolerance = Math.max(1, this.getCutSnapToleranceFrames());
+        let cuts = [...(this.timeline.cutSegments || [])].sort((a, b) => (a.start ?? a.frame ?? 0) - (b.start ?? b.frame ?? 0));
+        const moved = cuts.find((cut) => cut.id === movedId);
+        if (moved) {
+          const movedFrame = Math.round(moved.start ?? moved.frame ?? 0);
+          const duplicate = cuts.find((cut) => cut.id !== movedId && Math.abs(Math.round(cut.start ?? cut.frame ?? 0) - movedFrame) <= tolerance);
+          if (duplicate) {
+            cuts = cuts.filter((cut) => cut.id !== movedId);
+            this.timeline.cutSegments = cuts;
+            this.selectedIndex = cuts.findIndex((cut) => cut.id === duplicate.id);
+          } else {
+            this.timeline.cutSegments = cuts;
+            this.selectedIndex = cuts.findIndex((cut) => cut.id === movedId);
+          }
+        }
+        this._isDragging = false;
+        this._dragType = null;
+        this._dragTargetId = null;
+        this._dragInitialTimeline = null;
+        this.canvas.style.cursor = "default";
+        this.updateUIFromSelection();
+        this.commitChanges();
+        return;
+      }
+
       if (this._previewSegments) {
         const targetArray = this.getTrackArray(this.selectionType);
 
@@ -3896,6 +4069,7 @@ class TimelineEditor {
       this._isDragging = false;
       this._previewSegments = null;
       this._ghostTrack = null;
+      this._dragType = null;
       this.canvas.style.cursor = "default";
       this.commitChanges();
     }

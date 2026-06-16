@@ -1184,6 +1184,10 @@ class TimelineEditor {
   }
 
   getTailSavePrefix() {
+    const configuredPrefix = this.timeline?.meta?.tailFramePrefix;
+    if (typeof configuredPrefix === "string" && configuredPrefix.trim()) {
+      return configuredPrefix.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+    }
     const nodes = app?.graph?._nodes || [];
     const node = nodes.find((candidate) => this.isTailSaveNode(candidate));
     const prefixWidget = node?.widgets?.find((w) => w.name === "filename_prefix") || node?.widgets?.[0];

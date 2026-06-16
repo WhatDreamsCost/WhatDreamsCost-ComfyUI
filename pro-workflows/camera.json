@@ -539,7 +539,7 @@
       "title": "Shezw Director-Pro Notes",
       "properties": {},
       "widgets_values": [
-        "# Shezw Director-Pro: real LTX Director / Prompt Relay workflow\n\nThis workflow is based on WhatDreamsCost-ComfyUI LTX Director.\n\nThe important part is the LTXDirector node:\n- `global_prompt` holds persistent scene, identity, style, and material rules.\n- `timeline_data` stores visual timeline blocks.\n- `promptSegments` is the independent Local Prompt track; it generates `local_prompts` and `segment_lengths`.\n- `segment_lengths` stores pixel-frame duration per action segment.\n\nLTXDirector does not simply concatenate text. It tokenizes global + local prompts, maps token ranges, then patches LTX cross-attention with Prompt Relay temporal masks. That is the mechanism that makes action descriptions reach the model at the correct time.\n\nEdit actions in the Local Prompt track. Keyframes are visual frame anchors only: image, time, and strength. Camera track uses fixed LTX camera presets only: static, dolly_in, dolly_out, dolly_left, dolly_right, jib_up, jib_down, focus_shift, or none. Keep each local prompt action-focused: expression, mouth movement, hand gesture, and body pose. Avoid stuffing scene/style into every action block.\n\nIC-Control is now wired to a real IC-LoRA path: load a control/depth/motion video in the outer IC CONTROL VIDEO / IMAGE INPUT node. The Director IC-Control track start and strength are read by ShezwDirectorICLoRAGuide inside both sampling stages. Required LoRA: ltxv/ltx2/ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors.\n\nReference channel is now actively consumed: Add Reference images are loaded into guide_data.references and ShezwDirectorICLoRAGuide applies up to 8 references as low-strength IC-LoRA visual reference guides before applying the control video guide.\n\nFinal-frame PNG output: the Decode subgraph also exposes the VAEDecode image batch. GetImageRangeFromBatch uses start_index=-1 and num_frames=1, then SaveImageKJ writes a separate PNG with prefix `video/cfy-shezw-director-pro-last-frame`."
+        "# Shezw Director-Pro: real LTX Director / Prompt Relay workflow\n\nThis workflow is based on WhatDreamsCost-ComfyUI LTX Director.\n\nThe important part is the LTXDirector node:\n- `global_prompt` holds persistent scene, identity, style, and material rules.\n- `timeline_data` stores visual timeline blocks.\n- `promptSegments` is the independent Local Prompt track; it generates `local_prompts` and `segment_lengths`.\n- `segment_lengths` stores pixel-frame duration per action segment.\n\nLTXDirector does not simply concatenate text. It tokenizes global + local prompts, maps token ranges, then patches LTX cross-attention with Prompt Relay temporal masks. That is the mechanism that makes action descriptions reach the model at the correct time.\n\nEdit actions in the Local Prompt track. Keyframes are visual frame anchors only: image, time, and strength. Camera track uses fixed LTX camera presets only: static, dolly_in, dolly_out, dolly_left, dolly_right, jib_up, jib_down, focus_shift, or none. Keep each local prompt action-focused: expression, mouth movement, hand gesture, and body pose. Avoid stuffing scene/style into every action block.\n\nIC-Control is now wired to a real IC-LoRA path: load a control/depth/motion video in the outer IC CONTROL VIDEO / IMAGE INPUT node. The Director IC-Control track start and strength are read by ShezwDirectorICLoRAGuide inside both sampling stages. Required LoRA: ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors.\n\nReference channel is now actively consumed: Add Reference images are loaded into guide_data.references and ShezwDirectorICLoRAGuide applies up to 8 references as low-strength IC-LoRA visual reference guides before applying the control video guide.\n\nFinal-frame PNG output: the Decode subgraph also exposes the VAEDecode image batch. GetImageRangeFromBatch uses start_index=-1 and num_frames=1, then SaveImageKJ writes a separate PNG with prefix `video/camera-last-frame`.\n\nVideo IC-Control is automatic and optional: leave the optional video path empty to skip it; provide a video path to enable IC guide without rewiring."
       ],
       "color": "#322",
       "bgcolor": "#533"
@@ -583,66 +583,163 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "LTXICLoRALoaderModelOnly"
+        "Node name for S&R": "LTXICLoRALoaderModelOnly",
+        "models": [
+          {
+            "directory": "loras",
+            "name": "ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors",
+            "url": "https://huggingface.co/Lightricks/LTX-2.3-22b-IC-LoRA-Union-Control/resolve/main/ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors"
+          }
+        ]
       },
       "widgets_values": [
-        "ltxv/ltx2/ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors",
+        "ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors",
         1
       ],
       "title": "IC-LoRA Loader - Union Control"
     },
     {
       "id": 98,
-      "type": "LoadVideo",
+      "type": "LoadVideoUI",
       "pos": [
         760,
         360
       ],
       "size": [
-        300,
-        235
-      ],
-      "flags": {},
-      "order": 8,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "VIDEO",
-          "type": "VIDEO",
-          "links": [
-            254
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "LoadVideo"
-      },
-      "widgets_values": [
-        "ic_control_video.mp4",
-        "image"
-      ],
-      "title": "IC CONTROL VIDEO / IMAGE INPUT"
-    },
-    {
-      "id": 99,
-      "type": "GetVideoComponents",
-      "pos": [
-        1100,
+        360,
         360
       ],
-      "size": [
-        210,
-        90
-      ],
       "flags": {},
-      "order": 9,
+      "order": 20,
       "mode": 0,
       "inputs": [
         {
           "name": "video",
-          "type": "VIDEO",
-          "link": 254
+          "type": "STRING",
+          "widget": {
+            "name": "video"
+          },
+          "link": null
+        },
+        {
+          "name": "start_time",
+          "type": "FLOAT",
+          "widget": {
+            "name": "start_time"
+          },
+          "link": null
+        },
+        {
+          "name": "end_time",
+          "type": "FLOAT",
+          "widget": {
+            "name": "end_time"
+          },
+          "link": null
+        },
+        {
+          "name": "duration",
+          "type": "FLOAT",
+          "widget": {
+            "name": "duration"
+          },
+          "link": null
+        },
+        {
+          "name": "start_frame",
+          "type": "INT",
+          "widget": {
+            "name": "start_frame"
+          },
+          "link": null
+        },
+        {
+          "name": "end_frame",
+          "type": "INT",
+          "widget": {
+            "name": "end_frame"
+          },
+          "link": null
+        },
+        {
+          "name": "duration_frames",
+          "type": "INT",
+          "widget": {
+            "name": "duration_frames"
+          },
+          "link": null
+        },
+        {
+          "name": "resize_method",
+          "type": "COMBO",
+          "widget": {
+            "name": "resize_method"
+          },
+          "link": null
+        },
+        {
+          "name": "custom_width",
+          "type": "INT",
+          "widget": {
+            "name": "custom_width"
+          },
+          "link": null
+        },
+        {
+          "name": "custom_height",
+          "type": "INT",
+          "widget": {
+            "name": "custom_height"
+          },
+          "link": null
+        },
+        {
+          "name": "frame_rate",
+          "type": "INT",
+          "widget": {
+            "name": "frame_rate"
+          },
+          "link": null
+        },
+        {
+          "name": "display_mode",
+          "type": "COMBO",
+          "widget": {
+            "name": "display_mode"
+          },
+          "link": null
+        },
+        {
+          "name": "crop_x",
+          "type": "FLOAT",
+          "widget": {
+            "name": "crop_x"
+          },
+          "link": null
+        },
+        {
+          "name": "crop_y",
+          "type": "FLOAT",
+          "widget": {
+            "name": "crop_y"
+          },
+          "link": null
+        },
+        {
+          "name": "crop_w",
+          "type": "FLOAT",
+          "widget": {
+            "name": "crop_w"
+          },
+          "link": null
+        },
+        {
+          "name": "crop_h",
+          "type": "FLOAT",
+          "widget": {
+            "name": "crop_h"
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -650,65 +747,54 @@
           "name": "images",
           "type": "IMAGE",
           "links": [
-            255
-          ]
+            256,
+            257
+          ],
+          "localized_name": "images"
         },
         {
           "name": "audio",
           "type": "AUDIO",
-          "links": null
+          "links": null,
+          "localized_name": "audio"
         },
         {
-          "name": "fps",
+          "name": "duration",
           "type": "FLOAT",
-          "links": null
+          "links": null,
+          "localized_name": "duration"
+        },
+        {
+          "name": "frame_count",
+          "type": "INT",
+          "links": null,
+          "localized_name": "frame_count"
         }
       ],
       "properties": {
-        "Node name for S&R": "GetVideoComponents"
-      },
-      "widgets_values": []
-    },
-    {
-      "id": 100,
-      "type": "ResizeImageMaskNode",
-      "pos": [
-        1350,
-        360
-      ],
-      "size": [
-        280,
-        120
-      ],
-      "flags": {},
-      "order": 10,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "input",
-          "type": "IMAGE,MASK",
-          "link": 255
-        }
-      ],
-      "outputs": [
-        {
-          "name": "resized",
-          "type": "IMAGE",
-          "links": [
-            256,
-            257
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ResizeImageMaskNode"
+        "Node name for S&R": "LoadVideoUI"
       },
       "widgets_values": [
-        "scale to multiple",
-        32,
-        "lanczos"
+        "",
+        0.0,
+        0.0,
+        0.0,
+        0,
+        0,
+        0,
+        "maintain aspect ratio",
+        0,
+        0,
+        24,
+        "seconds",
+        0.0,
+        0.0,
+        1.0,
+        1.0
       ],
-      "title": "Resize IC Control to LTX Multiple"
+      "title": "OPTIONAL AUTO IC CONTROL VIDEO / IMAGE INPUT",
+      "color": "#223",
+      "bgcolor": "#335"
     },
     {
       "id": 101,
@@ -856,9 +942,9 @@
         "Node name for S&R": "SaveImageKJ"
       },
       "widgets_values": [
-        "video/cfy-shezw-director-pro-last-frame",
+        "video/camera-last-frame",
         "output",
-        ".txt"
+        ""
       ],
       "color": "#222",
       "bgcolor": "#000",
@@ -1083,24 +1169,8 @@
       "FLOAT"
     ],
     [
-      254,
-      98,
-      0,
-      99,
-      0,
-      "VIDEO"
-    ],
-    [
-      255,
-      99,
-      0,
-      100,
-      0,
-      "IMAGE"
-    ],
-    [
       256,
-      100,
+      98,
       0,
       94,
       9,
@@ -1108,7 +1178,7 @@
     ],
     [
       257,
-      100,
+      98,
       0,
       95,
       9,
@@ -1280,7 +1350,14 @@
             "properties": {
               "cnr_id": "comfy-core",
               "ver": "0.17.2",
-              "Node name for S&R": "CheckpointLoaderSimple"
+              "Node name for S&R": "CheckpointLoaderSimple",
+              "models": [
+                {
+                  "directory": "checkpoints",
+                  "name": "ltx-2.3-22b-dev-fp8.safetensors",
+                  "url": "https://huggingface.co/Lightricks/LTX-2.3-fp8/resolve/main/ltx-2.3-22b-dev-fp8.safetensors"
+                }
+              ]
             },
             "widgets_values": [
               "ltx-2.3-22b-dev-fp8.safetensors"
@@ -1333,9 +1410,9 @@
               "secondTabWidth": 65,
               "models": [
                 {
-                  "name": "ltx-2.3-22b-distilled-lora-384.safetensors",
-                  "url": "https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-22b-distilled-lora-384.safetensors",
-                  "directory": "loras"
+                  "directory": "loras",
+                  "name": "ltx2/ltx-2.3-22b-distilled-lora-dynamic_fro09_avg_rank_105_bf16.safetensors",
+                  "url": "https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/loras/ltx-2.3-22b-distilled-lora-dynamic_fro09_avg_rank_105_bf16.safetensors"
                 }
               ]
             },
@@ -1432,7 +1509,14 @@
             "properties": {
               "cnr_id": "comfyui-kjnodes",
               "ver": "1.2.5",
-              "Node name for S&R": "VAELoaderKJ"
+              "Node name for S&R": "VAELoaderKJ",
+              "models": [
+                {
+                  "directory": "vae",
+                  "name": "taeltx2_3.safetensors",
+                  "url": "https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/taeltx2_3.safetensors"
+                }
+              ]
             },
             "widgets_values": [
               "taeltx2_3.safetensors",
@@ -1482,7 +1566,14 @@
             "properties": {
               "cnr_id": "comfyui-kjnodes",
               "ver": "487c7d86a0230aae3d8c0a37d517159b73834f85",
-              "Node name for S&R": "VAELoaderKJ"
+              "Node name for S&R": "VAELoaderKJ",
+              "models": [
+                {
+                  "directory": "vae",
+                  "name": "LTX23_audio_vae_bf16.safetensors",
+                  "url": "https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/LTX23_audio_vae_bf16.safetensors"
+                }
+              ]
             },
             "widgets_values": [
               "LTX23_audio_vae_bf16.safetensors",
@@ -1532,7 +1623,14 @@
             "properties": {
               "cnr_id": "comfyui-kjnodes",
               "ver": "1.2.5",
-              "Node name for S&R": "VAELoaderKJ"
+              "Node name for S&R": "VAELoaderKJ",
+              "models": [
+                {
+                  "directory": "vae",
+                  "name": "LTX23_video_vae_bf16.safetensors",
+                  "url": "https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/LTX23_video_vae_bf16.safetensors"
+                }
+              ]
             },
             "widgets_values": [
               "LTX23_video_vae_bf16.safetensors",
@@ -1581,7 +1679,19 @@
             "properties": {
               "cnr_id": "comfy-core",
               "ver": "0.19.3",
-              "Node name for S&R": "DualCLIPLoader"
+              "Node name for S&R": "DualCLIPLoader",
+              "models": [
+                {
+                  "directory": "text_encoders",
+                  "name": "gemma_3_12B_it_fp4_mixed.safetensors",
+                  "url": "https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors"
+                },
+                {
+                  "directory": "text_encoders",
+                  "name": "ltx-2.3_text_projection_bf16.safetensors",
+                  "url": "https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/text_encoders/ltx-2.3_text_projection_bf16.safetensors"
+                }
+              ]
             },
             "widgets_values": [
               "gemma_3_12B_it_fp4_mixed.safetensors",
@@ -3400,7 +3510,14 @@
             "properties": {
               "cnr_id": "comfy-core",
               "ver": "0.16.4",
-              "Node name for S&R": "LatentUpscaleModelLoader"
+              "Node name for S&R": "LatentUpscaleModelLoader",
+              "models": [
+                {
+                  "directory": "latent_upscale_models",
+                  "name": "ltx-2.3-spatial-upscaler-x2-1.1.safetensors",
+                  "url": "https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
+                }
+              ]
             },
             "widgets_values": [
               "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"

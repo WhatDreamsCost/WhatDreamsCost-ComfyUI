@@ -121,6 +121,19 @@ def _dilate_latent(latent, horizontal_scale, vertical_scale):
     return {"samples": dilated_samples, "noise_mask": dilated_mask}
 
 
+def _has_control_image(image):
+    if image is None or not hasattr(image, "shape") or len(image.shape) < 4:
+        return False
+    if not (image.shape[0] > 0 and image.shape[1] > 1 and image.shape[2] > 1):
+        return False
+    if image.shape[0] == 1:
+        try:
+            return bool(torch.count_nonzero(image).item())
+        except Exception:
+            return True
+    return True
+
+
 class ShezwDirectorICLoRAParams(io.ComfyNode):
     @classmethod
     def define_schema(cls):
@@ -307,7 +320,7 @@ class ShezwDirectorICLoRAGuide(io.ComfyNode):
                 )
 
         frame_idx, strength, _control_type = _primary_control(guide_data, 0, default_strength)
-        if control_image is not None and strength > 0:
+        if _has_control_image(control_image) and strength > 0:
             positive, negative, latent_image, noise_mask = apply_image_guide(
                 positive,
                 negative,
@@ -325,7 +338,7 @@ class ShezwDirectorICLoRAGuide(io.ComfyNode):
             0,
             0.0,
         )
-        if camera_control_image is not None and camera_strength > 0:
+        if _has_control_image(camera_control_image) and camera_strength > 0:
             positive, negative, latent_image, noise_mask = apply_image_guide(
                 positive,
                 negative,
@@ -343,7 +356,7 @@ class ShezwDirectorICLoRAGuide(io.ComfyNode):
             0,
             0.0,
         )
-        if motion_control_image is not None and motion_strength > 0:
+        if _has_control_image(motion_control_image) and motion_strength > 0:
             positive, negative, latent_image, noise_mask = apply_image_guide(
                 positive,
                 negative,

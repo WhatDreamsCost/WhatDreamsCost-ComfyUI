@@ -13,6 +13,15 @@ This branch includes Shezw's advanced LTX Director Pro workflows and local node 
 - Pro workflow guide: [README.pro.md](README.pro.md)
 - Workflow files: [pro-workflows/](pro-workflows/)
 
+Important dependency note: the Pro workflows use `LTXICLoRALoaderModelOnly`, which is provided by `Lightricks/ComfyUI-LTXVideo`, not by this repo. If ComfyUI reports this node as unknown, install or update:
+
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/Lightricks/ComfyUI-LTXVideo
+```
+
+Then restart ComfyUI. See [README.pro.md](README.pro.md) for the full dependency and model path notes.
+
 ## ▶️ YouTube Tutorial Videos
 
 <table>

@@ -36,15 +36,47 @@ pro-workflows/pro-console.json
 pro-workflows/long-auto.json
 ```
 
-它是长视频分段渲染模板，不是单次硬跑 30s 的 LTX 图。设计用途是：
+它是长视频分段渲染模板，配套外层工具：
+
+```bash
+python3 tools/long_auto_render.py pro-workflows/long-auto.json --plan-only
+python3 tools/long_auto_render.py pro-workflows/long-auto.json --output-dir long-auto-renders/test-001
+```
+
+第一条只生成/打印切分计划，第二条会物化每段独立 workflow：
+
+```text
+long-auto-renders/test-001/
+  manifest.json
+  concat.txt
+  segments/000/workflow.json
+  segments/000/timeline.json
+  segments/001/workflow.json
+  ...
+```
+
+`manifest.json` 是确认 long-auto 是否真的切分的主入口。每段都会写清楚：
+
+- `start_seconds` / `end_seconds`：本段时间范围。
+- `cut_reasons`：为什么在这里切，例如 `manual_cut`、`camera_start`、`camera_end`、`max_length`。
+- `first_frame_source`：本段首帧来源，可能是 `keyframe`、`previous_tail` 或 `timeline_start`。
+- `previous_tail_required`：是否需要把上一段尾帧传给这一段。
+
+设计用途是：
 
 - 外层 long-auto runner 读取完整 30s/60s Director 时间线。
-- 按 camera 边界、local prompt 边界、keyframe 边界和最长 15s 限制自动切段。
+- 按手动切点、camera 边界、local prompt / keyframe 边界和最长 15s 限制自动切段。
 - 每段用 `long-auto.json` 生成一个短视频和一张 tail-frame PNG。
-- 如果下一段起点有 keyframe，用 keyframe；否则使用上一段 tail-frame 作为首帧。
+- 如果下一段起点 0.25s 容差内有 keyframe，用 keyframe；否则使用上一段 tail-frame 作为首帧。
 - 最终把所有 segment video concat，并按需要 mux 回完整原始音频。
 
-直接在 ComfyUI 里单独 queue 这个工作流时，请保持当前 active segment 不超过 15s。真正的 30s/60s 一次性任务需要外层 runner/orchestrator。
+时间轴里可以点 `Add Cut` 在播放头添加手动切点，也可以在轨道空白处右键选择 `Manual Cut`。切点会保存到：
+
+```text
+timeline_data.cutSegments
+```
+
+直接在 ComfyUI 里单独 queue 这个工作流时，请保持当前 active segment 不超过 15s。真正的 30s/60s 连续任务需要外层 runner/orchestrator 顺序执行每段：第 N 段跑完后拿到 tail-frame PNG；如果第 N+1 段起点没有 keyframe，就把这张 tail-frame 作为下一段首帧。
 
 ## Pro Console 最新版
 

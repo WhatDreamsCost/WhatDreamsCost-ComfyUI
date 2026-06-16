@@ -14,6 +14,7 @@ from server import PromptServer
 import folder_paths
 import os
 import glob
+import time
 
 
 def _safe_output_prefix(prefix: str) -> str:
@@ -35,17 +36,24 @@ async def shezw_latest_tail_frame(request):
             for path in glob.glob(pattern)
             if os.path.isfile(path) and os.path.splitext(path)[1].lower() in {".png", ".jpg", ".jpeg", ".webp"}
         ]
+        candidates.sort(key=os.path.getmtime, reverse=True)
         if since > 0:
-            candidates = [path for path in candidates if os.path.getmtime(path) >= since - 5.0]
+            recent_candidates = [path for path in candidates if os.path.getmtime(path) >= since - 5.0]
+            if recent_candidates:
+                candidates = recent_candidates
+            elif candidates and time.time() - os.path.getmtime(candidates[0]) <= 900:
+                candidates = [candidates[0]]
+            else:
+                candidates = []
         if not candidates:
             return web.json_response({"found": False, "prefix": prefix})
 
-        path = max(candidates, key=os.path.getmtime)
+        path = candidates[0]
         rel = os.path.relpath(path, output_dir).replace("\\", "/")
         subfolder = os.path.dirname(rel).replace("\\", "/")
         return web.json_response({
             "found": True,
-            "imageFile": rel,
+            "imageFile": os.path.basename(path),
             "filename": os.path.basename(path),
             "subfolder": subfolder,
             "type": "output",

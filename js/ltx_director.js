@@ -1185,23 +1185,28 @@ class TimelineEditor {
     return `${prefixWidget?.value || "video/long-auto-tail-frame"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
   }
 
-  async fetchLatestTailFrame(sinceSeconds = 0) {
+  async fetchLatestTailFrame(sinceSeconds = 0, attempts = 6) {
     const prefix = this.getTailSavePrefix();
-    const params = new URLSearchParams({ prefix });
-    if (sinceSeconds) params.set("since", String(Math.max(0, sinceSeconds)));
-    const resp = await api.fetchApi(`/shezw/long_auto/latest_tail_frame?${params.toString()}`);
-    if (!resp.ok) {
-      console.warn("[Shezw LongAuto] Latest tail-frame lookup failed", resp.status, await resp.text());
-      return null;
+    for (let attempt = 0; attempt < Math.max(1, attempts); attempt++) {
+      const params = new URLSearchParams({ prefix });
+      if (sinceSeconds) params.set("since", String(Math.max(0, sinceSeconds)));
+      const resp = await api.fetchApi(`/shezw/long_auto/latest_tail_frame?${params.toString()}`);
+      if (!resp.ok) {
+        console.warn("[Shezw LongAuto] Latest tail-frame lookup failed", resp.status, await resp.text());
+        return null;
+      }
+      const data = await resp.json();
+      if (data?.found && data?.imageFile) {
+        return {
+          imageFile: data.imageFile,
+          imageType: data.type || "output",
+          subfolder: data.subfolder || "",
+          guideStrength: 1.0,
+        };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-    const data = await resp.json();
-    if (!data?.found || !data?.imageFile) return null;
-    return {
-      imageFile: data.imageFile,
-      imageType: data.type || "output",
-      subfolder: data.subfolder || "",
-      guideStrength: 1.0,
-    };
+    return null;
   }
 
   extractTailFrameFromHistory(history) {
@@ -1219,10 +1224,12 @@ class TimelineEditor {
       if (!text || !imageExtRE.test(text)) return null;
       text = text.replace(/\\/g, "/");
       const typeMatch = text.match(/^(input|output|temp)\/(.+)$/i);
+      const pathText = typeMatch ? typeMatch[2] : text;
+      const slashIdx = pathText.lastIndexOf("/");
       return {
-        imageFile: typeMatch ? typeMatch[2] : text,
+        imageFile: slashIdx >= 0 ? pathText.slice(slashIdx + 1) : pathText,
         imageType: typeMatch ? typeMatch[1].toLowerCase() : "output",
-        subfolder: "",
+        subfolder: slashIdx >= 0 ? pathText.slice(0, slashIdx) : "",
         guideStrength: 1.0,
       };
     };

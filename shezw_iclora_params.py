@@ -66,7 +66,18 @@ def _control_by_type(guide_data, control_types, default_frame_idx=0, default_str
     return int(frame_idx), float(strength), str(control_type)
 
 
+def _get_keyframe_token_count(conditioning):
+    for t in conditioning:
+        keyframe_idxs = t[1].get("keyframe_idxs", None)
+        if keyframe_idxs is not None and hasattr(keyframe_idxs, "shape") and len(keyframe_idxs.shape) >= 3:
+            return int(keyframe_idxs.shape[2])
+    return 0
+
+
 def _append_guide_attention_entry(conditioning, pre_filter_count, latent_shape, attention_strength=1.0):
+    if attention_strength >= 1.0:
+        return conditioning
+
     existing_entries = []
     for t in conditioning:
         entries = t[1].get("guide_attention_entries", None)
@@ -75,6 +86,17 @@ def _append_guide_attention_entry(conditioning, pre_filter_count, latent_shape, 
             break
 
     entries = [*existing_entries]
+    existing_count = sum(int(entry.get("pre_filter_count", 0)) for entry in entries)
+    keyframe_token_count = _get_keyframe_token_count(conditioning)
+    missing_count = keyframe_token_count - existing_count - int(pre_filter_count)
+    if missing_count > 0:
+        entries.append({
+            "pre_filter_count": missing_count,
+            "strength": 1.0,
+            "pixel_mask": None,
+            "latent_shape": None,
+        })
+
     entries.append({
         "pre_filter_count": pre_filter_count,
         "strength": attention_strength,
@@ -306,8 +328,8 @@ class ShezwDirectorICLoRAGuide(io.ComfyNode):
                 causal_fix=causal_fix,
             )
 
-            cur_positive = _append_guide_attention_entry(cur_positive, iclora_tokens_added, guide_orig_shape)
-            cur_negative = _append_guide_attention_entry(cur_negative, iclora_tokens_added, guide_orig_shape)
+            cur_positive = _append_guide_attention_entry(cur_positive, iclora_tokens_added, guide_orig_shape, strength)
+            cur_negative = _append_guide_attention_entry(cur_negative, iclora_tokens_added, guide_orig_shape, strength)
             log.info("[ShezwDirectorICLoRAGuide] Applied %s at frame %s strength %.3f", label, resolved_frame_idx, strength)
             return cur_positive, cur_negative, cur_latent_image, cur_noise_mask
 

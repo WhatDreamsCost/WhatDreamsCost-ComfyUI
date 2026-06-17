@@ -322,39 +322,69 @@ def _plan_long_auto_segments(
     manual_tolerance_seconds: float = 0.25,
     auto_cut: bool = True,
 ):
-    max_frames = int(math.floor(max_seconds * frame_rate)) if max_seconds and max_seconds > 0 else 0
+    max_seconds = max(3.0, min(60.0, float(max_seconds or 15.0)))
+    max_frames = max(1, int(math.floor(max_seconds * frame_rate)))
     manual_tolerance_frames = max(0, int(round(manual_tolerance_seconds * frame_rate)))
-    manual_frames = [
+    manual_frames = sorted({
         max(0, min(duration_frames, _frame(seg)))
         for seg in tdata.get("cutSegments", [])
-    ]
+        if 0 < _frame(seg) < duration_frames
+    })
 
     def near_manual(frame: int) -> bool:
         return any(abs(frame - cut_frame) <= manual_tolerance_frames for cut_frame in manual_frames)
 
-    hard = {}
-    for frame in manual_frames:
-        _add_boundary(hard, frame, "manual_cut", duration_frames)
+    soft = {}
     if auto_cut:
         for key, prefix in (("cameraSegments", "camera"), ("controlSegments", "ic")):
             for seg in tdata.get(key, []):
                 for frame, suffix in ((_frame(seg), "start"), (_end_frame(seg), "end")):
                     if not near_manual(frame):
-                        _add_boundary(hard, frame, f"{prefix}_{suffix}", duration_frames)
+                        _add_boundary(soft, frame, f"{prefix}_{suffix}", duration_frames)
 
-    hard_points = [0, *sorted(hard), duration_frames]
     cuts = [(0, {"timeline_start"})]
-    for left, right in zip(hard_points, hard_points[1:]):
+
+    def add_cut(frame: int, reasons: set[str]):
+        frame = max(0, min(duration_frames, int(round(frame))))
+        if 0 < frame <= duration_frames:
+            cuts.append((frame, reasons))
+
+    for frame in manual_frames:
+        add_cut(frame, {"manual_cut"})
+
+    soft_points = sorted(soft)
+    manual_points = [0, *manual_frames, duration_frames]
+    for left, right in zip(manual_points, manual_points[1:]):
         cursor = left
-        while max_frames > 0 and right - cursor > max_frames:
-            limit = cursor + max_frames
-            if near_manual(right) and right - limit <= manual_tolerance_frames:
+        local_soft_points = [frame for frame in soft_points if cursor < frame < right]
+        while right - cursor > max_frames:
+            candidates = [frame for frame in local_soft_points if frame > cursor]
+            last_within = None
+            for frame in candidates:
+                if frame - cursor <= max_frames:
+                    last_within = frame
+                else:
+                    break
+
+            if last_within is not None:
+                next_cut = last_within
+                reasons = soft.get(next_cut, {"auto_boundary"})
+            else:
+                remaining = right - cursor
+                if remaining < max_frames * 2:
+                    offset = max(1, min(remaining - 1, int(round(remaining * 2 / 3))))
+                    reasons = {"max_length_balanced"}
+                else:
+                    offset = max_frames
+                    reasons = {"max_length"}
+                next_cut = cursor + offset
+
+            if next_cut <= cursor or next_cut >= right:
                 break
-            cursor = limit
-            cuts.append((cursor, {"max_length"}))
-        if right != duration_frames:
-            cuts.append((right, hard.get(right, {"hard_boundary"})))
-    cuts.append((duration_frames, {"timeline_end"}))
+            add_cut(next_cut, reasons)
+            cursor = next_cut
+
+    add_cut(duration_frames, {"timeline_end"})
 
     merged = {}
     for frame, reasons in cuts:
@@ -486,7 +516,7 @@ def _apply_long_auto_direct_segment(tdata: dict, duration_frames: int, frame_rat
     if not meta.get("longAuto") or meta.get("materializedSegment"):
         return tdata, duration_frames, None, None, None
 
-    max_seconds = float(meta.get("maxSegmentSeconds", 0.0) or 0.0)
+    max_seconds = float(meta.get("maxSegmentSeconds", 15.0) or 15.0)
     manual_tolerance_seconds = float(meta.get("manualCutToleranceSeconds", 0.25) or 0.25)
     manual_tolerance_frames = max(0, int(round(manual_tolerance_seconds * frame_rate)))
     keyframe_tolerance_seconds = float(meta.get("keyframeToleranceSeconds", 0.25) or 0.25)

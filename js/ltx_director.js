@@ -1121,55 +1121,86 @@ class TimelineEditor {
     const durationFrames = this.getDurationFrames();
     const frameRate = this.getFrameRate();
     const meta = this.timeline.meta || {};
-    const maxSegmentSeconds = Number(meta.maxSegmentSeconds || 0);
-    const maxFrames = maxSegmentSeconds > 0 ? Math.max(1, Math.floor(maxSegmentSeconds * frameRate)) : 0;
+    const rawMaxSegmentSeconds = Number(meta.maxSegmentSeconds);
+    const maxSegmentSeconds = clamp(
+      Number.isFinite(rawMaxSegmentSeconds) && rawMaxSegmentSeconds > 0 ? rawMaxSegmentSeconds : 15,
+      3,
+      60
+    );
+    const maxFrames = Math.max(1, Math.floor(maxSegmentSeconds * frameRate));
     const manualToleranceFrames = Math.max(0, Math.round((meta.manualCutToleranceSeconds ?? 0.25) * frameRate));
     const autoCut = meta.autoCut !== false;
     const manualFrames = [];
-    const hard = new Map();
+    const soft = new Map();
     const isNearManualCut = (frame) => manualFrames.some((cutFrame) => Math.abs(cutFrame - frame) <= manualToleranceFrames);
-    const addBoundary = (frame, reason, opts = {}) => {
+    const addSoftBoundary = (frame, reason) => {
       const f = clamp(Math.round(frame || 0), 0, durationFrames);
       if (f <= 0 || f >= durationFrames) return;
-      if (!opts.manual && isNearManualCut(f)) return;
-      if (!hard.has(f)) hard.set(f, new Set());
-      hard.get(f).add(reason);
+      if (isNearManualCut(f)) return;
+      if (!soft.has(f)) soft.set(f, new Set());
+      soft.get(f).add(reason);
     };
     for (const cut of this.timeline.cutSegments || []) {
       const frame = clamp(Math.round(cut.start ?? cut.frame ?? 0), 0, durationFrames);
       if (frame > 0 && frame < durationFrames) manualFrames.push(frame);
     }
-    for (const frame of manualFrames) {
-      addBoundary(frame, "manual_cut", { manual: true });
+    manualFrames.sort((a, b) => a - b);
+    for (let i = manualFrames.length - 1; i > 0; i--) {
+      if (manualFrames[i] === manualFrames[i - 1]) manualFrames.splice(i, 1);
     }
     if (autoCut) {
       for (const cam of this.timeline.cameraSegments || []) {
-        addBoundary(cam.start || 0, "camera_start");
-        addBoundary((cam.start || 0) + (cam.length || 0), "camera_end");
+        addSoftBoundary(cam.start || 0, "camera_start");
+        addSoftBoundary((cam.start || 0) + (cam.length || 0), "camera_end");
       }
       for (const ctrl of this.timeline.controlSegments || []) {
-        addBoundary(ctrl.start || 0, "ic_start");
-        addBoundary((ctrl.start || 0) + (ctrl.length || 0), "ic_end");
+        addSoftBoundary(ctrl.start || 0, "ic_start");
+        addSoftBoundary((ctrl.start || 0) + (ctrl.length || 0), "ic_end");
       }
     }
 
-    const hardPoints = [0, ...[...hard.keys()].sort((a, b) => a - b), durationFrames];
     const cuts = new Map([[0, new Set(["timeline_start"])]]);
     const addCut = (frame, reasons) => {
+      frame = clamp(Math.round(frame || 0), 0, durationFrames);
+      if (frame <= 0 || frame > durationFrames) return;
       if (!cuts.has(frame)) cuts.set(frame, new Set());
       for (const r of reasons) cuts.get(frame).add(r);
     };
 
-    for (let i = 0; i < hardPoints.length - 1; i++) {
-      let cursor = hardPoints[i];
-      const right = hardPoints[i + 1];
-      while (maxFrames > 0 && right - cursor > maxFrames) {
-        const limit = cursor + maxFrames;
-        if (isNearManualCut(right) && right - limit <= manualToleranceFrames) break;
-        cursor += maxFrames;
-        addCut(cursor, ["max_length"]);
+    for (const frame of manualFrames) addCut(frame, ["manual_cut"]);
+
+    const manualPoints = [0, ...manualFrames, durationFrames];
+    const softPoints = [...soft.keys()].sort((a, b) => a - b);
+    for (let i = 0; i < manualPoints.length - 1; i++) {
+      let cursor = manualPoints[i];
+      const right = manualPoints[i + 1];
+      const localSoftPoints = softPoints.filter(frame => frame > cursor && frame < right);
+      while (right - cursor > maxFrames) {
+        const candidates = localSoftPoints.filter(frame => frame > cursor);
+        let lastWithin = null;
+        for (const frame of candidates) {
+          if (frame - cursor <= maxFrames) lastWithin = frame;
+          else break;
+        }
+
+        let nextCut = null;
+        let reasons = null;
+        if (lastWithin !== null) {
+          nextCut = lastWithin;
+          reasons = soft.get(nextCut) || new Set(["auto_boundary"]);
+        } else {
+          const remaining = right - cursor;
+          const offset = remaining < maxFrames * 2
+            ? Math.max(1, Math.min(remaining - 1, Math.round(remaining * 2 / 3)))
+            : maxFrames;
+          nextCut = cursor + offset;
+          reasons = new Set([remaining < maxFrames * 2 ? "max_length_balanced" : "max_length"]);
+        }
+
+        if (!nextCut || nextCut <= cursor || nextCut >= right) break;
+        addCut(nextCut, reasons);
+        cursor = nextCut;
       }
-      if (right !== durationFrames) addCut(right, hard.get(right) || new Set(["hard_boundary"]));
     }
     addCut(durationFrames, ["timeline_end"]);
 
@@ -4421,6 +4452,14 @@ class TimelineEditor {
     if (toSave.meta.longAuto && typeof toSave.meta.autoCut !== "boolean") {
       toSave.meta.autoCut = true;
     }
+    if (toSave.meta.longAuto) {
+      const rawMaxSegmentSeconds = Number(toSave.meta.maxSegmentSeconds);
+      toSave.meta.maxSegmentSeconds = clamp(
+        Number.isFinite(rawMaxSegmentSeconds) && rawMaxSegmentSeconds > 0 ? rawMaxSegmentSeconds : 15,
+        3,
+        60
+      );
+    }
 
     const jsonStr = JSON.stringify(toSave);
     if (this.timelineDataWidget) this.timelineDataWidget.value = jsonStr;
@@ -5361,6 +5400,21 @@ class TimelineEditor {
       return container;
     };
 
+    const createMetaNumberControl = (metaKey, defaultValue, step, min, max, isFloat = false, onChange = null) => {
+      const pseudoWidget = {
+        value: this.timeline.meta?.[metaKey] ?? defaultValue,
+        callback: (val) => {
+          if (!this.timeline.meta) this.timeline.meta = {};
+          const parsed = Number(val);
+          const next = clamp(Number.isFinite(parsed) ? parsed : defaultValue, min, max);
+          this.timeline.meta[metaKey] = isFloat ? Number(next.toFixed(3)) : Math.round(next);
+          this.commitChanges();
+          if (onChange) onChange(this.timeline.meta[metaKey]);
+        }
+      };
+      return createScrubbableNumberControl(pseudoWidget, step, min, max, isFloat);
+    };
+
     const createSelectControl = (w, fallbackValues = []) => {
       const select = document.createElement("select");
       select.className = "pr-settings-input";
@@ -5398,6 +5452,15 @@ class TimelineEditor {
       for (const [label, name, step, min, max, isFloat] of outputRows) {
         const widget = this.node.widgets?.find(w => w.name === name);
         if (widget) menu.appendChild(this._makeSettingRow(label, createScrubbableNumberControl(widget, step, min, max, isFloat)));
+        if (name === "duration_seconds" && this.timeline.meta?.longAuto) {
+          menu.appendChild(this._makeSettingRow(
+            "Max Segment Seconds",
+            createMetaNumberControl("maxSegmentSeconds", 15, 1, 3, 60, false, () => {
+              this.updateLongAutoUI();
+              this.render();
+            })
+          ));
+        }
       }
       const resizeWidget = this.node.widgets?.find(w => w.name === "resize_method");
       if (resizeWidget) {

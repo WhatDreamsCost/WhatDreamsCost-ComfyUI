@@ -320,6 +320,7 @@ def _plan_long_auto_segments(
     frame_rate: float,
     max_seconds: float = 15.0,
     manual_tolerance_seconds: float = 0.25,
+    auto_cut: bool = True,
 ):
     max_frames = max(1, int(math.floor(max_seconds * frame_rate)))
     manual_tolerance_frames = max(0, int(round(manual_tolerance_seconds * frame_rate)))
@@ -334,10 +335,12 @@ def _plan_long_auto_segments(
     hard = {}
     for frame in manual_frames:
         _add_boundary(hard, frame, "manual_cut", duration_frames)
-    for seg in tdata.get("cameraSegments", []):
-        for frame, reason in ((_frame(seg), "camera_start"), (_end_frame(seg), "camera_end")):
-            if not near_manual(frame):
-                _add_boundary(hard, frame, reason, duration_frames)
+    if auto_cut:
+        for key, prefix in (("cameraSegments", "camera"), ("controlSegments", "ic")):
+            for seg in tdata.get(key, []):
+                for frame, suffix in ((_frame(seg), "start"), (_end_frame(seg), "end")):
+                    if not near_manual(frame):
+                        _add_boundary(hard, frame, f"{prefix}_{suffix}", duration_frames)
 
     hard_points = [0, *sorted(hard), duration_frames]
     cuts = [(0, {"timeline_start"})]
@@ -388,15 +391,29 @@ def _clip_timeline_segment(seg: dict, start: int, end: int):
     return new_seg
 
 
-def _keyframe_near_frame(tdata: dict, frame: int, tolerance_frames: int):
+def _clip_keyframe_segment(seg: dict, start: int, end: int, tolerance_frames: int = 0):
+    seg_start = _frame(seg)
+    if seg_start < start or seg_start >= end:
+        return None
+    new_seg = dict(seg)
+    local_start = seg_start - start
+    if local_start <= tolerance_frames:
+        local_start = 0
+    new_seg["start"] = local_start
+    new_seg["frame"] = local_start
+    new_seg["length"] = 1
+    return new_seg
+
+
+def _keyframe_starts_segment(tdata: dict, frame: int, tolerance_frames: int):
     matches = [
         seg
         for seg in tdata.get("segments", [])
-        if abs(_frame(seg) - frame) <= tolerance_frames
+        if frame <= _frame(seg) <= frame + tolerance_frames
     ]
     if not matches:
         return None
-    return min(matches, key=lambda seg: abs(_frame(seg) - frame))
+    return min(matches, key=lambda seg: _frame(seg) - frame)
 
 
 def _camera_prompt(seg: dict) -> str:
@@ -460,8 +477,9 @@ def _apply_long_auto_direct_segment(tdata: dict, duration_frames: int, frame_rat
     max_seconds = float(meta.get("maxSegmentSeconds", 15.0) or 15.0)
     manual_tolerance_seconds = float(meta.get("manualCutToleranceSeconds", 0.25) or 0.25)
     keyframe_tolerance_seconds = float(meta.get("keyframeToleranceSeconds", 0.25) or 0.25)
+    auto_cut = bool(meta.get("autoCut", True))
     segment_index = int(meta.get("activeSegmentIndex", 0) or 0)
-    plan = _plan_long_auto_segments(tdata, duration_frames, frame_rate, max_seconds, manual_tolerance_seconds)
+    plan = _plan_long_auto_segments(tdata, duration_frames, frame_rate, max_seconds, manual_tolerance_seconds, auto_cut)
     if not plan:
         return tdata, duration_frames, None, None, None
 
@@ -487,7 +505,12 @@ def _apply_long_auto_direct_segment(tdata: dict, duration_frames: int, frame_rat
         },
     }
 
-    for key in ("segments", "promptSegments", "cameraSegments", "controlSegments", "audioSegments"):
+    for seg in tdata.get("segments", []):
+        clipped = _clip_keyframe_segment(seg, start, end, max(0, int(round(keyframe_tolerance_seconds * frame_rate))))
+        if clipped:
+            cropped["segments"].append(clipped)
+
+    for key in ("promptSegments", "cameraSegments", "controlSegments", "audioSegments"):
         for seg in tdata.get(key, []):
             clipped = _clip_timeline_segment(seg, start, end)
             if clipped:
@@ -495,7 +518,7 @@ def _apply_long_auto_direct_segment(tdata: dict, duration_frames: int, frame_rat
 
     previous_tail = meta.get("previousTailFrame")
     keyframe_tolerance_frames = max(0, int(round(keyframe_tolerance_seconds * frame_rate)))
-    if segment_index > 0 and previous_tail and not _keyframe_near_frame(tdata, start, keyframe_tolerance_frames):
+    if segment_index > 0 and previous_tail and not _keyframe_starts_segment(tdata, start, keyframe_tolerance_frames):
         if isinstance(previous_tail, str):
             tail_seg = {"imageFile": previous_tail, "imageType": "output"}
         elif isinstance(previous_tail, dict):

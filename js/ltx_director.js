@@ -115,6 +115,11 @@ const STYLES = `
     background: #333;
     border-color: #555;
   }
+  .pr-btn.active {
+    background: #263243;
+    border-color: #5f83b6;
+    color: #f2f7ff;
+  }
   .pr-btn-danger:hover {
     background: #4a1515;
     border-color: #cc4444;
@@ -1044,6 +1049,7 @@ class TimelineEditor {
     const meta = this.timeline.meta || {};
     const maxFrames = Math.max(1, Math.floor((meta.maxSegmentSeconds || 15) * frameRate));
     const manualToleranceFrames = Math.max(0, Math.round((meta.manualCutToleranceSeconds ?? 0.25) * frameRate));
+    const autoCut = meta.autoCut !== false;
     const manualFrames = [];
     const hard = new Map();
     const isNearManualCut = (frame) => manualFrames.some((cutFrame) => Math.abs(cutFrame - frame) <= manualToleranceFrames);
@@ -1061,9 +1067,15 @@ class TimelineEditor {
     for (const frame of manualFrames) {
       addBoundary(frame, "manual_cut", { manual: true });
     }
-    for (const cam of this.timeline.cameraSegments || []) {
-      addBoundary(cam.start || 0, "camera_start");
-      addBoundary((cam.start || 0) + (cam.length || 0), "camera_end");
+    if (autoCut) {
+      for (const cam of this.timeline.cameraSegments || []) {
+        addBoundary(cam.start || 0, "camera_start");
+        addBoundary((cam.start || 0) + (cam.length || 0), "camera_end");
+      }
+      for (const ctrl of this.timeline.controlSegments || []) {
+        addBoundary(ctrl.start || 0, "ic_start");
+        addBoundary((ctrl.start || 0) + (ctrl.length || 0), "ic_end");
+      }
     }
 
     const hardPoints = [0, ...[...hard.keys()].sort((a, b) => a - b), durationFrames];
@@ -1309,6 +1321,15 @@ class TimelineEditor {
     if (!this.queueAllCutsBtn) return;
     const isLongAuto = !!(this.timeline.meta && this.timeline.meta.longAuto);
     this.queueAllCutsBtn.style.display = isLongAuto ? "" : "none";
+    if (this.autoCutBtn) {
+      this.autoCutBtn.style.display = isLongAuto ? "" : "none";
+      const isAutoCutOn = this.timeline.meta?.autoCut !== false;
+      this.autoCutBtn.classList.toggle("active", isAutoCutOn);
+      this.autoCutBtn.innerHTML = `${ICONS.cut} Auto Cut: ${isAutoCutOn ? "ON" : "OFF"}`;
+      this.autoCutBtn.title = isAutoCutOn
+        ? "Auto split at camera and IC-Control boundaries, plus manual cuts and max length"
+        : "Only split at manual cuts and max length";
+    }
     if (this._isQueueingAllCuts) {
       this.queueAllCutsBtn.disabled = true;
       this.queueAllCutsBtn.innerHTML = `${ICONS.pause} Rendering Cuts...`;
@@ -1499,6 +1520,18 @@ class TimelineEditor {
     addControlBtn.innerHTML = `${ICONS.control} Add IC-Control`;
     addControlBtn.addEventListener("click", () => this.addControlSegmentFreeSpace());
 
+    this.autoCutBtn = document.createElement("button");
+    this.autoCutBtn.className = "pr-btn";
+    this.autoCutBtn.style.display = "none";
+    this.autoCutBtn.innerHTML = `${ICONS.cut} Auto Cut: ON`;
+    this.autoCutBtn.title = "Auto split at camera and IC-Control boundaries";
+    this.autoCutBtn.addEventListener("click", () => {
+      if (!this.timeline.meta) this.timeline.meta = {};
+      this.timeline.meta.autoCut = this.timeline.meta.autoCut === false;
+      this.commitChanges();
+      this.render();
+    });
+
     this.queueAllCutsBtn = document.createElement("button");
     this.queueAllCutsBtn.className = "pr-btn";
     this.queueAllCutsBtn.innerHTML = `${ICONS.play} Queue All Cuts`;
@@ -1525,6 +1558,7 @@ class TimelineEditor {
     actionGroup.appendChild(addTextBtn);
     actionGroup.appendChild(addCameraBtn);
     actionGroup.appendChild(addControlBtn);
+    actionGroup.appendChild(this.autoCutBtn);
     actionGroup.appendChild(this.queueAllCutsBtn);
     actionGroup.appendChild(addCutBtn);
     actionGroup.appendChild(uploadAudioBtn);
@@ -4202,6 +4236,9 @@ class TimelineEditor {
       })),
       meta: (this.timeline.meta && typeof this.timeline.meta === "object") ? { ...this.timeline.meta } : {}
     };
+    if (toSave.meta.longAuto && typeof toSave.meta.autoCut !== "boolean") {
+      toSave.meta.autoCut = true;
+    }
 
     const jsonStr = JSON.stringify(toSave);
     if (this.timelineDataWidget) this.timelineDataWidget.value = jsonStr;

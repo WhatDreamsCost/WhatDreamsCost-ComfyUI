@@ -58,15 +58,15 @@ long-auto-renders/test-001/
 `manifest.json` 是确认 long-auto 是否真的切分的主入口。每段都会写清楚：
 
 - `start_seconds` / `end_seconds`：本段时间范围。
-- `cut_reasons`：为什么在这里切，例如 `manual_cut`、`camera_start`、`camera_end`、`max_length`。
+- `cut_reasons`：为什么在这里切，例如 `manual_cut`、`camera_start`、`camera_end`、`ic_start`、`ic_end`、`max_length`。
 - `first_frame_source`：本段首帧来源，可能是 `keyframe`、`previous_tail` 或 `timeline_start`。
 - `previous_tail_required`：是否需要把上一段尾帧传给这一段。
 
 设计用途是：
 
 - 外层 long-auto runner 读取完整 30s/60s Director 时间线。
-- 按手动切点、camera 边界和最长 15s 限制自动切段。
-- 手动切点默认有 0.25s 保护区，保护区内的 camera / local prompt / keyframe 自动切点会被忽略，避免出现很碎的相邻切段。
+- 按手动切点和最长 15s 限制切段；打开 `Auto Cut` 时，camera / IC-Control 边界也会参与自动切段。
+- 手动切点默认有 0.25s 保护区，保护区内的 camera / IC-Control 自动切点会被忽略，避免出现很碎的相邻切段。
 - 时间轴交互也会在 0.25s 内吸附到 CUT 线，方便把 keyframe、local prompt、camera/control 段边界对齐到同一切点。
 - 每段用 `long-auto.json` 生成一个短视频和一张 tail-frame PNG。
 - 如果下一段起点 0.25s 容差内有 keyframe，用 keyframe；否则使用上一段 tail-frame 作为首帧。

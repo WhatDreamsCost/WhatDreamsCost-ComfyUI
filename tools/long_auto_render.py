@@ -122,11 +122,14 @@ def _manual_cut_frames(timeline: dict[str, Any], duration: int) -> dict[int, set
     return boundaries
 
 
-def _camera_boundary_frames(timeline: dict[str, Any], duration: int) -> dict[int, set[str]]:
+def _auto_boundary_frames(timeline: dict[str, Any], duration: int) -> dict[int, set[str]]:
     boundaries: dict[int, set[str]] = {}
     for seg in timeline.get("cameraSegments", []):
         _add_boundary(boundaries, _seg_start(seg), "camera_start", duration)
         _add_boundary(boundaries, _seg_end(seg), "camera_end", duration)
+    for seg in timeline.get("controlSegments", []):
+        _add_boundary(boundaries, _seg_start(seg), "ic_start", duration)
+        _add_boundary(boundaries, _seg_end(seg), "ic_end", duration)
     return boundaries
 
 
@@ -189,11 +192,11 @@ def _keyframe_at_start(timeline: dict[str, Any], start: int, tolerance_frames: i
     matches = [
         seg
         for seg in timeline.get("segments", [])
-        if abs(_seg_start(seg) - start) <= tolerance_frames
+        if start <= _seg_start(seg) <= start + tolerance_frames
     ]
     if not matches:
         return None
-    return min(matches, key=lambda seg: abs(_seg_start(seg) - start))
+    return min(matches, key=lambda seg: _seg_start(seg) - start)
 
 
 def plan_segments(
@@ -202,9 +205,12 @@ def plan_segments(
     keyframe_tolerance_seconds: float = 0.25,
     manual_cut_tolerance_seconds: float = 0.25,
     min_segment_seconds: float = 1.0,
+    auto_cut: bool | None = None,
 ) -> dict[str, Any]:
     node = _director_node(workflow)
     timeline = _timeline_from_node(node)
+    if auto_cut is None:
+        auto_cut = bool((timeline.get("meta") or {}).get("autoCut", True))
     fps = _fps(node)
     duration = _duration_frames(node)
     max_frames = max(1, int(math.floor(max_segment_seconds * fps)))
@@ -214,7 +220,8 @@ def plan_segments(
 
     hard = _manual_cut_frames(timeline, duration)
     manual_frames = set(hard)
-    _merge_reasons(hard, _filter_near_manual(_camera_boundary_frames(timeline, duration), manual_frames, manual_tolerance_frames))
+    if auto_cut:
+        _merge_reasons(hard, _filter_near_manual(_auto_boundary_frames(timeline, duration), manual_frames, manual_tolerance_frames))
     soft = _filter_near_manual(_soft_boundary_frames(timeline, duration), manual_frames, manual_tolerance_frames)
 
     hard_points = [0, *sorted(hard), duration]
@@ -264,6 +271,7 @@ def plan_segments(
                 "cut_reasons": sorted(dedup.get(start, set())) if start else ["timeline_start"],
                 "first_frame_source": first_frame_source,
                 "start_keyframe_id": keyframe.get("id") if keyframe else None,
+                "keyframe_tolerance_frames": tolerance_frames,
                 "previous_tail_required": first_frame_source == "previous_tail",
                 "tail_frame_output": f"segments/{len(segments):03d}/tail_frame.png",
                 "video_output": f"segments/{len(segments):03d}/video.mp4",
@@ -282,6 +290,7 @@ def plan_segments(
         "keyframe_tolerance_frames": tolerance_frames,
         "manual_cut_tolerance_seconds": manual_cut_tolerance_seconds,
         "manual_cut_tolerance_frames": manual_tolerance_frames,
+        "auto_cut": auto_cut,
         "segments": segments,
     }
 
@@ -303,12 +312,27 @@ def _clip_segment(seg: dict[str, Any], start: int, end: int, *, force_start: int
     return new
 
 
+def _clip_keyframe_segment(seg: dict[str, Any], start: int, end: int, tolerance_frames: int) -> dict[str, Any] | None:
+    seg_start = _seg_start(seg)
+    if seg_start < start or seg_start >= end:
+        return None
+    new = copy.deepcopy(seg)
+    local_start = seg_start - start
+    if local_start <= tolerance_frames:
+        local_start = 0
+    new["start"] = local_start
+    new["frame"] = local_start
+    new["length"] = 1
+    return new
+
+
 def _crop_timeline_for_segment(
     timeline: dict[str, Any],
     manifest_segment: dict[str, Any],
 ) -> dict[str, Any]:
     start = manifest_segment["start_frame"]
     end = manifest_segment["end_frame"]
+    tolerance_frames = int(manifest_segment.get("keyframe_tolerance_frames", 0) or 0)
     local: dict[str, Any] = {
         "segments": [],
         "promptSegments": [],
@@ -334,7 +358,7 @@ def _crop_timeline_for_segment(
                 local[key].append(clipped)
 
     for seg in timeline.get("segments", []):
-        clipped = _clip_segment(seg, start, end)
+        clipped = _clip_keyframe_segment(seg, start, end, tolerance_frames)
         if clipped:
             if manifest_segment.get("start_keyframe_id") == seg.get("id"):
                 clipped["start"] = 0
@@ -496,6 +520,8 @@ def main() -> int:
     parser.add_argument("--keyframe-tolerance-seconds", type=float, default=0.25)
     parser.add_argument("--manual-cut-tolerance-seconds", type=float, default=0.25)
     parser.add_argument("--min-segment-seconds", type=float, default=1.0)
+    parser.add_argument("--auto-cut", dest="auto_cut", action="store_true", default=None, help="Split at camera and IC-Control boundaries.")
+    parser.add_argument("--no-auto-cut", dest="auto_cut", action="store_false", help="Only split at manual cuts and max segment length.")
     parser.add_argument("--output-dir", type=Path, default=None, help="Directory for manifest and per-segment workflows.")
     parser.add_argument("--plan-only", action="store_true", help="Only print/write the manifest; do not materialize segment workflows.")
     args = parser.parse_args()
@@ -507,6 +533,7 @@ def main() -> int:
         keyframe_tolerance_seconds=args.keyframe_tolerance_seconds,
         manual_cut_tolerance_seconds=args.manual_cut_tolerance_seconds,
         min_segment_seconds=args.min_segment_seconds,
+        auto_cut=args.auto_cut,
     )
     _print_plan(manifest)
 

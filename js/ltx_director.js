@@ -13,7 +13,10 @@ const HANDLE_HIT_PX = 14;
 const MIN_SEGMENT_LENGTH = 6;
 const MAX_THUMBNAIL_DIM = 512; // Increased to maintain quality for taller images
 
-const HIDDEN_WIDGET_NAMES = ["timeline_data", "local_prompts", "segment_lengths", "guide_strength", "audio_data", "use_custom_audio"];
+const HIDDEN_WIDGET_NAMES = [
+  "timeline_data", "local_prompts", "segment_lengths", "guide_strength", "audio_data", "use_custom_audio",
+  "duration_frames", "duration_seconds", "frame_rate", "custom_width", "custom_height", "resize_method",
+];
 const CAMERA_MOTION_PRESETS = [
   { value: "none", label: "无指定 / None", prompt: "" },
   { value: "static", label: "固定镜头 / Static", prompt: "static camera, locked stable shot, no pan, no zoom, no camera shake" },
@@ -486,6 +489,8 @@ const STYLES = `
     z-index: 9999;
     box-shadow: 0 4px 20px rgba(0,0,0,0.7);
     min-width: 220px;
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
   }
   .pr-settings-title {
     font-size: 11px;
@@ -716,6 +721,7 @@ const ICONS = {
   minus: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
   plus: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
   fit: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><polyline points="8 7 3 12 8 17"></polyline><polyline points="16 7 21 12 16 17"></polyline></svg>`,
+  list: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><circle cx="3.5" cy="6" r="1"></circle><circle cx="3.5" cy="12" r="1"></circle><circle cx="3.5" cy="18" r="1"></circle></svg>`,
   gear: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`,
   close: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`
 };
@@ -1780,10 +1786,28 @@ class TimelineEditor {
     settingsBtn.title = "Settings";
     settingsBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (this._settingsMenu) {
+      if (this._settingsMenu && !this._segmentsMenuOpen) {
         this.dismissSettingsMenu();
       } else {
         this.showSettingsMenu(settingsBtn);
+      }
+    });
+
+    const segmentsBtn = document.createElement("button");
+    segmentsBtn.className = "pr-btn";
+    segmentsBtn.style.padding = "6px";
+    segmentsBtn.style.justifyContent = "center";
+    segmentsBtn.style.width = "28px";
+    segmentsBtn.style.height = "28px";
+    segmentsBtn.style.boxSizing = "border-box";
+    segmentsBtn.innerHTML = ICONS.list;
+    segmentsBtn.title = "Long-Auto Segments";
+    segmentsBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (this._settingsMenu && this._segmentsMenuOpen) {
+        this.dismissSettingsMenu();
+      } else {
+        this.showSegmentsMenu(segmentsBtn);
       }
     });
 
@@ -1837,7 +1861,7 @@ class TimelineEditor {
     helpBtn.title = "Help / Documentation";
     helpBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      window.open("https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI", "_blank");
+      window.open("https://github.com/shezw/ltx-director-pro/blob/adv-pro/README.pro.md", "_blank", "noopener,noreferrer");
     });
 
     const btnGroup = document.createElement("div");
@@ -1846,6 +1870,7 @@ class TimelineEditor {
     btnGroup.style.alignItems = "center";
     btnGroup.appendChild(toggleBtn);
     btnGroup.appendChild(helpBtn);
+    btnGroup.appendChild(segmentsBtn);
     btnGroup.appendChild(settingsBtn);
     rightGroup.appendChild(btnGroup);
 
@@ -2235,12 +2260,12 @@ class TimelineEditor {
     this.strengthRow.appendChild(this.strengthValue);
 
 
-    this.wrapper.appendChild(toolbar);
     this.referenceChannel = document.createElement("div");
     this.referenceChannel.className = "pr-reference-channel";
     this.wrapper.appendChild(this.referenceChannel);
     this.renderReferenceChannel();
     this.wrapper.appendChild(this.viewport);
+    this.wrapper.appendChild(toolbar);
 
     const controlsGroup = document.createElement("div");
     controlsGroup.className = "pr-controls-group";
@@ -4935,7 +4960,10 @@ class TimelineEditor {
   // --- Settings Menu ---
   // Widgets that are managed by the settings menu (hidden from node by default).
   get _settingsWidgetNames() {
-    return ["display_mode", "epsilon", "divisible_by", "img_compression"];
+    return [
+      "display_mode", "duration_frames", "duration_seconds", "frame_rate", "custom_width", "custom_height", "resize_method",
+      "epsilon", "divisible_by", "img_compression",
+    ];
   }
 
   // Hide all settings widgets on the node (called on init).
@@ -4980,6 +5008,8 @@ class TimelineEditor {
       const typeMap = {
         display_mode: "combo", epsilon: "FLOAT", divisible_by: "INT",
         img_compression: "INT",
+        duration_frames: "INT", duration_seconds: "FLOAT", frame_rate: "INT",
+        custom_width: "INT", custom_height: "INT", resize_method: "combo",
       };
       w.type = typeMap[name] || w._origType || "number";
       w.hidden = false;
@@ -5017,6 +5047,15 @@ class TimelineEditor {
     const list = document.createElement("div");
     list.className = "pr-segment-list";
     const activeIdx = parseInt(this.timeline.meta?.activeSegmentIndex || 0, 10) || 0;
+    const refreshFloatingMenu = () => {
+      const anchor = this._settingsAnchorEl;
+      const wasSegmentsMenu = !!this._segmentsMenuOpen;
+      this.dismissSettingsMenu();
+      if (!anchor) return;
+      if (wasSegmentsMenu) this.showSegmentsMenu(anchor);
+      else this.showSettingsMenu(anchor);
+    };
+
     for (const seg of plan) {
       const record = this.getSegmentMemory(seg);
       const isDone = !!record?.tailFrame;
@@ -5065,8 +5104,7 @@ class TimelineEditor {
       resetBtn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         this.resetSegmentMemory(seg);
-        this.dismissSettingsMenu();
-        if (this._settingsAnchorEl) this.showSettingsMenu(this._settingsAnchorEl);
+        refreshFloatingMenu();
       });
 
       actions.appendChild(continueBtn);
@@ -5077,8 +5115,7 @@ class TimelineEditor {
         this.timeline.meta.activeSegmentIndex = seg.index;
         this.commitChanges();
         this.render();
-        this.dismissSettingsMenu();
-        if (this._settingsAnchorEl) this.showSettingsMenu(this._settingsAnchorEl);
+        refreshFloatingMenu();
       });
 
       row.appendChild(index);
@@ -5090,9 +5127,72 @@ class TimelineEditor {
     return list;
   }
 
+  _positionFloatingMenu(menu, anchorEl) {
+    document.body.appendChild(menu);
+    const rect = anchorEl.getBoundingClientRect();
+    const menuW = menu.offsetWidth || 230;
+    const menuH = menu.offsetHeight || 350;
+    let left = rect.right - menuW;
+    let top = rect.bottom + 6;
+    if (left < 4) left = 4;
+    if (top + menuH > window.innerHeight - 4) top = Math.max(4, rect.top - menuH - 6);
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+  }
+
+  _installFloatingMenuDismiss(menu, anchorEl) {
+    setTimeout(() => {
+      this._settingsDismisser = (ev) => {
+        if (!menu.contains(ev.target) && !anchorEl.contains(ev.target)) this.dismissSettingsMenu();
+      };
+      document.addEventListener("mousedown", this._settingsDismisser);
+    }, 0);
+  }
+
+  showSegmentsMenu(anchorEl) {
+    this.dismissSettingsMenu();
+    this._settingsAnchorEl = anchorEl;
+    this._segmentsMenuOpen = true;
+
+    const menu = document.createElement("div");
+    menu.className = "pr-settings-menu";
+
+    const titleContainer = document.createElement("div");
+    titleContainer.className = "pr-settings-title";
+    titleContainer.style.display = "flex";
+    titleContainer.style.justifyContent = "space-between";
+    titleContainer.style.alignItems = "center";
+
+    const titleText = document.createElement("span");
+    titleText.textContent = "Long-Auto Segments";
+    titleContainer.appendChild(titleText);
+
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "pr-settings-close-btn";
+    closeBtn.innerHTML = ICONS.close;
+    closeBtn.title = "Close Segments";
+    closeBtn.addEventListener("click", () => this.dismissSettingsMenu());
+    titleContainer.appendChild(closeBtn);
+    menu.appendChild(titleContainer);
+
+    if (this.timeline.meta && this.timeline.meta.longAuto) {
+      menu.appendChild(this.buildLongAutoSegmentList(this.getLongAutoPlan()));
+    } else {
+      const empty = document.createElement("div");
+      empty.className = "pr-reference-empty";
+      empty.textContent = "Long-auto segment memory is only available in long-auto workflows.";
+      menu.appendChild(empty);
+    }
+
+    this._positionFloatingMenu(menu, anchorEl);
+    this._settingsMenu = menu;
+    this._installFloatingMenuDismiss(menu, anchorEl);
+  }
+
   showSettingsMenu(anchorEl) {
     this.dismissSettingsMenu();
     this._settingsAnchorEl = anchorEl;
+    this._segmentsMenuOpen = false;
     const menu = document.createElement("div");
     menu.className = "pr-settings-menu";
 
@@ -5192,12 +5292,6 @@ class TimelineEditor {
       });
 
       menu.appendChild(this._makeSettingRow("Render Segment", segmentSelect));
-
-      const segmentListTitle = document.createElement("div");
-      segmentListTitle.className = "pr-settings-title";
-      segmentListTitle.textContent = "Long-Auto Segments";
-      menu.appendChild(segmentListTitle);
-      menu.appendChild(this.buildLongAutoSegmentList(plan));
     }
 
     const divider1 = document.createElement("hr");
@@ -5303,6 +5397,54 @@ class TimelineEditor {
       return container;
     };
 
+    const createSelectControl = (w, fallbackValues = []) => {
+      const select = document.createElement("select");
+      select.className = "pr-settings-input";
+      select.style.width = "118px";
+      const values = Array.isArray(w.options?.values) && w.options.values.length
+        ? w.options.values
+        : fallbackValues;
+      for (const raw of values) {
+        const value = typeof raw === "object" ? (raw.value ?? raw.name ?? raw.label ?? String(raw)) : raw;
+        const label = typeof raw === "object" ? (raw.label ?? raw.name ?? raw.value ?? String(raw)) : raw;
+        const option = document.createElement("option");
+        option.value = String(value);
+        option.textContent = String(label);
+        if (String(w.value) === String(value)) option.selected = true;
+        select.appendChild(option);
+      }
+      select.addEventListener("change", () => fireCallback(w, select.value));
+      return select;
+    };
+
+    const outputRows = [
+      ["Duration Frames", "duration_frames", 1, 1, 100000, false],
+      ["Duration Seconds", "duration_seconds", 0.01, 0.01, 7200, true],
+      ["Frame Rate", "frame_rate", 1, 1, 120, false],
+      ["Width", "custom_width", 8, 64, 8192, false],
+      ["Height", "custom_height", 8, 64, 8192, false],
+    ];
+    const hasOutputSettings = outputRows.some(([, name]) => this.node.widgets?.find(w => w.name === name)) ||
+      this.node.widgets?.find(w => w.name === "resize_method");
+    if (hasOutputSettings) {
+      const outputTitle = document.createElement("div");
+      outputTitle.className = "pr-settings-title";
+      outputTitle.textContent = "Output";
+      menu.appendChild(outputTitle);
+      for (const [label, name, step, min, max, isFloat] of outputRows) {
+        const widget = this.node.widgets?.find(w => w.name === name);
+        if (widget) menu.appendChild(this._makeSettingRow(label, createScrubbableNumberControl(widget, step, min, max, isFloat)));
+      }
+      const resizeWidget = this.node.widgets?.find(w => w.name === "resize_method");
+      if (resizeWidget) {
+        menu.appendChild(this._makeSettingRow("Resize", createSelectControl(resizeWidget, ["crop", "pad", "stretch"])));
+      }
+
+      const dividerOutput = document.createElement("hr");
+      dividerOutput.className = "pr-settings-divider";
+      menu.appendChild(dividerOutput);
+    }
+
     // --- Epsilon ---
     const epsWidget = this.node.widgets?.find(w => w.name === "epsilon");
     if (epsWidget) {
@@ -5374,33 +5516,15 @@ class TimelineEditor {
     });
     menu.appendChild(toggleBtn);
 
-    // Position the menu below the anchor button (pop down)
-    document.body.appendChild(menu);
-    const rect = anchorEl.getBoundingClientRect();
-    const menuW = menu.offsetWidth || 230;
-    const menuH = menu.offsetHeight || 350;
-    let left = rect.right - menuW;
-    let top = rect.bottom + 6;
-    if (left < 4) left = 4;
-    // Fallback to top if it overflows the bottom of the screen
-    if (top + menuH > window.innerHeight - 4) {
-      top = rect.top - menuH - 6;
-    }
-    menu.style.left = `${left}px`;
-    menu.style.top = `${top}px`;
-
+    this._positionFloatingMenu(menu, anchorEl);
     this._settingsMenu = menu;
-    setTimeout(() => {
-      this._settingsDismisser = (ev) => {
-        if (!menu.contains(ev.target) && !anchorEl.contains(ev.target)) this.dismissSettingsMenu();
-      };
-      document.addEventListener("mousedown", this._settingsDismisser);
-    }, 0);
+    this._installFloatingMenuDismiss(menu, anchorEl);
   }
 
   dismissSettingsMenu() {
     if (this._settingsMenu) { this._settingsMenu.remove(); this._settingsMenu = null; }
     if (this._settingsDismisser) { document.removeEventListener("mousedown", this._settingsDismisser); this._settingsDismisser = null; }
+    this._segmentsMenuOpen = false;
   }
 
 

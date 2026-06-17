@@ -601,6 +601,68 @@ const STYLES = `
     color: #fff;
     background: rgba(255,255,255,0.1);
   }
+  .pr-segment-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 260px;
+    overflow: auto;
+    width: 100%;
+  }
+  .pr-segment-row {
+    display: grid;
+    grid-template-columns: 44px 1fr auto auto;
+    gap: 6px;
+    align-items: center;
+    background: #202020;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 5px;
+  }
+  .pr-segment-row.done {
+    border-color: #3d6849;
+    background: #1d2a20;
+  }
+  .pr-segment-row.active {
+    border-color: #5f83b6;
+  }
+  .pr-segment-index {
+    font-size: 11px;
+    color: #ddd;
+    font-weight: 600;
+  }
+  .pr-segment-meta {
+    min-width: 0;
+    font-size: 10px;
+    color: #aaa;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pr-segment-status {
+    font-size: 10px;
+    color: #aaa;
+  }
+  .pr-segment-row.done .pr-segment-status {
+    color: #8fe09f;
+  }
+  .pr-mini-btn {
+    background: #2b2b2b;
+    color: #ddd;
+    border: 1px solid #444;
+    border-radius: 4px;
+    font-size: 10px;
+    padding: 3px 5px;
+    cursor: pointer;
+  }
+  .pr-mini-btn:hover {
+    background: #383838;
+    border-color: #666;
+  }
+  .pr-mini-btn.danger:hover {
+    background: #4a1515;
+    border-color: #cc4444;
+  }
   .pr-segmented-control {
     display: flex;
     background: #1e1e1e;
@@ -1207,6 +1269,14 @@ class TimelineEditor {
     return `${prefixWidget?.value || "video/long-auto-tail-frame"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
   }
 
+  getSegmentVideoPrefix() {
+    const configuredPrefix = this.timeline?.meta?.segmentVideoPrefix;
+    if (typeof configuredPrefix === "string" && configuredPrefix.trim()) {
+      return configuredPrefix.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+    }
+    return "video/long-auto-segment";
+  }
+
   async fetchLatestTailFrame(sinceSeconds = 0, retryDelays = [0, 5000, 10000]) {
     const prefix = this.getTailSavePrefix();
     const delays = Array.isArray(retryDelays) && retryDelays.length ? retryDelays : [0, 5000, 10000];
@@ -1318,6 +1388,109 @@ class TimelineEditor {
     return null;
   }
 
+  extractSegmentVideoFromHistory(history) {
+    const outputs = history?.outputs || {};
+    const prefix = this.getSegmentVideoPrefix().toLowerCase();
+    const videoExtRE = /\.(mp4|webm|mov|mkv)$/i;
+    const normalizeVideo = (value, fallback = {}) => {
+      if (!value) return null;
+      let filename = "";
+      let type = fallback.type || "output";
+      let subfolder = fallback.subfolder || "";
+      if (typeof value === "string") {
+        const text = value.trim().replace(/\\/g, "/");
+        if (!videoExtRE.test(text)) return null;
+        const typeMatch = text.match(/^(input|output|temp)\/(.+)$/i);
+        const pathText = typeMatch ? typeMatch[2] : text;
+        const slashIdx = pathText.lastIndexOf("/");
+        filename = slashIdx >= 0 ? pathText.slice(slashIdx + 1) : pathText;
+        subfolder = slashIdx >= 0 ? pathText.slice(0, slashIdx) : subfolder;
+        type = typeMatch ? typeMatch[1].toLowerCase() : type;
+      } else if (typeof value === "object") {
+        filename = value.filename || value.file || value.name || "";
+        type = value.type || type;
+        subfolder = value.subfolder || subfolder;
+      }
+      if (!filename || !videoExtRE.test(filename)) return null;
+      return { videoFile: filename, videoType: type, subfolder };
+    };
+    const collect = (value, out = []) => {
+      if (typeof value === "string") {
+        out.push(value);
+      } else if (Array.isArray(value)) {
+        for (const item of value) collect(item, out);
+      } else if (value && typeof value === "object") {
+        out.push(value);
+        for (const item of Object.values(value)) collect(item, out);
+      }
+      return out;
+    };
+
+    for (const nodeOutput of Object.values(outputs)) {
+      const values = collect({
+        videos: nodeOutput?.videos,
+        gifs: nodeOutput?.gifs,
+        files: nodeOutput?.files,
+        ui: nodeOutput?.ui,
+        filename: nodeOutput?.filename,
+      });
+      for (const value of values) {
+        const video = normalizeVideo(value);
+        if (!video) continue;
+        const haystack = `${video.subfolder}/${video.videoFile}`.replace(/\\/g, "/").toLowerCase();
+        if (!prefix || haystack.includes(prefix) || video.videoFile.toLowerCase().includes("segment")) {
+          return video;
+        }
+      }
+    }
+    return null;
+  }
+
+  getLongAutoMemory() {
+    if (!this.timeline.meta) this.timeline.meta = {};
+    const mem = this.timeline.meta.longAutoMemory;
+    if (!mem || typeof mem !== "object" || !mem.segments || typeof mem.segments !== "object") {
+      this.timeline.meta.longAutoMemory = { schema: "shezw.long_auto.memory.v1", segments: {} };
+    }
+    return this.timeline.meta.longAutoMemory;
+  }
+
+  segmentMemoryKey(seg) {
+    return `${Math.round(seg.start)}:${Math.round(seg.end)}:${(seg.reasons || []).join("+")}`;
+  }
+
+  getSegmentMemory(seg) {
+    return this.getLongAutoMemory().segments[this.segmentMemoryKey(seg)] || null;
+  }
+
+  setSegmentMemory(seg, record) {
+    const memory = this.getLongAutoMemory();
+    memory.updatedAt = new Date().toISOString();
+    memory.segments[this.segmentMemoryKey(seg)] = {
+      index: seg.index,
+      start: seg.start,
+      end: seg.end,
+      reasons: [...(seg.reasons || [])],
+      ...record,
+    };
+  }
+
+  resetSegmentMemory(seg) {
+    const memory = this.getLongAutoMemory();
+    delete memory.segments[this.segmentMemoryKey(seg)];
+    memory.updatedAt = new Date().toISOString();
+    this.commitChanges();
+    this.render();
+  }
+
+  findPreviousCompletedTail(plan, startIndex) {
+    for (let i = startIndex - 1; i >= 0; i--) {
+      const record = this.getSegmentMemory(plan[i]);
+      if (record?.tailFrame) return record.tailFrame;
+    }
+    return null;
+  }
+
   updateLongAutoUI() {
     if (!this.queueAllCutsBtn) return;
     const isLongAuto = !!(this.timeline.meta && this.timeline.meta.longAuto);
@@ -1340,19 +1513,26 @@ class TimelineEditor {
     }
   }
 
-  async queueAllCutSegments() {
+  async queueAllCutSegments(options = {}) {
     if (this._isQueueingAllCuts) return;
     const plan = this.getLongAutoPlan();
     if (!plan.length) return;
 
     if (!this.timeline.meta) this.timeline.meta = {};
+    const startIndex = clamp(parseInt(options.startIndex ?? 0, 10) || 0, 0, Math.max(0, plan.length - 1));
+    const skipCompleted = options.skipCompleted !== false;
     const originalMeta = { ...this.timeline.meta };
-    let previousTailFrame = originalMeta.previousTailFrame || null;
+    let previousTailFrame = originalMeta.previousTailFrame || this.findPreviousCompletedTail(plan, startIndex);
     this._isQueueingAllCuts = true;
     this.updateLongAutoUI();
 
     try {
-      for (const seg of plan) {
+      for (const seg of plan.slice(startIndex)) {
+        const existingRecord = this.getSegmentMemory(seg);
+        if (skipCompleted && existingRecord?.tailFrame) {
+          previousTailFrame = existingRecord.tailFrame;
+          continue;
+        }
         this.timeline.meta.activeSegmentIndex = seg.index;
         if (seg.index > 0 && previousTailFrame) {
           this.timeline.meta.previousTailFrame = previousTailFrame;
@@ -1365,16 +1545,28 @@ class TimelineEditor {
         const promptId = await this.queueCurrentGraphPrompt();
         const history = await this.waitForPromptHistory(promptId);
         const tailFrame = this.extractTailFrameFromHistory(history) || await this.fetchLatestTailFrame(queuedAtSeconds);
+        const segmentVideo = this.extractSegmentVideoFromHistory(history);
         if (!tailFrame && seg.index < plan.length - 1) {
           throw new Error(`Segment ${seg.index} finished without a tail-frame PNG; stopped before queuing the next segment.`);
         }
         if (tailFrame) previousTailFrame = tailFrame;
+        this.setSegmentMemory(seg, {
+          status: "done",
+          promptId,
+          queuedAtSeconds,
+          completedAt: new Date().toISOString(),
+          tailFrame,
+          video: segmentVideo,
+        });
+        this.commitChanges(true);
       }
     } catch (err) {
       console.error("[Shezw LongAuto] Failed to queue all cuts", err);
       throw err;
     } finally {
-      this.timeline.meta = originalMeta;
+      const rememberedMemory = this.timeline.meta?.longAutoMemory;
+      this.timeline.meta = { ...originalMeta };
+      if (rememberedMemory) this.timeline.meta.longAutoMemory = rememberedMemory;
       this._isQueueingAllCuts = false;
       this.commitChanges();
       this.updateLongAutoUI();
@@ -4821,8 +5013,86 @@ class TimelineEditor {
     return row;
   }
 
+  buildLongAutoSegmentList(plan) {
+    const list = document.createElement("div");
+    list.className = "pr-segment-list";
+    const activeIdx = parseInt(this.timeline.meta?.activeSegmentIndex || 0, 10) || 0;
+    for (const seg of plan) {
+      const record = this.getSegmentMemory(seg);
+      const isDone = !!record?.tailFrame;
+      const row = document.createElement("div");
+      row.className = `pr-segment-row${isDone ? " done" : ""}${seg.index === activeIdx ? " active" : ""}`;
+      row.title = (seg.reasons || []).join(", ");
+
+      const index = document.createElement("div");
+      index.className = "pr-segment-index";
+      index.textContent = `#${seg.index}`;
+
+      const meta = document.createElement("div");
+      meta.className = "pr-segment-meta";
+      const range = `${this.formatTime(seg.start, true)}-${this.formatTime(seg.end, true)}`;
+      const reason = (seg.reasons || []).join(",") || "segment";
+      const media = isDone
+        ? `${record.video ? "video ok" : "video ?"} / ${record.tailFrame ? "tail ok" : "tail ?"}`
+        : "placeholder";
+      meta.textContent = `${range} · ${reason} · ${media}`;
+
+      const status = document.createElement("div");
+      status.className = "pr-segment-status";
+      status.textContent = isDone ? "done" : "pending";
+
+      const actions = document.createElement("div");
+      actions.style.display = "flex";
+      actions.style.gap = "4px";
+
+      const continueBtn = document.createElement("button");
+      continueBtn.className = "pr-mini-btn";
+      continueBtn.textContent = "Continue";
+      continueBtn.title = "Continue rendering from this segment; completed segments are skipped";
+      continueBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        this.dismissSettingsMenu();
+        this.queueAllCutSegments({ startIndex: seg.index }).catch((err) => {
+          console.error("[Shezw LongAuto] Continue failed", err);
+        });
+      });
+
+      const resetBtn = document.createElement("button");
+      resetBtn.className = "pr-mini-btn danger";
+      resetBtn.textContent = "Reset";
+      resetBtn.title = "Forget this segment's completed video/tail memory";
+      resetBtn.disabled = !isDone;
+      resetBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        this.resetSegmentMemory(seg);
+        this.dismissSettingsMenu();
+        if (this._settingsAnchorEl) this.showSettingsMenu(this._settingsAnchorEl);
+      });
+
+      actions.appendChild(continueBtn);
+      actions.appendChild(resetBtn);
+
+      row.addEventListener("click", () => {
+        if (!this.timeline.meta) this.timeline.meta = {};
+        this.timeline.meta.activeSegmentIndex = seg.index;
+        this.commitChanges();
+        this.render();
+        this.dismissSettingsMenu();
+        if (this._settingsAnchorEl) this.showSettingsMenu(this._settingsAnchorEl);
+      });
+
+      row.appendChild(index);
+      row.appendChild(meta);
+      row.appendChild(status);
+      row.appendChild(actions);
+      list.appendChild(row);
+    }
+    return list;
+  }
+
   showSettingsMenu(anchorEl) {
     this.dismissSettingsMenu();
+    this._settingsAnchorEl = anchorEl;
     const menu = document.createElement("div");
     menu.className = "pr-settings-menu";
 
@@ -4922,6 +5192,12 @@ class TimelineEditor {
       });
 
       menu.appendChild(this._makeSettingRow("Render Segment", segmentSelect));
+
+      const segmentListTitle = document.createElement("div");
+      segmentListTitle.className = "pr-settings-title";
+      segmentListTitle.textContent = "Long-Auto Segments";
+      menu.appendChild(segmentListTitle);
+      menu.appendChild(this.buildLongAutoSegmentList(plan));
     }
 
     const divider1 = document.createElement("hr");

@@ -70,6 +70,7 @@ long-auto-renders/test-001/
 - cut 落在静态内容中间时，keyframe 图、local prompt、camera 文本会被裁成前后两份分别传递。
 - cut 落在动态控制内容中间时，IC-Control 段会按帧裁切，并把 `trimStart` / `length` 传给后续 guide 节点。
 - 时间轴交互也会在 0.25s 内吸附到 CUT 线，方便把 keyframe、local prompt、camera/control 段边界对齐到同一切点。
+- Long-Auto 设置面板会记录已成功片段的视频和 tail-frame，可单条 Reset，也可从某个片段 Continue，已完成片段会默认跳过。
 - 每段用 `long-auto.json` 生成一个短视频和一张 tail-frame PNG。
 - 如果下一段起点 0.25s 容差内有 keyframe，用 keyframe；否则使用上一段 tail-frame 作为首帧。
 - 最终把所有 segment video concat，并按需要 mux 回完整原始音频。

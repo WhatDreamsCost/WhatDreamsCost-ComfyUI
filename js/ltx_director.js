@@ -710,9 +710,13 @@ if (!document.getElementById("prompt-relay-styles")) {
 const ICONS = {
   upload: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>`,
   audio: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>`,
+  bolt: `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 10-13h-7l0-7z"></path></svg>`,
+  image: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path></svg>`,
   camera: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>`,
   control: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"></path><path d="M4 10V3"></path><path d="M12 21v-9"></path><path d="M12 8V3"></path><path d="M20 21v-5"></path><path d="M20 12V3"></path><path d="M2 14h4"></path><path d="M10 8h4"></path><path d="M18 16h4"></path></svg>`,
   cut: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"></line><path d="M6 7l6-4 6 4"></path><path d="M6 17l6 4 6-4"></path></svg>`,
+  scissors: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.1" y2="15.9"></line><line x1="8.1" y1="8.1" x2="20" y2="20"></line></svg>`,
+  video: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="14" height="14" rx="2"></rect><path d="M17 9l4-3v12l-4-3"></path></svg>`,
   trash: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`,
   text: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>`,
   play: `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`,
@@ -722,6 +726,8 @@ const ICONS = {
   plus: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
   fit: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><polyline points="8 7 3 12 8 17"></polyline><polyline points="16 7 21 12 16 17"></polyline></svg>`,
   list: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><circle cx="3.5" cy="6" r="1"></circle><circle cx="3.5" cy="12" r="1"></circle><circle cx="3.5" cy="18" r="1"></circle></svg>`,
+  fan: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"></circle><path d="M12 2c3 0 4 3 2 6l-2 4"></path><path d="M21 17c-1.5 2.6-4.7 2.4-6.5-.4L12 12"></path><path d="M3 17c-1.5-2.6.2-5.4 3.5-5.6L12 12"></path></svg>`,
+  toggle: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="10" rx="5"></rect><circle cx="9" cy="12" r="2"></circle></svg>`,
   gear: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`,
   close: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`
 };
@@ -1505,17 +1511,17 @@ class TimelineEditor {
       this.autoCutBtn.style.display = isLongAuto ? "" : "none";
       const isAutoCutOn = this.timeline.meta?.autoCut !== false;
       this.autoCutBtn.classList.toggle("active", isAutoCutOn);
-      this.autoCutBtn.innerHTML = `${ICONS.cut} Auto Cut: ${isAutoCutOn ? "ON" : "OFF"}`;
+      this.autoCutBtn.innerHTML = `${ICONS.toggle} Auto Cut: ${isAutoCutOn ? "ON" : "OFF"}`;
       this.autoCutBtn.title = isAutoCutOn
         ? "Auto split at camera and IC-Control boundaries, plus manual cuts and max length"
         : "Only split at manual cuts and max length";
     }
     if (this._isQueueingAllCuts) {
       this.queueAllCutsBtn.disabled = true;
-      this.queueAllCutsBtn.innerHTML = `${ICONS.pause} Rendering Cuts...`;
+      this.queueAllCutsBtn.innerHTML = `${ICONS.fan} Rendering...`;
     } else {
       this.queueAllCutsBtn.disabled = false;
-      this.queueAllCutsBtn.innerHTML = `${ICONS.play} Queue All Cuts`;
+      this.queueAllCutsBtn.innerHTML = `${ICONS.fan} Queue All`;
     }
   }
 
@@ -1691,38 +1697,38 @@ class TimelineEditor {
 
     const uploadBtn = document.createElement("button");
     uploadBtn.className = "pr-btn";
-    uploadBtn.innerHTML = `${ICONS.upload} AddKeyframe`;
+    uploadBtn.innerHTML = `${ICONS.bolt} KeyFrame`;
     uploadBtn.addEventListener("click", () => this.fileInput.click());
 
     const uploadReferenceBtn = document.createElement("button");
     uploadReferenceBtn.className = "pr-btn";
-    uploadReferenceBtn.innerHTML = `${ICONS.upload} Add Reference`;
+    uploadReferenceBtn.innerHTML = `${ICONS.image} Ref`;
     uploadReferenceBtn.addEventListener("click", () => this.referenceFileInput.click());
 
     const uploadAudioBtn = document.createElement("button");
     uploadAudioBtn.className = "pr-btn";
-    uploadAudioBtn.innerHTML = `${ICONS.audio} Add Audio`;
+    uploadAudioBtn.innerHTML = `${ICONS.audio} Audio`;
     uploadAudioBtn.addEventListener("click", () => this.audioFileInput.click());
 
     const addTextBtn = document.createElement("button");
     addTextBtn.className = "pr-btn";
-    addTextBtn.innerHTML = `${ICONS.text} Add Local Prompt`;
+    addTextBtn.innerHTML = `${ICONS.text} Local Prompt`;
     addTextBtn.addEventListener("click", () => this.addTextSegmentFreeSpace());
 
     const addCameraBtn = document.createElement("button");
     addCameraBtn.className = "pr-btn";
-    addCameraBtn.innerHTML = `${ICONS.camera} Add Camera`;
+    addCameraBtn.innerHTML = `${ICONS.camera} Camera`;
     addCameraBtn.addEventListener("click", () => this.addCameraSegmentFreeSpace());
 
     const addControlBtn = document.createElement("button");
     addControlBtn.className = "pr-btn";
-    addControlBtn.innerHTML = `${ICONS.control} Add IC-Control`;
+    addControlBtn.innerHTML = `${ICONS.video} IC-Control`;
     addControlBtn.addEventListener("click", () => this.addControlSegmentFreeSpace());
 
     this.autoCutBtn = document.createElement("button");
     this.autoCutBtn.className = "pr-btn";
     this.autoCutBtn.style.display = "none";
-    this.autoCutBtn.innerHTML = `${ICONS.cut} Auto Cut: ON`;
+    this.autoCutBtn.innerHTML = `${ICONS.toggle} Auto Cut: ON`;
     this.autoCutBtn.title = "Auto split at camera and IC-Control boundaries";
     this.autoCutBtn.addEventListener("click", () => {
       if (!this.timeline.meta) this.timeline.meta = {};
@@ -1733,14 +1739,14 @@ class TimelineEditor {
 
     this.queueAllCutsBtn = document.createElement("button");
     this.queueAllCutsBtn.className = "pr-btn";
-    this.queueAllCutsBtn.innerHTML = `${ICONS.play} Queue All Cuts`;
+    this.queueAllCutsBtn.innerHTML = `${ICONS.fan} Queue All`;
     this.queueAllCutsBtn.title = "Render every planned long-auto cut sequentially and feed each tail frame into the next segment";
     this.queueAllCutsBtn.style.display = "none";
     this.queueAllCutsBtn.addEventListener("click", () => this.queueAllCutSegments());
 
     const addCutBtn = document.createElement("button");
     addCutBtn.className = "pr-btn";
-    addCutBtn.innerHTML = `${ICONS.cut} Add Cut`;
+    addCutBtn.innerHTML = `${ICONS.scissors} Cut`;
     addCutBtn.title = "Add a manual long-auto split point at the playhead";
     addCutBtn.addEventListener("click", () => this.addCutAtFrame(this.currentFrame));
 
@@ -1752,15 +1758,13 @@ class TimelineEditor {
     actionGroup.appendChild(this.fileInput);
     actionGroup.appendChild(this.referenceFileInput);
     actionGroup.appendChild(this.audioFileInput);
+    actionGroup.appendChild(uploadAudioBtn);
     actionGroup.appendChild(uploadBtn);
     actionGroup.appendChild(uploadReferenceBtn);
     actionGroup.appendChild(addTextBtn);
     actionGroup.appendChild(addCameraBtn);
-    actionGroup.appendChild(addControlBtn);
-    actionGroup.appendChild(this.autoCutBtn);
-    actionGroup.appendChild(this.queueAllCutsBtn);
     actionGroup.appendChild(addCutBtn);
-    actionGroup.appendChild(uploadAudioBtn);
+    actionGroup.appendChild(addControlBtn);
     actionGroup.appendChild(deleteBtn);
     toolbar.appendChild(actionGroup);
 
@@ -1795,13 +1799,11 @@ class TimelineEditor {
 
     const segmentsBtn = document.createElement("button");
     segmentsBtn.className = "pr-btn";
-    segmentsBtn.style.padding = "6px";
-    segmentsBtn.style.justifyContent = "center";
-    segmentsBtn.style.width = "28px";
+    segmentsBtn.style.padding = "6px 8px";
     segmentsBtn.style.height = "28px";
     segmentsBtn.style.boxSizing = "border-box";
-    segmentsBtn.innerHTML = ICONS.list;
-    segmentsBtn.title = "Long-Auto Segments";
+    segmentsBtn.innerHTML = `${ICONS.list} Show/Hide Segments`;
+    segmentsBtn.title = "Show/Hide long-auto segment memory";
     segmentsBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       if (this._settingsMenu && this._segmentsMenuOpen) {
@@ -1810,45 +1812,6 @@ class TimelineEditor {
         this.showSegmentsMenu(segmentsBtn);
       }
     });
-
-    const toggleBtn = document.createElement("button");
-    toggleBtn.className = "pr-btn";
-    toggleBtn.style.padding = "6px 8px";
-    toggleBtn.style.fontSize = "11px";
-    toggleBtn.style.marginRight = "0px";
-    toggleBtn.textContent = "Custom Audio: OFF";
-    toggleBtn.title = "Toggle Custom Audio Output";
-
-    const updateToggleStyle = (isOn) => {
-      toggleBtn.textContent = isOn ? "Custom Audio: ON" : "Custom Audio: OFF";
-      if (isOn) {
-        toggleBtn.style.background = "#1c222d";
-        toggleBtn.style.borderColor = "#283142";
-        toggleBtn.style.color = "#e0e0e0";
-      } else {
-        toggleBtn.style.background = "#222";
-        toggleBtn.style.borderColor = "#111";
-        toggleBtn.style.color = "#e0e0e0";
-      }
-    };
-
-    toggleBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const widget = this.node.widgets?.find(w => w.name === "use_custom_audio");
-      if (widget) {
-        widget.value = !widget.value;
-        updateToggleStyle(widget.value);
-        this.node.setDirtyCanvas(true, true);
-      }
-    });
-
-    // Initial state check (widgets might not be ready immediately)
-    setTimeout(() => {
-      const widget = this.node.widgets?.find(w => w.name === "use_custom_audio");
-      if (widget) {
-        updateToggleStyle(widget.value);
-      }
-    }, 100);
 
     const helpBtn = document.createElement("button");
     helpBtn.className = "pr-btn";
@@ -1868,9 +1831,10 @@ class TimelineEditor {
     btnGroup.style.display = "flex";
     btnGroup.style.gap = "6px";
     btnGroup.style.alignItems = "center";
-    btnGroup.appendChild(toggleBtn);
-    btnGroup.appendChild(helpBtn);
     btnGroup.appendChild(segmentsBtn);
+    btnGroup.appendChild(this.queueAllCutsBtn);
+    btnGroup.appendChild(this.autoCutBtn);
+    btnGroup.appendChild(helpBtn);
     btnGroup.appendChild(settingsBtn);
     rightGroup.appendChild(btnGroup);
 
@@ -5498,6 +5462,18 @@ class TimelineEditor {
       menu.appendChild(this._makeSettingRow("Use Global Prompt", cb));
     }
 
+    const customAudioWidget = this.node.widgets?.find(w => w.name === "use_custom_audio");
+    if (customAudioWidget) {
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = !!customAudioWidget.value;
+      cb.style.cursor = "pointer";
+      cb.addEventListener("change", () => {
+        fireCallback(customAudioWidget, cb.checked);
+        this.node.setDirtyCanvas(true, true);
+      });
+      menu.appendChild(this._makeSettingRow("Custom Audio", cb));
+    }
 
     // --- Show/Hide on Node Toggle ---
     const toggleBtn = document.createElement("button");

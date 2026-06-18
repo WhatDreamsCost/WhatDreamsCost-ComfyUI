@@ -231,7 +231,31 @@ async function waitForHistory(promptId, timeoutMs = 1000 * 60 * 60 * 8) {
   throw new Error(`Timed out waiting for prompt ${promptId}.`);
 }
 
-async function freeComfyMemory() {
+async function freeComfyMemory(promptId = null, waitSeconds = 12) {
+  const wait = Math.max(0, Math.min(60, Number(waitSeconds) || 0));
+  try {
+    const cleanupResp = await api.fetchApi("/shezw/upscale/cleanup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt_id: promptId, wait_seconds: wait, unload_models: false }),
+    });
+    if (cleanupResp.ok) return;
+  } catch (err) {
+    console.warn("[Shezw Upscale Chunker] backend cleanup request failed", err);
+  }
+
+  if (promptId) {
+    try {
+      await api.fetchApi("/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ delete: [promptId] }),
+      });
+    } catch (err) {
+      console.warn("[Shezw Upscale Chunker] history cleanup failed", err);
+    }
+  }
+
   try {
     await api.fetchApi("/free", {
       method: "POST",
@@ -241,6 +265,7 @@ async function freeComfyMemory() {
   } catch (err) {
     console.warn("[Shezw Upscale Chunker] Comfy memory free request failed", err);
   }
+  if (wait > 0) await sleep(wait * 1000);
 }
 
 function findUpscaleNodes() {
@@ -293,6 +318,7 @@ app.registerExtension({
           const chunkSeconds = Math.max(3, Number(getWidgetValue(node, "chunk_seconds", 0, 30)) || 30);
           const segmentPrefix = `${getWidgetValue(node, "segment_prefix", 1, "video/upscale-segment") || "video/upscale-segment"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
           const outputPrefix = `${getWidgetValue(node, "output_prefix", 2, "video/upscale-merged") || "video/upscale-merged"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+          const cleanupWaitSeconds = Math.max(0, Math.min(60, Number(getWidgetValue(node, "cleanup_wait_seconds", 3, 12)) || 0));
           const { loadNode, combineNode } = findUpscaleNodes();
 
           const video = `${getWidgetValue(loadNode, "video", 0, "") || ""}`;
@@ -317,6 +343,9 @@ app.registerExtension({
           for (const [n, name, index] of watched) {
             restore.push([n, name, index, getWidgetValue(n, name, index)]);
           }
+
+          setStatus(`Preparing memory cleanup before ${totalChunks} chunks (${chunkSeconds}s each).`);
+          await freeComfyMemory(null, Math.min(cleanupWaitSeconds, 5));
 
           setStatus(`Queueing ${totalChunks} chunks (${chunkSeconds}s each, ${totalFrames} frames total).`);
           const videos = [];
@@ -343,9 +372,8 @@ app.registerExtension({
             const videoRef = extractVideoFromHistory(history, prefix);
             if (!videoRef) throw new Error(`Chunk ${i + 1} 完成但没有找到分段视频输出。`);
             videos.push(videoRef);
-            setStatus(`Chunk ${i + 1}/${totalChunks} saved. Freeing memory...`);
-            await freeComfyMemory();
-            await sleep(1000);
+            setStatus(`Chunk ${i + 1}/${totalChunks} saved. Cleaning memory for ${cleanupWaitSeconds}s...`);
+            await freeComfyMemory(promptId, cleanupWaitSeconds);
           }
 
           setStatus(`Concatenating ${videos.length} chunks...`);

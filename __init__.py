@@ -19,6 +19,8 @@ import time
 import shutil
 import subprocess
 import tempfile
+import asyncio
+import gc
 
 
 def _safe_output_prefix(prefix: str) -> str:
@@ -219,6 +221,63 @@ async def shezw_upscale_concat(request):
         })
     except Exception as exc:
         return web.json_response({"error": str(exc)}, status=400)
+
+
+@PromptServer.instance.routes.post("/shezw/upscale/cleanup")
+async def shezw_upscale_cleanup(request):
+    try:
+        payload = await request.json()
+        prompt_id = payload.get("prompt_id")
+        wait_seconds = max(0.0, min(60.0, float(payload.get("wait_seconds", 12) or 0)))
+        unload_models = bool(payload.get("unload_models", False))
+
+        queue = getattr(PromptServer.instance, "prompt_queue", None)
+        if queue is not None:
+            if prompt_id:
+                try:
+                    queue.delete_history_item(str(prompt_id))
+                except Exception:
+                    pass
+            if unload_models:
+                queue.set_flag("unload_models", True)
+            queue.set_flag("free_memory", True)
+
+        # Give ComfyUI's main execution loop time to consume the free_memory flag.
+        # That loop owns PromptExecutor.reset(), which is what drops cached frame batches.
+        if wait_seconds > 0:
+            await asyncio.sleep(wait_seconds)
+
+        gc.collect()
+        cleanup_notes = []
+        try:
+            import comfy.model_management as model_management
+            if hasattr(model_management, "soft_empty_cache"):
+                model_management.soft_empty_cache()
+            if unload_models and hasattr(model_management, "unload_all_models"):
+                model_management.unload_all_models()
+            cleanup_notes.append("comfy_model_management")
+        except Exception as exc:
+            cleanup_notes.append(f"comfy_cleanup_failed:{exc}")
+
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                if hasattr(torch.cuda, "ipc_collect"):
+                    torch.cuda.ipc_collect()
+                cleanup_notes.append("torch_cuda")
+        except Exception as exc:
+            cleanup_notes.append(f"torch_cleanup_failed:{exc}")
+
+        return web.json_response({
+            "ok": True,
+            "prompt_id": prompt_id,
+            "wait_seconds": wait_seconds,
+            "unload_models": unload_models,
+            "notes": cleanup_notes,
+        })
+    except Exception as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
 class PromptRelay(ComfyExtension):
     @override

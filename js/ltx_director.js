@@ -1409,6 +1409,32 @@ class TimelineEditor {
   }
 
   // --- Async Image Upload Logic (Handles multiple images simultaneously) ---
+  async uploadTimelineFile(file) {
+    const body = new FormData();
+    body.append("image", file);
+    const resp = await api.fetchApi("/upload/image", { method: "POST", body });
+    if (resp.status !== 200) return null;
+
+    const data = await resp.json();
+    const filename = data.name;
+    const subfolder = data.subfolder || "";
+    return {
+      filename,
+      subfolder,
+      inputPath: subfolder ? subfolder + "/" + filename : filename,
+      viewUrl: api.apiURL(`/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}`)
+    };
+  }
+
+  loadImageElement(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+  }
+
   async handleImageUpload(files, targetFrameStart = null, explicitLength = null) {
     const frameRate = this.getFrameRate();
     const durationFrames = this.getDurationFrames();
@@ -1419,16 +1445,8 @@ class TimelineEditor {
 
       await new Promise(async (resolve) => {
         try {
-          const body = new FormData();
-          body.append("image", file);
-          const resp = await api.fetchApi("/upload/image", { method: "POST", body });
-          if (resp.status !== 200) { resolve(); return; }
-
-          const data = await resp.json();
-          const filename = data.name;
-          const subfolder = data.subfolder || "";
-          const imageFile = subfolder ? subfolder + "/" + filename : filename;
-          const imgUrl = api.apiURL(`/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}`);
+          const uploaded = await this.uploadTimelineFile(file);
+          if (!uploaded) { resolve(); return; }
 
           const img = new Image();
           img.onload = () => {
@@ -1478,8 +1496,8 @@ class TimelineEditor {
               length: constrainedLength,
               prompt: "",
               type: "image",
-              imageFile: imageFile,
-              imageB64: imgUrl
+              imageFile: uploaded.inputPath,
+              imageB64: uploaded.viewUrl
             };
 
             const displayImg = new Image();
@@ -1488,7 +1506,7 @@ class TimelineEditor {
               this.render();
               resolve(); // Resolve promise letting next image process
             };
-            displayImg.src = imgUrl;
+            displayImg.src = uploaded.viewUrl;
 
             this.timeline.segments.push(seg);
             this.timeline.segments.sort((a, b) => a.start - b.start);
@@ -1498,7 +1516,7 @@ class TimelineEditor {
             this.updateUIFromSelection();
             this.commitChanges(true);
           };
-          img.src = imgUrl;
+          img.src = uploaded.viewUrl;
         } catch (err) {
           console.error("[PromptRelay] Image upload failed", err);
           resolve();
@@ -1506,6 +1524,28 @@ class TimelineEditor {
       });
     }
     this.fileInput.value = "";
+  }
+
+  async replaceImageSegment(seg, file) {
+    if (!seg || !file || !file.type.startsWith("image/")) return;
+
+    try {
+      const uploaded = await this.uploadTimelineFile(file);
+      if (!uploaded) return;
+
+      const displayImg = await this.loadImageElement(uploaded.viewUrl);
+      seg.imageFile = uploaded.inputPath;
+      seg.imageB64 = uploaded.viewUrl;
+      seg.imgObj = displayImg;
+
+      this.selectionType = "image";
+      this.selectedIndex = this.timeline.segments.findIndex(s => s.id === seg.id);
+      this.updateUIFromSelection();
+      this.commitChanges(true);
+      this.render();
+    } catch (err) {
+      console.error("[PromptRelay] Image replacement failed", err);
+    }
   }
 
   // --- Async Audio Upload Logic ---
@@ -1636,6 +1676,66 @@ class TimelineEditor {
       return dropSuffix ? secs.toFixed(2) : secs.toFixed(2) + "s";
     }
     return dropSuffix ? Math.round(frames).toString() : Math.round(frames) + " frames";
+  }
+
+  promptForSegmentDuration(seg, trackType) {
+    if (!seg) return;
+
+    const mode = this.displayModeWidget ? this.displayModeWidget.value : "seconds";
+    const unitLabel = mode === "seconds" ? "seconds" : "frames";
+    const currentValue = mode === "seconds"
+      ? (seg.length / this.getFrameRate()).toFixed(2)
+      : Math.round(seg.length).toString();
+    const rawValue = window.prompt(`Set segment duration in ${unitLabel}`, currentValue);
+    if (rawValue === null) return;
+
+    const parsedValue = Number.parseFloat(rawValue.trim());
+    if (!Number.isFinite(parsedValue) || parsedValue <= 0) return;
+
+    const requestedFrames = mode === "seconds"
+      ? Math.round(parsedValue * this.getFrameRate())
+      : Math.round(parsedValue);
+    this.setSegmentDuration(seg, trackType, requestedFrames);
+  }
+
+  setSegmentDuration(seg, trackType, requestedFrames) {
+    if (!seg) return;
+
+    const targetArray = trackType === "audio" ? this.timeline.audioSegments : this.timeline.segments;
+    const index = targetArray.findIndex(s => s.id === seg.id);
+    if (index < 0) return;
+
+    const nextSeg = targetArray
+      .filter(s => s.id !== seg.id && s.start >= seg.start + seg.length)
+      .sort((a, b) => a.start - b.start)[0];
+
+    let maxPossibleLength = Number.POSITIVE_INFINITY;
+    if (nextSeg) {
+      maxPossibleLength = nextSeg.start - seg.start;
+    }
+    if (trackType === "audio") {
+      maxPossibleLength = Math.min(
+        maxPossibleLength,
+        (seg.audioDurationFrames || seg.length) - (seg.trimStart || 0)
+      );
+    }
+
+    const finalLength = Math.max(
+      MIN_SEGMENT_LENGTH,
+      Math.min(Math.round(requestedFrames), maxPossibleLength)
+    );
+    if (!Number.isFinite(finalLength) || finalLength <= 0) return;
+
+    seg.length = finalLength;
+    if (!nextSeg) {
+      this.growTimelineIfNeeded(seg.start + finalLength);
+    }
+
+    this.selectionType = trackType === "audio" ? "audio" : "image";
+    this.selectedIndex = targetArray.findIndex(s => s.id === seg.id);
+    this.updateUIFromSelection();
+    this.commitChanges(true);
+    this.render();
   }
 
   updateWidgetVisibility() {
@@ -2989,6 +3089,24 @@ class TimelineEditor {
         this.dismissContextMenu();
       };
       menu.appendChild(openBtn);
+
+      const replaceBtn = document.createElement("button");
+      replaceBtn.className = "pr-gap-menu-btn";
+      replaceBtn.innerHTML = `Replace Image`;
+      replaceBtn.onclick = () => {
+        this.dismissContextMenu();
+        const fi = document.createElement("input");
+        fi.type = "file";
+        fi.accept = "image/*";
+        fi.addEventListener("change", async (ev) => {
+          const file = ev.target.files?.[0];
+          if (file) {
+            await this.replaceImageSegment(seg, file);
+          }
+        });
+        fi.click();
+      };
+      menu.appendChild(replaceBtn);
     }
 
     if (trackType !== "audio") {
@@ -3005,6 +3123,15 @@ class TimelineEditor {
       };
       menu.appendChild(copyPromptBtn);
     }
+
+    const durationBtn = document.createElement("button");
+    durationBtn.className = "pr-gap-menu-btn";
+    durationBtn.innerHTML = `Set Duration`;
+    durationBtn.onclick = () => {
+      this.dismissContextMenu();
+      this.promptForSegmentDuration(seg, trackType);
+    };
+    menu.appendChild(durationBtn);
 
     const copySegBtn = document.createElement("button");
     copySegBtn.className = "pr-gap-menu-btn";

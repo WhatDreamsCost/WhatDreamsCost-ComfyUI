@@ -91,17 +91,66 @@ def _unique_output_path(prefix: str, ext: str = ".mp4") -> tuple[str, str, str]:
 
 def _empty_windows_working_set():
     if os.name != "nt":
-        return
+        return "empty_working_set_skipped_non_windows"
     try:
         import ctypes
         process = ctypes.windll.kernel32.GetCurrentProcess()
-        ctypes.windll.psapi.EmptyWorkingSet(process)
+        ok = ctypes.windll.psapi.EmptyWorkingSet(process)
+        return "empty_working_set" if ok else "empty_working_set_failed"
+    except Exception as exc:
+        return f"empty_working_set_failed:{exc}"
+
+
+def _memory_snapshot():
+    snapshot = {}
+    try:
+        import psutil
+        process = psutil.Process(os.getpid())
+        info = process.memory_info()
+        snapshot["rss_mb"] = round(info.rss / (1024 * 1024), 1)
+        snapshot["vms_mb"] = round(info.vms / (1024 * 1024), 1)
+        try:
+            full_info = process.memory_full_info()
+            uss = getattr(full_info, "uss", None)
+            if uss is not None:
+                snapshot["uss_mb"] = round(uss / (1024 * 1024), 1)
+        except Exception:
+            pass
+        vm = psutil.virtual_memory()
+        snapshot["available_mb"] = round(vm.available / (1024 * 1024), 1)
+        snapshot["system_percent"] = vm.percent
+    except Exception as exc:
+        snapshot["error"] = str(exc)
+
+    try:
+        import torch
+        if torch.cuda.is_available():
+            snapshot["cuda_allocated_mb"] = round(torch.cuda.memory_allocated() / (1024 * 1024), 1)
+            snapshot["cuda_reserved_mb"] = round(torch.cuda.memory_reserved() / (1024 * 1024), 1)
     except Exception:
         pass
+    return snapshot
+
+
+def _format_memory_snapshot(snapshot):
+    if not snapshot:
+        return "unavailable"
+    ordered_keys = (
+        "rss_mb",
+        "uss_mb",
+        "vms_mb",
+        "available_mb",
+        "system_percent",
+        "cuda_allocated_mb",
+        "cuda_reserved_mb",
+        "error",
+    )
+    return ",".join(f"{key}={snapshot[key]}" for key in ordered_keys if key in snapshot)
 
 
 def _release_python_and_torch_memory(unload_models: bool = False):
     notes = []
+    before = _memory_snapshot()
     try:
         import comfy.model_management as model_management
         if unload_models and hasattr(model_management, "unload_all_models"):
@@ -127,7 +176,10 @@ def _release_python_and_torch_memory(unload_models: bool = False):
         notes.append(f"torch_cleanup_failed:{exc}")
 
     gc.collect()
-    _empty_windows_working_set()
+    notes.append(_empty_windows_working_set())
+    after = _memory_snapshot()
+    notes.append(f"mem_before[{_format_memory_snapshot(before)}]")
+    notes.append(f"mem_after[{_format_memory_snapshot(after)}]")
     return notes
 
 
@@ -321,6 +373,7 @@ async def shezw_upscale_cleanup(request):
         prompt_id = payload.get("prompt_id")
         wait_seconds = max(0.0, min(60.0, float(payload.get("wait_seconds", 12) or 0)))
         unload_models = bool(payload.get("unload_models", False))
+        memory_before = _memory_snapshot()
 
         queue = getattr(PromptServer.instance, "prompt_queue", None)
         if queue is not None:
@@ -361,7 +414,17 @@ async def shezw_upscale_cleanup(request):
                 cleanup_notes.append("torch_cuda")
         except Exception as exc:
             cleanup_notes.append(f"torch_cleanup_failed:{exc}")
-        _empty_windows_working_set()
+        cleanup_notes.append(_empty_windows_working_set())
+        memory_after = _memory_snapshot()
+        log.info(
+            "[Shezw Upscale] Cleanup endpoint prompt=%s unload_models=%s wait=%ss notes=%s mem_before=%s mem_after=%s",
+            prompt_id,
+            unload_models,
+            wait_seconds,
+            ",".join(cleanup_notes),
+            _format_memory_snapshot(memory_before),
+            _format_memory_snapshot(memory_after),
+        )
 
         return web.json_response({
             "ok": True,
@@ -369,6 +432,8 @@ async def shezw_upscale_cleanup(request):
             "wait_seconds": wait_seconds,
             "unload_models": unload_models,
             "notes": cleanup_notes,
+            "memory_before": memory_before,
+            "memory_after": memory_after,
         })
     except Exception as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=400)

@@ -1,6 +1,8 @@
 const { app } = window.comfyAPI.app;
 const { api } = window.comfyAPI.api;
 
+const DEFAULT_MAX_FRAMES_PER_SEGMENT = 24;
+
 const SHEZW_UPSCALE_STYLES = `
   .shezw-upscale-wrap {
     display: flex;
@@ -339,11 +341,12 @@ app.registerExtension({
         button.disabled = true;
         const restore = [];
         try {
-          const chunkSeconds = getNumberWidgetValue(node, "chunk_seconds", 0, 10, { min: 3, max: 300, integer: true });
+          const chunkSeconds = getNumberWidgetValue(node, "chunk_seconds", 0, 10, { min: 1, max: 300, integer: true });
           const segmentPrefix = `${getWidgetValue(node, "segment_prefix", 1, "video/upscale-segment") || "video/upscale-segment"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
           const outputPrefix = `${getWidgetValue(node, "output_prefix", 2, "video/upscale-merged") || "video/upscale-merged"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
           const cleanupWaitSeconds = getNumberWidgetValue(node, "cleanup_wait_seconds", 3, 12, { min: 0, max: 60, integer: true });
           const requestedStartSegment = getNumberWidgetValue(node, "start_segment_index", 4, 0, { min: 0, max: 100000, integer: true });
+          const maxFramesPerSegment = getNumberWidgetValue(node, "max_frames_per_segment", 5, DEFAULT_MAX_FRAMES_PER_SEGMENT, { min: 1, max: 4096, integer: true });
           const { loadNode, combineNode } = findUpscaleNodes();
 
           const video = `${getWidgetValue(loadNode, "video", 0, "") || ""}`;
@@ -357,7 +360,8 @@ app.registerExtension({
 
           const fps = Math.max(1, Number(info.fps || 24));
           const totalFrames = Math.max(1, Number(info.frame_count || Math.round((info.duration || 0) * fps)));
-          const chunkFrames = Math.max(1, Math.round(chunkSeconds * fps));
+          const secondsFrames = Math.max(1, Math.round(chunkSeconds * fps));
+          const chunkFrames = Math.max(1, Math.min(secondsFrames, maxFramesPerSegment));
           const totalChunks = Math.ceil(totalFrames / chunkFrames);
           const startSegment = Math.min(requestedStartSegment, Math.max(0, totalChunks - 1));
           if (startSegment !== requestedStartSegment) {
@@ -378,10 +382,14 @@ app.registerExtension({
             console.warn("[Shezw Upscale Chunker] missing previous segments", existing.missing);
           }
 
-          setStatus(`Preparing memory cleanup before chunks ${startSegment}-${totalChunks - 1} (${chunkSeconds}s each, cleanup ${cleanupWaitSeconds}s).`);
+          const effectiveChunkText = chunkFrames < secondsFrames
+            ? `${chunkFrames} frames max (${chunkSeconds}s cap)`
+            : `${chunkSeconds}s`;
+
+          setStatus(`Preparing memory cleanup before chunks ${startSegment}-${totalChunks - 1} (${effectiveChunkText}, cleanup ${cleanupWaitSeconds}s).`);
           await freeComfyMemory(null, Math.min(cleanupWaitSeconds, 5));
 
-          setStatus(`Queueing chunks ${startSegment}-${totalChunks - 1} of ${totalChunks} (${totalFrames} frames total, cleanup ${cleanupWaitSeconds}s).`);
+          setStatus(`Queueing chunks ${startSegment}-${totalChunks - 1} of ${totalChunks} (${totalFrames} frames total, ${effectiveChunkText}, cleanup ${cleanupWaitSeconds}s).`);
           const videos = [...existing.found];
           for (let i = startSegment; i < totalChunks; i++) {
             const start = i * chunkFrames;
@@ -397,6 +405,7 @@ app.registerExtension({
               index: i,
               start,
               cap,
+              maxFramesPerSegment,
               prefix,
               outputNode: combineNode.id,
             });

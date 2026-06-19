@@ -94,11 +94,74 @@ def _empty_windows_working_set():
         return "empty_working_set_skipped_non_windows"
     try:
         import ctypes
-        process = ctypes.windll.kernel32.GetCurrentProcess()
-        ok = ctypes.windll.psapi.EmptyWorkingSet(process)
-        return "empty_working_set" if ok else "empty_working_set_failed"
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        psapi = ctypes.WinDLL("psapi", use_last_error=True)
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+        psapi.EmptyWorkingSet.argtypes = [ctypes.c_void_p]
+        psapi.EmptyWorkingSet.restype = ctypes.c_bool
+        ctypes.set_last_error(0)
+        process = kernel32.GetCurrentProcess()
+        ok = psapi.EmptyWorkingSet(process)
+        err = ctypes.get_last_error()
+        return f"empty_working_set={'ok' if ok else 'failed'}:last_error={err}"
     except Exception as exc:
         return f"empty_working_set_failed:{exc}"
+
+
+def _trim_windows_native_memory():
+    if os.name != "nt":
+        return ["native_trim_skipped_non_windows"]
+
+    notes = []
+    try:
+        import ctypes
+
+        for dll_name in ("ucrtbase", "msvcrt"):
+            try:
+                crt = ctypes.CDLL(dll_name, use_errno=True)
+                heapmin = getattr(crt, "_heapmin")
+                heapmin.argtypes = []
+                heapmin.restype = ctypes.c_int
+                ctypes.set_errno(0)
+                result = heapmin()
+                errno = ctypes.get_errno()
+                notes.append(f"{dll_name}._heapmin={result}:errno={errno}")
+            except Exception as exc:
+                notes.append(f"{dll_name}._heapmin_failed:{exc}")
+
+        try:
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.GetProcessHeap.argtypes = []
+            kernel32.GetProcessHeap.restype = ctypes.c_void_p
+            kernel32.HeapCompact.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+            kernel32.HeapCompact.restype = ctypes.c_size_t
+            ctypes.set_last_error(0)
+            compacted = kernel32.HeapCompact(kernel32.GetProcessHeap(), 0)
+            err = ctypes.get_last_error()
+            notes.append(f"heap_compact={compacted}:last_error={err}")
+        except Exception as exc:
+            notes.append(f"heap_compact_failed:{exc}")
+
+        try:
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+            kernel32.SetProcessWorkingSetSize.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t]
+            kernel32.SetProcessWorkingSetSize.restype = ctypes.c_bool
+            ctypes.set_last_error(0)
+            ok = kernel32.SetProcessWorkingSetSize(
+                kernel32.GetCurrentProcess(),
+                ctypes.c_size_t(-1).value,
+                ctypes.c_size_t(-1).value,
+            )
+            err = ctypes.get_last_error()
+            notes.append(f"set_working_set_size={'ok' if ok else 'failed'}:last_error={err}")
+        except Exception as exc:
+            notes.append(f"set_working_set_size_failed:{exc}")
+    except Exception as exc:
+        notes.append(f"native_trim_failed:{exc}")
+
+    notes.append(_empty_windows_working_set())
+    return notes
 
 
 def _memory_snapshot():
@@ -229,7 +292,7 @@ def _release_python_and_torch_memory(unload_models: bool = False):
         notes.append(f"torch_cleanup_failed:{exc}")
 
     gc.collect()
-    notes.append(_empty_windows_working_set())
+    notes.extend(_trim_windows_native_memory())
     after = _memory_snapshot()
     tensors_after = _live_torch_tensor_snapshot()
     notes.append(f"mem_before[{_format_memory_snapshot(before)}]")
@@ -481,7 +544,7 @@ async def shezw_upscale_cleanup(request):
                 cleanup_notes.append("torch_cuda")
         except Exception as exc:
             cleanup_notes.append(f"torch_cleanup_failed:{exc}")
-        cleanup_notes.append(_empty_windows_working_set())
+        cleanup_notes.extend(_trim_windows_native_memory())
         memory_after = _memory_snapshot()
         tensors_after = _live_torch_tensor_snapshot()
         log.info(

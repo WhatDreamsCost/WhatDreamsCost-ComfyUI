@@ -242,6 +242,11 @@ function normalizeImportedStoryScript(data, storyNode) {
 
 function collectStoryScript(storyNode) {
   if (typeof window.shezwApplyGlobalPrefixToGraph === "function") window.shezwApplyGlobalPrefixToGraph();
+  for (const node of app?.graph?._nodes || []) {
+    if (node._timelineEditor && typeof node._timelineEditor.prepareStoryScriptStore === "function") {
+      node._timelineEditor.prepareStoryScriptStore();
+    }
+  }
   const workflowId = `${nodeProp(storyNode, "workflow_id", "ltx-director-pro") || "ltx-director-pro"}`.trim();
   const struct = getAllowedStruct(storyNode);
   const nodes = [];

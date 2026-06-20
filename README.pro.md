@@ -91,7 +91,7 @@ timeline_data.cutSegments
 
 直接在 ComfyUI 里 queue `ltx-director-pro.json` 时，不会再硬跑完整 30s/60s。节点会读取 `timeline_data.meta.longAuto=true`，先按切点和镜头边界规划，再顺序渲染所有 segment：第 N 段完成后从 ComfyUI history 读取 tail-frame PNG，如果第 N+1 段起点没有 keyframe，就把这张 tail-frame 自动作为下一段首帧。
 
-每个 segment 完成后，前端会立即更新 `timeline_data.meta.longAutoMemory` 并自动 Store 当前 story script；如果脚本里缺少分段记忆，导入后会根据当前 `GLOBAL_PREFIX` 扫描 `output/video/<GLOBAL_PREFIX>/` 下已有的 segment video 和 tail-frame 文件，按时间顺序恢复已完成状态。
+每个 segment 完成后，前端会立即更新 `timeline_data.meta.longAutoMemory` 并自动 Store 当前 story script；如果脚本里缺少分段记忆，导入后会根据当前 `GLOBAL_PREFIX` 扫描 `output/video/<GLOBAL_PREFIX>/` 下已有的 segment video 和 tail-frame 文件，按时间顺序恢复已完成状态。分段记忆现在绑定到当前 prefix；更换 prefix 会自动切换为空的分段记忆。对单段执行 `Reset` 会记录 reset 标记，后续 prefix 扫描不会把同一 prefix 下已重置的文件重新恢复成完成状态，直到该段重新生成成功。
 
 如果只想测试某一个 segment，可以在时间线设置按钮里切换 `Render Segment`，或者关闭 `queueAllByDefault` 后只渲染当前 active segment。
 

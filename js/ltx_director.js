@@ -1544,11 +1544,55 @@ class TimelineEditor {
 
   getLongAutoMemory() {
     if (!this.timeline.meta) this.timeline.meta = {};
+    const currentPrefix = this.getCurrentGlobalPrefix();
     const mem = this.timeline.meta.longAutoMemory;
     if (!mem || typeof mem !== "object" || !mem.segments || typeof mem.segments !== "object") {
-      this.timeline.meta.longAutoMemory = { schema: "shezw.long_auto.memory.v1", segments: {} };
+      this.timeline.meta.longAutoMemory = {
+        schema: "shezw.long_auto.memory.v1",
+        prefix: currentPrefix || "",
+        segments: {},
+        resetSegments: {},
+      };
+      return this.timeline.meta.longAutoMemory;
     }
+
+    const memoryPrefix = `${mem.prefix || ""}`.trim();
+    const inferredPrefix = this.inferLongAutoMemoryPrefix(mem);
+    const effectivePrefix = memoryPrefix || inferredPrefix;
+    if (currentPrefix && effectivePrefix && effectivePrefix !== currentPrefix) {
+      this.timeline.meta.longAutoMemory = {
+        schema: "shezw.long_auto.memory.v1",
+        prefix: currentPrefix,
+        segments: {},
+        resetSegments: {},
+        previousPrefix: effectivePrefix,
+        resetAt: new Date().toISOString(),
+      };
+      return this.timeline.meta.longAutoMemory;
+    }
+    mem.prefix = currentPrefix || effectivePrefix || "";
+    if (!mem.resetSegments || typeof mem.resetSegments !== "object") mem.resetSegments = {};
     return this.timeline.meta.longAutoMemory;
+  }
+
+  getCurrentGlobalPrefix() {
+    if (typeof window.shezwGetGlobalPrefix === "function") return `${window.shezwGetGlobalPrefix() || ""}`.trim();
+    return "";
+  }
+
+  inferLongAutoMemoryPrefix(memory) {
+    for (const record of Object.values(memory?.segments || {})) {
+      const subfolder = record?.video?.subfolder || record?.tailFrame?.subfolder || "";
+      const match = `${subfolder}`.replace(/\\/g, "/").match(/(?:^|\/)video\/([^/]+)/);
+      if (match?.[1]) return match[1];
+    }
+    return "";
+  }
+
+  prepareStoryScriptStore() {
+    if (!this.timeline.meta?.longAuto && !this.timeline.meta?.longAutoMemory) return;
+    this.getLongAutoMemory();
+    this.commitChanges(true);
   }
 
   segmentMemoryKey(seg) {
@@ -1561,8 +1605,10 @@ class TimelineEditor {
 
   setSegmentMemory(seg, record) {
     const memory = this.getLongAutoMemory();
+    const key = this.segmentMemoryKey(seg);
     memory.updatedAt = new Date().toISOString();
-    memory.segments[this.segmentMemoryKey(seg)] = {
+    delete memory.resetSegments?.[key];
+    memory.segments[key] = {
       index: seg.index,
       start: seg.start,
       end: seg.end,
@@ -1585,7 +1631,7 @@ class TimelineEditor {
 
   async reconcileLongAutoMemoryFromPrefix() {
     if (!this.timeline.meta?.longAuto) return false;
-    const prefix = typeof window.shezwGetGlobalPrefix === "function" ? window.shezwGetGlobalPrefix() : "";
+    const prefix = this.getCurrentGlobalPrefix();
     if (!prefix || this._lastPrefixAnalysis === prefix) return false;
     this._lastPrefixAnalysis = prefix;
 
@@ -1608,6 +1654,8 @@ class TimelineEditor {
       const seg = plan[index];
       const key = this.segmentMemoryKey(seg);
       const existing = memory.segments[key];
+      const reset = memory.resetSegments?.[key];
+      if (reset && (!reset.prefix || reset.prefix === prefix)) continue;
       if (existing?.tailFrame && existing?.video) continue;
 
       const tail = tails[index];
@@ -1655,7 +1703,13 @@ class TimelineEditor {
 
   resetSegmentMemory(seg) {
     const memory = this.getLongAutoMemory();
-    delete memory.segments[this.segmentMemoryKey(seg)];
+    const key = this.segmentMemoryKey(seg);
+    delete memory.segments[key];
+    if (!memory.resetSegments || typeof memory.resetSegments !== "object") memory.resetSegments = {};
+    memory.resetSegments[key] = {
+      prefix: this.getCurrentGlobalPrefix(),
+      resetAt: new Date().toISOString(),
+    };
     memory.updatedAt = new Date().toISOString();
     this.commitChanges();
     this.persistStoryScriptState("long_auto_memory_reset");

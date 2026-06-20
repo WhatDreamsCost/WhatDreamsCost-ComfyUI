@@ -148,7 +148,7 @@ function normalizeLegacyTimelineData(value, sourceWorkflow) {
     if (!Array.isArray(timeline[key])) timeline[key] = [];
   }
   const meta = timeline.meta && typeof timeline.meta === "object" ? timeline.meta : {};
-  const { longAutoMemory, tailFramePrefix, segmentVideoPrefix, ...keptMeta } = meta;
+  const { tailFramePrefix, segmentVideoPrefix, ...keptMeta } = meta;
   timeline.meta = {
     longAuto: true,
     activeSegmentIndex: 0,

@@ -309,10 +309,15 @@ function applyStoryScript(story, storyNode) {
 }
 
 function storyFilename(storyNode, story) {
-  const workflowId = `${nodeProp(storyNode, "workflow_id", story?.workflow_id || "story") || "story"}`.trim();
-  const raw = `${nodeProp(storyNode, "script_name", "") || workflowId || story?.workflow_id || "story"}`.trim() || "story";
-  if (raw.endsWith("-ss.json")) return raw;
-  return `${raw.replace(/\.json$/i, "")}-ss.json`;
+  const rawPrefix = `${story?.global_prefix || getGlobalPrefix() || widgetValue(storyNode, "global_prefix", "") || ""}`.trim();
+  const prefix = rawPrefix
+    .replace(/\.json$/i, "")
+    .replace(/-ss$/i, "")
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${prefix ? `${prefix}-` : ""}ltx-pro-ss.json`;
 }
 
 function downloadJson(filename, data) {
@@ -462,7 +467,6 @@ function buildMetaPanel(node) {
         const story = normalizeImportedStoryScript(imported, node);
         if (!story) throw new Error("Unsupported story script/workflow format");
         applyStoryScript(story, node);
-        setNodeProp(node, "script_name", file.name);
         importedFrom = file.name;
         setStatus(getGlobalPrefix());
       } catch (err) {

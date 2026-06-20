@@ -25,9 +25,7 @@ pro-workflows/ltx-director-pro.json
 | `pro-workflows/ltx-director-pro.json` | 主入口。Director Pro + Long Auto 合并版，双控制视频、参考图、关键帧、脚本导入导出、全局 prefix、分段 Continue / Re-gen。 | 推荐 |
 | `pro-workflows/ltx-director-pro-lip-sync.json` | 对口型：图 + 音频生成同长度视频，带全局 prefix 和 story script。 | 可用 |
 | `pro-workflows/ltx-director-pro-upscale.json` | 视频高清放大；支持分段 upscale 后自动拼接，带全局 prefix 和 story script。 | 可用 |
-| `pro-workflows/camera.json` | 单路 camera 版旧模板，已加入新 prefix / story script 控件。 | 兼容 |
-
-旧 `long-auto.json` / `pro-console.json` 已合并为 `ltx-director-pro.json`；旧 `lip-sync.json` / `upscale.json` 已改名为带 `ltx-director-pro-` 前缀的入口。
+旧 `long-auto.json` / `pro-console.json` 已合并为 `ltx-director-pro.json`；旧 `lip-sync.json` / `upscale.json` 已改名为带 `ltx-director-pro-` 前缀的入口；旧单路 `camera.json` 已删除，运镜/动作控制统一收敛到 `ltx-director-pro.json`。
 
 所有新版工作流都包含两个通用节点：
 
@@ -211,7 +209,7 @@ ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors
 - 但底层默认仍是 Union Control，不是 Motion Track 专用 LoRA，也不是官方 API 的 `camera_motion` 参数。
 
 如果要真正使用 Motion Track 专用能力，需要切换到对应 Motion Track IC-LoRA 和匹配的轨迹视频/annotator 链路。
-`ltx-director-pro.json` 使用两路 `camera_control_image` 和 `motion_control_image`；旧 `camera.json` 仍保留单路 `ic_control_image` 用于回溯。两者都是填了视频，并且对应 IC-Control 轨道段强度大于 0 时才生效。
+`ltx-director-pro.json` 使用两路 `camera_control_image` 和 `motion_control_image`。旧单路 `ic_control_image` 的 `camera.json` 已删除；后续运镜/动作控制统一在主工作流里维护。
 
 ## 安装
 

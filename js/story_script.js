@@ -38,6 +38,56 @@ function parseJson(text, fallback) {
   }
 }
 
+const WORKFLOW_WIDGET_NAMES = {
+  LTXDirector: [
+    "global_prompt",
+    "duration_frames",
+    "frame_rate",
+    "timeline_data",
+    "local_prompts",
+    "segment_lengths",
+    "epsilon",
+    "guide_strength",
+    "use_custom_audio",
+    "audio_frame_rate",
+    "display_mode",
+    "custom_width",
+    "custom_height",
+    "resize_method",
+    "divisible_by",
+    "img_compression",
+    "metadata",
+  ],
+  LoadVideoUI: [
+    "video",
+    "start_time",
+    "end_time",
+    "duration",
+    "start_frame",
+    "end_frame",
+    "duration_frames",
+    "resize_method",
+    "custom_width",
+    "custom_height",
+    "frame_rate",
+    "display_mode",
+    "crop_x",
+    "crop_y",
+    "crop_w",
+    "crop_h",
+  ],
+  LoadAudioUI: ["audio", "start_time", "end_time", "duration", "display_mode"],
+  ShezwUpscaleChunker: [
+    "chunk_seconds",
+    "segment_prefix",
+    "output_prefix",
+    "cleanup_wait_seconds",
+    "start_segment_index",
+  ],
+  ShezwGlobalPrefix: ["global_prefix"],
+  ShezwMetaInfo: ["global_prefix"],
+};
+
 function getStoryNode() {
   return (app?.graph?._nodes || []).find((node) => node.type === "ShezwMetaInfo")
     || (app?.graph?._nodes || []).find((node) => node.type === "ShezwStoryScript");
@@ -69,6 +119,116 @@ function getAllowedWidgets(struct, node) {
     for (const name of entry.widgets || []) names.add(name);
   }
   return names;
+}
+
+function looksLikeLongAutoWorkflow(data) {
+  if (!data || !Array.isArray(data.nodes)) return false;
+  const haystack = [
+    data.id,
+    data.name,
+    data.title,
+    ...(data.nodes || []).flatMap((node) => [node.type, node.title, ...(node.widgets_values || [])]),
+  ].join(" ").toLowerCase();
+  return haystack.includes("long-auto")
+    || haystack.includes("long_auto")
+    || haystack.includes("long auto")
+    || haystack.includes("long_auto_segment_template");
+}
+
+function normalizeLegacyTimelineData(value, sourceWorkflow) {
+  const timeline = parseJson(value, null);
+  if (!timeline || !looksLikeLongAutoWorkflow(sourceWorkflow)) return value;
+  for (const key of ["segments", "audioSegments", "cameraSegments", "controlSegments", "promptSegments", "referenceImages", "cutSegments"]) {
+    if (!Array.isArray(timeline[key])) timeline[key] = [];
+  }
+  const meta = timeline.meta && typeof timeline.meta === "object" ? timeline.meta : {};
+  timeline.meta = {
+    longAuto: true,
+    activeSegmentIndex: 0,
+    maxSegmentSeconds: 15,
+    keyframeToleranceSeconds: 0.25,
+    directQueueMode: "active_segment_only",
+    queueAllByDefault: true,
+    autoCut: true,
+    manualCutToleranceSeconds: 0.25,
+    tailFramePrefix: "video/ltx-director-pro-tail-frame",
+    segmentVideoPrefix: "video/ltx-director-pro-segment",
+    ...meta,
+  };
+  return JSON.stringify(timeline);
+}
+
+function workflowWidgetNames(workflowNode) {
+  const inputNames = (workflowNode.inputs || [])
+    .map((input) => input?.widget?.name)
+    .filter(Boolean);
+  if (inputNames.length) return inputNames;
+  return WORKFLOW_WIDGET_NAMES[workflowNode.type] || [];
+}
+
+function workflowWidgetValue(workflowNode, names, index, name) {
+  const values = workflowNode.widgets_values || [];
+  if (Array.isArray(values)) return values[index];
+  if (values && typeof values === "object") return values[name];
+  return undefined;
+}
+
+function storyScriptFromLegacyWorkflow(data, storyNode) {
+  if (!data || !Array.isArray(data.nodes)) return null;
+  const struct = getAllowedStruct(storyNode);
+  const fields = Array.isArray(struct.fields) ? struct.fields : [];
+  const entries = [];
+  let globalPrefix = getGlobalPrefix();
+
+  for (const workflowNode of data.nodes) {
+    const names = workflowWidgetNames(workflowNode);
+    const values = workflowNode.widgets_values || [];
+    const hasValues = Array.isArray(values) ? values.length > 0 : values && typeof values === "object" && Object.keys(values).length > 0;
+    if (!names.length || !hasValues) continue;
+
+    const widgets = {};
+    for (const field of fields) {
+      if (field.node_id !== undefined && String(field.node_id) !== String(workflowNode.id)) continue;
+      if (field.node_type && field.node_type !== workflowNode.type) continue;
+      if (field.title && field.title !== workflowNode.title) continue;
+      const allowed = new Set(field.widgets || (field.widget ? [field.widget] : []));
+      for (let index = 0; index < names.length; index += 1) {
+        const name = names[index];
+        if (!allowed.has(name)) continue;
+        const value = workflowWidgetValue(workflowNode, names, index, name);
+        if (value === undefined) continue;
+        widgets[name] = name === "timeline_data"
+          ? normalizeLegacyTimelineData(value, data)
+          : value;
+      }
+    }
+
+    if (widgets.global_prefix) globalPrefix = widgets.global_prefix;
+    if (Object.keys(widgets).length) {
+      entries.push({
+        id: String(workflowNode.id),
+        type: workflowNode.type,
+        title: workflowNode.title || "",
+        widgets,
+      });
+    }
+  }
+
+  if (!entries.length) return null;
+  return {
+    schema: "ltx-director-pro.story-script.v1",
+    workflow_id: `${nodeProp(storyNode, "workflow_id", data.id || "ltx-director-pro") || "ltx-director-pro"}`.trim(),
+    global_prefix: globalPrefix,
+    created_at: new Date().toISOString(),
+    imported_from_schema: data.version ? `workflow-${data.version}` : "legacy-workflow",
+    ss_struct: struct,
+    nodes: entries,
+  };
+}
+
+function normalizeImportedStoryScript(data, storyNode) {
+  if (data?.schema === "ltx-director-pro.story-script.v1" && Array.isArray(data.nodes)) return data;
+  return storyScriptFromLegacyWorkflow(data, storyNode);
 }
 
 function collectStoryScript(storyNode) {
@@ -276,7 +436,9 @@ function buildMetaPanel(node) {
       const file = input.files?.[0];
       if (!file) return;
       try {
-        const story = JSON.parse(await file.text());
+        const imported = JSON.parse(await file.text());
+        const story = normalizeImportedStoryScript(imported, node);
+        if (!story) throw new Error("Unsupported story script/workflow format");
         applyStoryScript(story, node);
         setNodeProp(node, "script_name", file.name);
         importedFrom = file.name;

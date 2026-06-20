@@ -31,7 +31,7 @@ pro-workflows/ltx-director-pro.json
 
 - 只显示全局 prefix 输入框和 `Gen` / `Apply` / `Import` / `Store` / `Export` 按钮。
 - `Gen` 会生成数字 ID，格式为 `YYYYMMDDHHMM` + 4 位随机数；`Apply` 会把当前图里 `filename_prefix`、`segment_prefix`、`output_prefix` 统一改到 `video/<ID>/...`，普通 Queue 和 `Queue Chunks` 都会自动应用。
-- `Import` / `Store` / `Export` 处理 `*-ss.json`。它只保存内容相关字段，例如 Director 时间线、关键帧、参考图、控制视频、音频、裁切、时长、分辨率等，不保存整个 Comfy workflow。
+- `Import` / `Store` / `Export` 处理 `*-ss.json`。它只保存内容相关字段，例如 Director 时间线、关键帧、参考图、控制视频、音频、裁切、时长、分辨率等，不保存整个 Comfy workflow。`Import` 也能读取旧版完整 workflow JSON，例如旧 `long-auto.json`，并自动抽取/迁移这些内容字段。
 - `workflow_id`、默认文件名、`ss_struct`、脚本缓存和 export 目录都保存在 workflow JSON 的节点属性里，不在 UI 上显示。
 
 ## Long Auto

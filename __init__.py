@@ -30,7 +30,9 @@ import weakref
 
 log = logging.getLogger(__name__)
 _upscale_tracking_prompt_id = contextvars.ContextVar("shezw_upscale_tracking_prompt_id", default=None)
+_cleanup_prompt_kind = contextvars.ContextVar("shezw_cleanup_prompt_kind", default=None)
 _tracked_upscale_tensors = []
+_preview_guard_logged_prompt_ids = set()
 
 
 def _safe_output_prefix(prefix: str) -> str:
@@ -529,6 +531,56 @@ def _release_python_and_torch_memory(unload_models: bool = False):
     return notes
 
 
+def _prompt_cleanup_kind(extra_data):
+    if not isinstance(extra_data, dict):
+        return None
+    if extra_data.get("shezw_long_auto_segment"):
+        return "long_auto"
+    if extra_data.get("shezw_upscale_chunk"):
+        return "upscale"
+    if extra_data.get("shezw_cleanup_after_prompt"):
+        return "prompt"
+    return None
+
+
+def _install_ltx_tae_preview_guard():
+    try:
+        import sys
+    except Exception:
+        return False
+
+    for module_name, module in list(sys.modules.items()):
+        if not module_name.endswith("ltxv_nodes"):
+            continue
+        previewer_cls = getattr(module, "WrappedPreviewer", None)
+        if previewer_cls is None or getattr(previewer_cls, "_shezw_tae_preview_guard", False):
+            return True
+        original_decode = getattr(previewer_cls, "decode_latent_to_preview_image", None)
+        if original_decode is None:
+            continue
+
+        def decode_latent_to_preview_image_guarded(self, preview_format, x0, _original_decode=original_decode):
+            kind = _cleanup_prompt_kind.get()
+            prompt_id = _upscale_tracking_prompt_id.get()
+            if kind == "long_auto" and getattr(self, "taeltx", None) is not None:
+                if prompt_id and prompt_id not in _preview_guard_logged_prompt_ids:
+                    _preview_guard_logged_prompt_ids.add(prompt_id)
+                    log.info(
+                        "[Shezw SegmentCleanup] Skipped KJNodes TAE latent preview decode for long-auto prompt %s.",
+                        prompt_id,
+                    )
+                    if len(_preview_guard_logged_prompt_ids) > 128:
+                        _preview_guard_logged_prompt_ids.clear()
+                return None
+            return _original_decode(self, preview_format, x0)
+
+        previewer_cls.decode_latent_to_preview_image = decode_latent_to_preview_image_guarded
+        previewer_cls._shezw_tae_preview_guard = True
+        log.info("[Shezw SegmentCleanup] Installed KJNodes TAE latent preview guard.")
+        return True
+    return False
+
+
 def _install_upscale_prompt_cleanup_patch():
     try:
         import execution
@@ -561,23 +613,26 @@ def _install_upscale_prompt_cleanup_patch():
         execution._shezw_upscale_tensor_tracking_patch = True
 
     async def execute_async_with_upscale_cleanup(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
-        is_upscale_chunk = isinstance(extra_data, dict) and extra_data.get("shezw_upscale_chunk")
+        cleanup_kind = _prompt_cleanup_kind(extra_data)
         original_cache_type = getattr(self, "cache_type", None)
         chunk_cache_notes = []
         tracking_token = None
-        if is_upscale_chunk:
+        cleanup_kind_token = None
+        if cleanup_kind:
+            _install_ltx_tae_preview_guard()
             try:
                 none_cache_type = getattr(execution.CacheType, "NONE")
                 self.cache_type = none_cache_type
                 self.caches = cache_set_cls(cache_type=none_cache_type, cache_args=self.cache_args)
-                chunk_cache_notes.append("chunk_cache_type_none")
+                chunk_cache_notes.append("prompt_cache_type_none")
             except Exception as exc:
-                chunk_cache_notes.append(f"chunk_cache_type_none_failed:{exc}")
+                chunk_cache_notes.append(f"prompt_cache_type_none_failed:{exc}")
             tracking_token = _upscale_tracking_prompt_id.set(str(prompt_id))
+            cleanup_kind_token = _cleanup_prompt_kind.set(cleanup_kind)
         try:
             return await original_execute_async(self, prompt, prompt_id, extra_data, execute_outputs)
         finally:
-            if not is_upscale_chunk:
+            if not cleanup_kind:
                 return
             unload_models = bool(extra_data.get("shezw_unload_models_after_prompt", True))
             try:
@@ -589,20 +644,23 @@ def _install_upscale_prompt_cleanup_patch():
                 tracked_tensors_after = _tracked_upscale_tensor_snapshot(str(prompt_id), include_referrers=True)
                 notes.append(f"tracked_tensors_after[{_format_tracked_tensor_snapshot(tracked_tensors_after)}]")
                 log.info(
-                    "[Shezw Upscale] Cleared executor caches after chunk prompt %s; unload_models=%s; notes=%s",
+                    "[Shezw SegmentCleanup] Cleared executor caches after %s prompt %s; unload_models=%s; notes=%s",
+                    cleanup_kind,
                     prompt_id,
                     unload_models,
                     ",".join(chunk_cache_notes + notes),
                 )
             except Exception as exc:
-                log.warning("[Shezw Upscale] Executor cache cleanup failed after prompt %s: %s", prompt_id, exc)
+                log.warning("[Shezw SegmentCleanup] Executor cache cleanup failed after prompt %s: %s", prompt_id, exc)
             finally:
                 if tracking_token is not None:
                     _upscale_tracking_prompt_id.reset(tracking_token)
+                if cleanup_kind_token is not None:
+                    _cleanup_prompt_kind.reset(cleanup_kind_token)
 
     executor_cls.execute_async = execute_async_with_upscale_cleanup
     executor_cls._shezw_upscale_cleanup_patch = True
-    log.info("[Shezw Upscale] Installed per-chunk executor cache cleanup patch.")
+    log.info("[Shezw SegmentCleanup] Installed per-prompt executor cache cleanup patch.")
 
 
 _install_upscale_prompt_cleanup_patch()
@@ -815,6 +873,7 @@ async def shezw_upscale_concat(request):
         return web.json_response({"error": str(exc)}, status=400)
 
 
+@PromptServer.instance.routes.post("/shezw/prompt/cleanup")
 @PromptServer.instance.routes.post("/shezw/upscale/cleanup")
 async def shezw_upscale_cleanup(request):
     try:
@@ -868,7 +927,7 @@ async def shezw_upscale_cleanup(request):
         tensors_after = _live_torch_tensor_snapshot()
         tracked_tensors_after = _tracked_upscale_tensor_snapshot(str(prompt_id) if prompt_id else None, include_referrers=True)
         log.info(
-            "[Shezw Upscale] Cleanup endpoint prompt=%s unload_models=%s wait=%ss notes=%s mem_before=%s mem_after=%s live_tensors_after=%s tracked_tensors_after=%s",
+            "[Shezw SegmentCleanup] Cleanup endpoint prompt=%s unload_models=%s wait=%ss notes=%s mem_before=%s mem_after=%s live_tensors_after=%s tracked_tensors_after=%s",
             prompt_id,
             unload_models,
             wait_seconds,

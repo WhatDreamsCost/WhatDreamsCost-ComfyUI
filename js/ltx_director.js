@@ -1241,19 +1241,18 @@ class TimelineEditor {
     }
     if (app?.graphToPrompt && api) {
       const prompt = await app.graphToPrompt();
-      if (typeof api.queuePrompt === "function") {
-        const queued = await api.queuePrompt(0, prompt);
-        const promptId = queued?.prompt_id || queued?.promptId || queued?.id;
-        if (promptId) return String(promptId);
-        throw new Error(`ComfyUI queued the prompt but did not return a prompt_id: ${JSON.stringify(queued)}`);
-      }
       const resp = await api.fetchApi("/prompt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           client_id: api.clientId,
           prompt: prompt.output,
-          extra_data: { extra_pnginfo: { workflow: prompt.workflow } },
+          extra_data: {
+            extra_pnginfo: { workflow: prompt.workflow },
+            shezw_long_auto_segment: true,
+            shezw_cleanup_after_prompt: true,
+            shezw_unload_models_after_prompt: true,
+          },
         }),
       });
       const data = await resp.json();
@@ -1278,6 +1277,34 @@ class TimelineEditor {
       }
     }
     throw new Error("ComfyUI queuePrompt API is unavailable in this frontend build.");
+  }
+
+  async cleanupPromptAfterSegment(promptId, waitSeconds = 2) {
+    if (!promptId || !api?.fetchApi) return;
+    const payload = {
+      prompt_id: String(promptId),
+      wait_seconds: waitSeconds,
+      unload_models: true,
+    };
+    const endpoints = ["/shezw/prompt/cleanup", "/shezw/upscale/cleanup"];
+    for (const endpoint of endpoints) {
+      try {
+        const resp = await api.fetchApi(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (resp.ok) return;
+        if (resp.status !== 404 || endpoint === endpoints[endpoints.length - 1]) {
+          console.warn("[Shezw LongAuto] Prompt cleanup endpoint failed", endpoint, resp.status, await resp.text());
+          return;
+        }
+      } catch (err) {
+        if (endpoint === endpoints[endpoints.length - 1]) {
+          console.warn("[Shezw LongAuto] Prompt cleanup request failed", err);
+        }
+      }
+    }
   }
 
   async waitForPromptHistory(promptId, timeoutMs = 1000 * 60 * 60 * 6) {
@@ -1695,24 +1722,31 @@ class TimelineEditor {
         this.commitChanges(true);
         await new Promise((resolve) => setTimeout(resolve, 0));
         const queuedAtSeconds = Date.now() / 1000;
-        const promptId = await this.queueCurrentGraphPrompt();
-        const history = await this.waitForPromptHistory(promptId);
-        const tailFrame = this.extractTailFrameFromHistory(history) || await this.fetchLatestTailFrame(queuedAtSeconds);
-        const segmentVideo = this.extractSegmentVideoFromHistory(history);
-        if (!tailFrame && seg.index < plan.length - 1) {
-          throw new Error(`Segment ${seg.index} finished without a tail-frame PNG; stopped before queuing the next segment.`);
+        let promptId = null;
+        try {
+          promptId = await this.queueCurrentGraphPrompt();
+          const history = await this.waitForPromptHistory(promptId);
+          const tailFrame = this.extractTailFrameFromHistory(history) || await this.fetchLatestTailFrame(queuedAtSeconds);
+          const segmentVideo = this.extractSegmentVideoFromHistory(history);
+          if (!tailFrame && seg.index < plan.length - 1) {
+            throw new Error(`Segment ${seg.index} finished without a tail-frame PNG; stopped before queuing the next segment.`);
+          }
+          if (tailFrame) previousTailFrame = tailFrame;
+          this.setSegmentMemory(seg, {
+            status: "done",
+            promptId,
+            queuedAtSeconds,
+            completedAt: new Date().toISOString(),
+            tailFrame,
+            video: segmentVideo,
+          });
+          this.commitChanges(true);
+          await this.persistStoryScriptState("long_auto_segment_done");
+          await this.cleanupPromptAfterSegment(promptId, 2);
+        } catch (err) {
+          if (promptId) await this.cleanupPromptAfterSegment(promptId, 2);
+          throw err;
         }
-        if (tailFrame) previousTailFrame = tailFrame;
-        this.setSegmentMemory(seg, {
-          status: "done",
-          promptId,
-          queuedAtSeconds,
-          completedAt: new Date().toISOString(),
-          tailFrame,
-          video: segmentVideo,
-        });
-        this.commitChanges(true);
-        await this.persistStoryScriptState("long_auto_segment_done");
         if (stopAfterOne) break;
       }
     } catch (err) {

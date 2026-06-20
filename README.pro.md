@@ -164,6 +164,17 @@ pro-workflows/ltx-director-pro-upscale.json
 
 2026-06-19 现场日志确认：分段清理钩子已经安装并执行，`CacheType.NONE` 生效。加入 Windows native trim 后，`_heapmin`、`HeapCompact`、`SetProcessWorkingSetSize` 和 `EmptyWorkingSet` 都能执行，`rss/uss` 会明显下降；但 Windows 原生 `GetProcessMemoryInfo` 显示 `win_private_mb/PagefileUsage` 仍随每段增加，说明是 ComfyUI 进程私有提交内存没有释放，不是单纯 working set 显示问题。后端继续用 weakref 追踪 upscale chunk 执行期间各节点输出 tensor，日志字段 `tracked_tensors_after` 会列出清理后仍存活的大 tensor 来源节点、shape、大小和 referrer 摘要；同时记录 `comfy_pinned_mb` 以确认是否是 Comfy/PyTorch pinned host memory 池在增长。如果没有大 tensor 存活且 pinned memory 不增长，但 `win_private_mb` 仍增长，则问题更偏向 PyTorch/CRT/native allocator 内部保留。
 
+### Long-auto 分段内存释放记录
+
+2026-06-21 现场日志确认：`long-auto` 分段队列之前走的是 ComfyUI 前端的 `api.queuePrompt()`，没有携带 `shezw_upscale_chunk` 或 `shezw_cleanup_after_prompt` 标记，所以后端只安装了清理 patch，但实际 long-auto prompt 没有进入 executor cache 清理路径。日志表现为多段连续执行时只有 `[Shezw LongAuto] Direct Queue renders segment ...`，没有对应的 `Cleared executor caches` 或 cleanup endpoint 记录。
+
+当前处理策略：
+
+- long-auto 分段提交改为显式 `/prompt`，并带上 `shezw_long_auto_segment=true`、`shezw_cleanup_after_prompt=true`、`shezw_unload_models_after_prompt=true`。
+- 后端分段清理钩子从只识别 upscale chunk 改为识别通用 cleanup prompt；带标记的 long-auto 分段会临时使用 `CacheType.NONE`，结束后重建 `PromptExecutor` cache。
+- 前端会在读取该段 history、记录 tail-frame 和 segment video 到 story script 后，调用 `/shezw/prompt/cleanup` 删除 prompt history、触发 ComfyUI `free_memory`/`unload_models`、执行 Python/Torch/native trim。
+- 这次 OOM 栈的直接失败点不是段结束清理，而是 KJNodes `LTX2SamplingPreviewOverride` 在采样回调里用 TAE 解 latent preview，`torch.stack(out, 1)` 单次申请约 2.17GB CPU 内存。long-auto cleanup prompt 会跳过这个 TAE latent preview decode，避免预览路径在高分辨率/长 latent 段内产生额外大块 CPU 分配。
+
 ## 镜头控制
 
 Camera 轨道目前使用 LTX 官方明确暴露的固定镜头用法，不再允许自由输入镜头文本：

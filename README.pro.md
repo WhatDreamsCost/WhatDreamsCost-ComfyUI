@@ -32,6 +32,7 @@ pro-workflows/ltx-director-pro.json
 - 只显示全局 prefix 输入框和 `Gen` / `Apply` / `Import` / `Store` / `Export` 按钮。
 - `Gen` 会生成数字 ID，格式为 `YYYYMMDDHHMM` + 4 位随机数；`Apply` 会把当前图里 `filename_prefix`、`segment_prefix`、`output_prefix` 统一改到 `video/<ID>/...`，普通 Queue 和 `Queue Chunks` 都会自动应用。
 - `Import` / `Store` / `Export` 处理 `*-ss.json`。它只保存内容相关字段，例如 Director 时间线、关键帧、参考图、控制视频、音频、裁切、时长、分辨率等，不保存整个 Comfy workflow。`Import` 也能读取旧版完整 workflow JSON，例如旧 `long-auto.json`，并自动抽取/迁移这些内容字段。
+- Long Auto 每段完成或重置分段记忆后，会自动把当前 story script 写回默认文件 `${GLOBAL_PREFIX}-ltx-pro-ss.json`；重新导入脚本后也会按安全 prefix 扫描 `output/video/<GLOBAL_PREFIX>/`，用已有 segment video / tail-frame 文件补全分段完成状态。
 - `workflow_id`、默认文件名、`ss_struct`、脚本缓存和 export 目录都保存在 workflow JSON 的节点属性里，不在 UI 上显示。
 
 ## Long Auto
@@ -89,6 +90,8 @@ timeline_data.cutSegments
 ```
 
 直接在 ComfyUI 里 queue `ltx-director-pro.json` 时，不会再硬跑完整 30s/60s。节点会读取 `timeline_data.meta.longAuto=true`，先按切点和镜头边界规划，再顺序渲染所有 segment：第 N 段完成后从 ComfyUI history 读取 tail-frame PNG，如果第 N+1 段起点没有 keyframe，就把这张 tail-frame 自动作为下一段首帧。
+
+每个 segment 完成后，前端会立即更新 `timeline_data.meta.longAutoMemory` 并自动 Store 当前 story script；如果脚本里缺少分段记忆，导入后会根据当前 `GLOBAL_PREFIX` 扫描 `output/video/<GLOBAL_PREFIX>/` 下已有的 segment video 和 tail-frame 文件，按时间顺序恢复已完成状态。
 
 如果只想测试某一个 segment，可以在时间线设置按钮里切换 `Render Segment`，或者关闭 `queueAllByDefault` 后只渲染当前 active segment。
 

@@ -40,6 +40,17 @@ def _safe_output_prefix(prefix: str) -> str:
     return prefix
 
 
+def _safe_global_prefix(prefix: str) -> str:
+    prefix = (prefix or "").replace("\\", "/").strip().strip("/")
+    if not prefix or "/" in prefix or ".." in prefix:
+        raise ValueError("Invalid global prefix")
+    safe = "".join(ch if ch.isalnum() or ch in ("-", "_", ".") else "-" for ch in prefix)
+    safe = safe.strip("-._")
+    if not safe:
+        raise ValueError("Invalid global prefix")
+    return safe[:128]
+
+
 def _safe_rel_path(path: str) -> str:
     path = (path or "").replace("\\", "/").strip().strip("/")
     if not path or path.startswith("/") or ".." in path.split("/"):
@@ -635,6 +646,75 @@ async def shezw_latest_tail_frame(request):
         })
     except Exception as exc:
         return web.json_response({"found": False, "error": str(exc)}, status=400)
+
+
+@PromptServer.instance.routes.get("/shezw/long_auto/prefix_outputs")
+async def shezw_long_auto_prefix_outputs(request):
+    try:
+        global_prefix = _safe_global_prefix(request.query.get("prefix", ""))
+        output_dir = os.path.abspath(folder_paths.get_output_directory())
+        prefix_rel = os.path.join("video", global_prefix)
+        prefix_dir = os.path.abspath(os.path.join(output_dir, prefix_rel))
+        if not (prefix_dir == output_dir or prefix_dir.startswith(output_dir + os.sep)):
+            raise ValueError("Prefix folder escapes output directory")
+
+        image_exts = {".png", ".jpg", ".jpeg", ".webp"}
+        video_exts = {".mp4", ".webm", ".mov", ".mkv"}
+
+        def file_ref(path):
+            rel = os.path.relpath(path, output_dir).replace("\\", "/")
+            return {
+                "filename": os.path.basename(path),
+                "subfolder": os.path.dirname(rel).replace("\\", "/"),
+                "type": "output",
+                "mtime": os.path.getmtime(path),
+                "size": os.path.getsize(path),
+                "relpath": rel,
+            }
+
+        files = []
+        if os.path.isdir(prefix_dir):
+            for root, _dirs, names in os.walk(prefix_dir):
+                for name in names:
+                    ext = os.path.splitext(name)[1].lower()
+                    if ext not in image_exts and ext not in video_exts:
+                        continue
+                    path = os.path.join(root, name)
+                    if os.path.isfile(path):
+                        files.append(file_ref(path))
+
+        files.sort(key=lambda item: item["mtime"])
+        tails = [
+            item for item in files
+            if os.path.splitext(item["filename"])[1].lower() in image_exts
+            and (
+                "tail-frame" in item["relpath"].lower()
+                or "tail_frame" in item["relpath"].lower()
+                or "last-frame" in item["relpath"].lower()
+                or "last_frame" in item["relpath"].lower()
+            )
+        ]
+        videos = [
+            item for item in files
+            if os.path.splitext(item["filename"])[1].lower() in video_exts
+            and (
+                "segment" in item["relpath"].lower()
+                or "ltx-director-pro" in item["relpath"].lower()
+                or "director-pro" in item["relpath"].lower()
+            )
+        ]
+
+        return web.json_response({
+            "ok": True,
+            "prefix": global_prefix,
+            "folder": prefix_rel.replace("\\", "/"),
+            "exists": os.path.isdir(prefix_dir),
+            "files": files,
+            "tail_frames": tails,
+            "segment_videos": videos,
+        })
+    except Exception as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
 
 @PromptServer.instance.routes.get("/shezw/upscale/video_info")

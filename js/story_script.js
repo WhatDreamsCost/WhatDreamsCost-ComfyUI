@@ -351,6 +351,12 @@ async function saveStoryScript(storyNode, exportDir = "") {
   return data;
 }
 
+window.shezwStoreCurrentStoryScript = async function (exportDir = "") {
+  const storyNode = getStoryNode();
+  if (!storyNode) throw new Error("Meta Info node not found");
+  return await saveStoryScript(storyNode, exportDir);
+};
+
 function hideWidget(node, name) {
   const widget = getWidget(node, name);
   if (!widget) return;

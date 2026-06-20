@@ -998,6 +998,9 @@ class TimelineEditor {
     this.currentFrame = 0;
     this.updateUIFromSelection();
     this.commitChanges();
+    this.reconcileLongAutoMemoryFromPrefix().catch((err) => {
+      console.warn("[Shezw LongAuto] Prefix output analysis failed", err);
+    });
   }
 
   getDurationFrames() {
@@ -1541,11 +1544,94 @@ class TimelineEditor {
     };
   }
 
+  async persistStoryScriptState(reason = "long_auto_update") {
+    if (typeof window.shezwStoreCurrentStoryScript !== "function") return null;
+    try {
+      const result = await window.shezwStoreCurrentStoryScript("");
+      console.info("[Shezw LongAuto] Stored story script", { reason, filename: result?.filename });
+      return result;
+    } catch (err) {
+      console.warn("[Shezw LongAuto] Story script auto-store failed", { reason, err });
+      return null;
+    }
+  }
+
+  async reconcileLongAutoMemoryFromPrefix() {
+    if (!this.timeline.meta?.longAuto) return false;
+    const prefix = typeof window.shezwGetGlobalPrefix === "function" ? window.shezwGetGlobalPrefix() : "";
+    if (!prefix || this._lastPrefixAnalysis === prefix) return false;
+    this._lastPrefixAnalysis = prefix;
+
+    const plan = this.getLongAutoPlan();
+    if (!plan.length || !api?.fetchApi) return false;
+
+    const resp = await api.fetchApi(`/shezw/long_auto/prefix_outputs?${new URLSearchParams({ prefix }).toString()}`);
+    if (!resp.ok) throw new Error(await resp.text());
+    const data = await resp.json();
+    if (!data?.ok) throw new Error(data?.error || "Prefix output analysis failed");
+
+    const tails = Array.isArray(data.tail_frames) ? data.tail_frames : [];
+    const videos = Array.isArray(data.segment_videos) ? data.segment_videos : [];
+    if (!tails.length && !videos.length) return false;
+
+    const memory = this.getLongAutoMemory();
+    let changed = false;
+    const count = Math.min(plan.length, Math.max(tails.length, videos.length));
+    for (let index = 0; index < count; index += 1) {
+      const seg = plan[index];
+      const key = this.segmentMemoryKey(seg);
+      const existing = memory.segments[key];
+      if (existing?.tailFrame && existing?.video) continue;
+
+      const tail = tails[index];
+      const video = videos[index];
+      const record = {
+        ...(existing || {}),
+        status: "done",
+        recoveredFromPrefix: true,
+        recoveredAt: new Date().toISOString(),
+      };
+      if (tail && !record.tailFrame) {
+        record.tailFrame = {
+          imageFile: tail.filename,
+          imageType: tail.type || "output",
+          subfolder: tail.subfolder || "",
+          guideStrength: 1.0,
+        };
+      }
+      if (video && !record.video) {
+        record.video = {
+          videoFile: video.filename,
+          videoType: video.type || "output",
+          subfolder: video.subfolder || "",
+        };
+      }
+      if (!record.tailFrame && !record.video) continue;
+      memory.segments[key] = {
+        index: seg.index,
+        start: seg.start,
+        end: seg.end,
+        reasons: [...(seg.reasons || [])],
+        ...record,
+      };
+      changed = true;
+    }
+
+    if (changed) {
+      memory.updatedAt = new Date().toISOString();
+      this.commitChanges();
+      await this.persistStoryScriptState("prefix_output_analysis");
+      this.updateLongAutoUI();
+    }
+    return changed;
+  }
+
   resetSegmentMemory(seg) {
     const memory = this.getLongAutoMemory();
     delete memory.segments[this.segmentMemoryKey(seg)];
     memory.updatedAt = new Date().toISOString();
     this.commitChanges();
+    this.persistStoryScriptState("long_auto_memory_reset");
     this.render();
   }
 
@@ -1626,6 +1712,7 @@ class TimelineEditor {
           video: segmentVideo,
         });
         this.commitChanges(true);
+        await this.persistStoryScriptState("long_auto_segment_done");
         if (stopAfterOne) break;
       }
     } catch (err) {
@@ -1637,6 +1724,7 @@ class TimelineEditor {
       if (rememberedMemory) this.timeline.meta.longAutoMemory = rememberedMemory;
       this._isQueueingAllCuts = false;
       this.commitChanges();
+      await this.persistStoryScriptState("long_auto_queue_finished");
       this.updateLongAutoUI();
     }
   }

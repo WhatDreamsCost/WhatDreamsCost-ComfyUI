@@ -989,6 +989,17 @@ class TimelineEditor {
     window.removeEventListener("paste", this.handlePaste, true);
   }
 
+  reloadFromWidgets() {
+    this.timeline = parseInitial(this.timelineDataWidget?.value);
+    this.loadImages();
+    this.selectionType = "image";
+    this.selectedIndex = this.timeline.segments.length > 0 ? 0 : -1;
+    this.clearMultiSelection();
+    this.currentFrame = 0;
+    this.updateUIFromSelection();
+    this.commitChanges();
+  }
+
   getDurationFrames() {
     return parseInt((this.durationFramesWidget && this.durationFramesWidget.value > 0) ? this.durationFramesWidget.value : 24, 10);
   }
@@ -5997,15 +6008,7 @@ app.registerExtension({
 
         setTimeout(() => {
           if (this._timelineEditor) {
-            this._timelineEditor.timeline = parseInitial(this._timelineEditor.timelineDataWidget?.value);
-            this._timelineEditor.loadImages();
-            this._timelineEditor.selectionType = "image";
-            this._timelineEditor.selectedIndex = clamp(
-              this._timelineEditor.selectedIndex, -1,
-              Math.max(-1, this._timelineEditor.timeline.segments.length - 1)
-            );
-            this._timelineEditor.updateUIFromSelection();
-            this._timelineEditor.render();
+            this._timelineEditor.reloadFromWidgets();
           }
         }, 0);
         return out;

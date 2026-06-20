@@ -10,11 +10,11 @@ function widgetValue(node, name, fallback = "") {
   return widget ? widget.value : fallback;
 }
 
-function setWidgetValue(node, name, value) {
+function setWidgetValue(node, name, value, options = {}) {
   const widget = getWidget(node, name);
   if (!widget) return false;
   widget.value = value;
-  if (typeof widget.callback === "function") widget.callback(value);
+  if (!options.silent && typeof widget.callback === "function") widget.callback(value);
   return true;
 }
 
@@ -284,8 +284,17 @@ function applyStoryScript(story, storyNode) {
       if (sameType.length === 1) [node] = sameType;
     }
     if (!node) continue;
+    const changed = [];
     for (const [name, value] of Object.entries(entry.widgets || {})) {
-      setWidgetValue(node, name, value);
+      if (setWidgetValue(node, name, value, { silent: true })) changed.push(name);
+    }
+    if (node._timelineEditor && typeof node._timelineEditor.reloadFromWidgets === "function") {
+      node._timelineEditor.reloadFromWidgets();
+    } else {
+      for (const name of changed) {
+        const widget = getWidget(node, name);
+        if (typeof widget?.callback === "function") widget.callback(widget.value);
+      }
     }
   }
   if (story.global_prefix) {

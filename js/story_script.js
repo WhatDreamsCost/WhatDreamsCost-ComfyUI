@@ -175,20 +175,11 @@ function buildMetaPanel(node) {
   const wrap = document.createElement("div");
   Object.assign(wrap.style, {
     display: "flex",
-    gap: "8px",
-    flexWrap: "wrap",
-    alignItems: "center",
+    flexDirection: "column",
+    gap: "6px",
+    alignItems: "stretch",
     width: "100%",
   });
-
-  const status = document.createElement("div");
-  Object.assign(status.style, {
-    width: "100%",
-    color: "#aaa",
-    fontSize: "12px",
-    minHeight: "18px",
-  });
-  status.textContent = "Meta Info";
 
   const makeButton = (label) => {
     const btn = document.createElement("button");
@@ -198,21 +189,61 @@ function buildMetaPanel(node) {
       background: "#202020",
       color: "#f2f2f2",
       borderRadius: "5px",
-      padding: "8px 14px",
+      padding: "6px 10px",
       cursor: "pointer",
-      fontSize: "13px",
-      minHeight: "36px",
-      minWidth: "72px",
+      fontSize: "12px",
+      minHeight: "30px",
+      minWidth: "62px",
     });
     return btn;
   };
+
+  const makeRow = (label) => {
+    const row = document.createElement("div");
+    Object.assign(row.style, {
+      display: "flex",
+      alignItems: "center",
+      gap: "6px",
+      width: "100%",
+    });
+    const title = document.createElement("div");
+    title.textContent = label;
+    Object.assign(title.style, {
+      color: "#ddd",
+      fontSize: "12px",
+      fontWeight: "600",
+      minWidth: "74px",
+      whiteSpace: "nowrap",
+    });
+    row.appendChild(title);
+    return row;
+  };
+
+  const prefixRow = makeRow("Prefix-Id");
+  const scriptRow = makeRow("Story script");
+  let importedFrom = "-";
+  const status = document.createElement("div");
+  Object.assign(status.style, {
+    width: "100%",
+    color: "#aaa",
+    fontSize: "12px",
+    lineHeight: "16px",
+    minHeight: "32px",
+    whiteSpace: "pre-line",
+  });
+  const setStatus = (prefix) => {
+    status.textContent = `Applied ${prefix || "-"}\nImported from ${importedFrom}`;
+  };
+  setStatus(getGlobalPrefix());
 
   const genBtn = makeButton("Gen");
   const applyBtn = makeButton("Apply");
   const importBtn = makeButton("Import");
   const storeBtn = makeButton("Store");
   const exportBtn = makeButton("Export");
-  wrap.append(genBtn, applyBtn, importBtn, storeBtn, exportBtn, status);
+  prefixRow.append(genBtn, applyBtn);
+  scriptRow.append(importBtn, storeBtn, exportBtn);
+  wrap.append(prefixRow, scriptRow, status);
 
   genBtn.addEventListener("click", (ev) => {
     ev.stopPropagation();
@@ -224,7 +255,7 @@ function buildMetaPanel(node) {
     widget.value = next;
     if (typeof widget.callback === "function") widget.callback(next);
     if (typeof window.shezwApplyGlobalPrefixToGraph === "function") window.shezwApplyGlobalPrefixToGraph();
-    status.textContent = `Prefix ${next}`;
+    setStatus(next);
   });
 
   applyBtn.addEventListener("click", (ev) => {
@@ -232,7 +263,8 @@ function buildMetaPanel(node) {
     const prefix = typeof window.shezwApplyGlobalPrefixToGraph === "function"
       ? window.shezwApplyGlobalPrefixToGraph()
       : getGlobalPrefix();
-    status.textContent = prefix ? `Applied ${prefix}` : "Prefix is empty";
+    if (prefix) setStatus(prefix);
+    else status.textContent = `Prefix is empty\nImported from ${importedFrom}`;
   });
 
   importBtn.addEventListener("click", (ev) => {
@@ -247,7 +279,8 @@ function buildMetaPanel(node) {
         const story = JSON.parse(await file.text());
         applyStoryScript(story, node);
         setNodeProp(node, "script_name", file.name);
-        status.textContent = `Imported ${file.name}`;
+        importedFrom = file.name;
+        setStatus(getGlobalPrefix());
       } catch (err) {
         console.error("[Shezw MetaInfo] import failed", err);
         status.textContent = `Import failed: ${err.message || err}`;
@@ -261,7 +294,7 @@ function buildMetaPanel(node) {
     storeBtn.disabled = true;
     try {
       const data = await saveStoryScript(node, "");
-      status.textContent = `Stored ${data.filename}`;
+      status.textContent = `Applied ${getGlobalPrefix() || "-"}\nStored ${data.filename}`;
     } catch (err) {
       console.error("[Shezw MetaInfo] store failed", err);
       status.textContent = `Store failed: ${err.message || err}`;
@@ -279,12 +312,12 @@ function buildMetaPanel(node) {
       const exportDir = `${nodeProp(node, "export_dir", "") || ""}`.trim();
       if (exportDir) {
         const data = await saveStoryScript(node, exportDir);
-        status.textContent = `Exported ${data.filename}`;
+        status.textContent = `Applied ${getGlobalPrefix() || "-"}\nExported ${data.filename}`;
       } else {
         setNodeProp(node, "story_script", story);
         setWidgetValue(node, "story_script", JSON.stringify(story, null, 2));
         downloadJson(filename, story);
-        status.textContent = `Downloaded ${filename}`;
+        status.textContent = `Applied ${getGlobalPrefix() || "-"}\nDownloaded ${filename}`;
       }
     } catch (err) {
       console.error("[Shezw MetaInfo] export failed", err);
@@ -312,8 +345,8 @@ app.registerExtension({
 
       setTimeout(() => {
         const domWidget = node.addDOMWidget("meta_info_tools", "div", wrap, { serialize: false });
-        domWidget.computeSize = () => [460, 82];
-        if (node.size[0] < 520) node.size[0] = 520;
+        domWidget.computeSize = () => [360, 102];
+        if (node.size[0] < 420) node.size[0] = 420;
         app.graph?.setDirtyCanvas(true, true);
       }, 50);
       return r;

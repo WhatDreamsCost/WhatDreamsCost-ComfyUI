@@ -35,11 +35,37 @@ def _load_image_tensor(seg: dict) -> torch.Tensor:
     """Decode an image from the ComfyUI input folder (if imageFile provided) or fallback to base64
     to a ComfyUI-style image tensor of shape [1, H, W, 3], float32 in [0, 1]."""
     if seg.get("imageFile"):
-        file_path = os.path.join(folder_paths.get_input_directory(), seg["imageFile"])
-        if os.path.exists(file_path):
-            img = Image.open(file_path).convert("RGB")
-            arr = np.array(img, dtype=np.float32) / 255.0
-            return torch.from_numpy(arr).unsqueeze(0)
+        image_file = os.path.normpath(str(seg["imageFile"]))
+        normalized_image_file = image_file.replace("\\", os.sep)
+        for prefix in ("output" + os.sep, "input" + os.sep, "temp" + os.sep):
+            if normalized_image_file.lower().startswith(prefix):
+                normalized_image_file = normalized_image_file[len(prefix):]
+                break
+        subfolder = os.path.normpath(str(seg.get("subfolder", "") or ""))
+        image_type = str(seg.get("imageType", seg.get("fileType", "input")) or "input").lower()
+        base_dirs = []
+        if image_type == "output":
+            base_dirs.append(folder_paths.get_output_directory())
+        elif image_type == "temp" and hasattr(folder_paths, "get_temp_directory"):
+            base_dirs.append(folder_paths.get_temp_directory())
+        else:
+            base_dirs.append(folder_paths.get_input_directory())
+        base_dirs.extend([folder_paths.get_input_directory(), folder_paths.get_output_directory()])
+        if hasattr(folder_paths, "get_temp_directory"):
+            base_dirs.append(folder_paths.get_temp_directory())
+
+        candidates = []
+        for base_dir in dict.fromkeys(base_dirs):
+            if subfolder and subfolder != ".":
+                candidates.append(os.path.join(base_dir, subfolder, os.path.basename(normalized_image_file)))
+            candidates.append(os.path.join(base_dir, normalized_image_file))
+            candidates.append(os.path.join(base_dir, image_file))
+
+        for file_path in candidates:
+            if os.path.exists(file_path):
+                img = Image.open(file_path).convert("RGB")
+                arr = np.array(img, dtype=np.float32) / 255.0
+                return torch.from_numpy(arr).unsqueeze(0)
 
     b64_str = seg.get("imageB64", "")
     if not b64_str or b64_str.startswith("/view?"):
@@ -274,6 +300,312 @@ def _build_combined_audio(timeline_data_str: str, duration_frames: int, frame_ra
     return {"waveform": out_waveform.unsqueeze(0), "sample_rate": target_sr}
 
 
+def _frame(seg: dict) -> int:
+    return max(0, int(round(float(seg.get("start", seg.get("frame", 0)) or 0))))
+
+
+def _end_frame(seg: dict) -> int:
+    return _frame(seg) + max(0, int(round(float(seg.get("length", 0) or 0))))
+
+
+def _add_boundary(boundaries: dict, frame: int, reason: str, duration_frames: int):
+    frame = max(0, min(duration_frames, int(round(frame))))
+    if 0 < frame < duration_frames:
+        boundaries.setdefault(frame, set()).add(reason)
+
+
+def _plan_long_auto_segments(
+    tdata: dict,
+    duration_frames: int,
+    frame_rate: float,
+    max_seconds: float = 0.0,
+    manual_tolerance_seconds: float = 0.25,
+    auto_cut: bool = True,
+):
+    max_seconds = max(3.0, min(60.0, float(max_seconds or 15.0)))
+    max_frames = max(1, int(math.floor(max_seconds * frame_rate)))
+    manual_tolerance_frames = max(0, int(round(manual_tolerance_seconds * frame_rate)))
+    manual_frames = sorted({
+        max(0, min(duration_frames, _frame(seg)))
+        for seg in tdata.get("cutSegments", [])
+        if 0 < _frame(seg) < duration_frames
+    })
+
+    def near_manual(frame: int) -> bool:
+        return any(abs(frame - cut_frame) <= manual_tolerance_frames for cut_frame in manual_frames)
+
+    soft = {}
+    if auto_cut:
+        for key, prefix in (("cameraSegments", "camera"), ("controlSegments", "ic")):
+            for seg in tdata.get(key, []):
+                for frame, suffix in ((_frame(seg), "start"), (_end_frame(seg), "end")):
+                    if not near_manual(frame):
+                        _add_boundary(soft, frame, f"{prefix}_{suffix}", duration_frames)
+
+    cuts = [(0, {"timeline_start"})]
+
+    def add_cut(frame: int, reasons: set[str]):
+        frame = max(0, min(duration_frames, int(round(frame))))
+        if 0 < frame <= duration_frames:
+            cuts.append((frame, reasons))
+
+    for frame in manual_frames:
+        add_cut(frame, {"manual_cut"})
+
+    soft_points = sorted(soft)
+    manual_points = [0, *manual_frames, duration_frames]
+    for left, right in zip(manual_points, manual_points[1:]):
+        cursor = left
+        local_soft_points = [frame for frame in soft_points if cursor < frame < right]
+        while right - cursor > max_frames:
+            candidates = [frame for frame in local_soft_points if frame > cursor]
+            last_within = None
+            for frame in candidates:
+                if frame - cursor <= max_frames:
+                    last_within = frame
+                else:
+                    break
+
+            if last_within is not None:
+                next_cut = last_within
+                reasons = soft.get(next_cut, {"auto_boundary"})
+            else:
+                remaining = right - cursor
+                if remaining < max_frames * 2:
+                    offset = max(1, min(remaining - 1, int(round(remaining * 2 / 3))))
+                    reasons = {"max_length_balanced"}
+                else:
+                    offset = max_frames
+                    reasons = {"max_length"}
+                next_cut = cursor + offset
+
+            if next_cut <= cursor or next_cut >= right:
+                break
+            add_cut(next_cut, reasons)
+            cursor = next_cut
+
+    add_cut(duration_frames, {"timeline_end"})
+
+    merged = {}
+    for frame, reasons in cuts:
+        merged.setdefault(frame, set()).update(reasons)
+    ordered = sorted(merged)
+    out = []
+    for idx, (start, end) in enumerate(zip(ordered, ordered[1:])):
+        if end <= start:
+            continue
+        out.append({
+            "index": len(out),
+            "start": start,
+            "end": end,
+            "length": end - start,
+            "reasons": sorted(merged.get(start, set())) if start else ["timeline_start"],
+        })
+    return out
+
+
+def _clip_timeline_segment(seg: dict, start: int, end: int, snap_frames: set[int] | None = None, tolerance_frames: int = 0):
+    seg_start = _frame(seg)
+    seg_end = _end_frame(seg)
+    snap_frames = snap_frames or set()
+    if tolerance_frames > 0 and snap_frames:
+        for frame in snap_frames:
+            if abs(seg_start - frame) <= tolerance_frames:
+                seg_start = frame
+            if abs(seg_end - frame) <= tolerance_frames:
+                seg_end = frame
+    if seg_end <= start or seg_start >= end:
+        return None
+    clipped_start = max(seg_start, start)
+    clipped_end = min(seg_end, end)
+    new_seg = dict(seg)
+    new_seg["start"] = clipped_start - start
+    new_seg["length"] = max(1, clipped_end - clipped_start)
+    if "frame" in new_seg:
+        new_seg["frame"] = new_seg["start"]
+    if new_seg.get("type") == "audio" or new_seg.get("audioFile"):
+        new_seg["trimStart"] = max(0, int(round(float(new_seg.get("trimStart", 0) or 0))) + clipped_start - seg_start)
+    elif new_seg.get("type") == "control" or new_seg.get("controlType"):
+        new_seg["trimStart"] = max(0, int(round(float(new_seg.get("trimStart", 0) or 0))) + clipped_start - seg_start)
+    return new_seg
+
+
+def _clip_keyframe_segment(seg: dict, start: int, end: int, tolerance_frames: int = 0):
+    seg_start = _frame(seg)
+    seg_end = _end_frame(seg)
+    if seg_end <= start or seg_start >= end:
+        return None
+    new_seg = dict(seg)
+    clipped_start = max(seg_start, start)
+    clipped_end = min(seg_end, end)
+    local_start = clipped_start - start
+    if local_start <= tolerance_frames:
+        local_start = 0
+    new_seg["start"] = local_start
+    new_seg["frame"] = local_start
+    new_seg["length"] = max(1, clipped_end - clipped_start)
+    return new_seg
+
+
+def _keyframe_starts_segment(tdata: dict, frame: int, tolerance_frames: int):
+    matches = [
+        seg
+        for seg in tdata.get("segments", [])
+        if (_frame(seg) <= frame < _end_frame(seg)) or (frame <= _frame(seg) <= frame + tolerance_frames)
+    ]
+    if not matches:
+        return None
+    return min(matches, key=lambda seg: max(0, _frame(seg) - frame))
+
+
+def _camera_prompt(seg: dict) -> str:
+    return (seg.get("prompt") or "").strip()
+
+
+def _control_prompt(seg: dict) -> str:
+    kind = seg.get("controlType", "control")
+    strength = float(seg.get("strength", 0.75) or 0.75)
+    prompt = (seg.get("prompt") or "").strip()
+    return f"IC-LoRA {kind} strength {strength:.2f}{': ' + prompt if prompt else ''}"
+
+
+def _compose_local_prompt_payload(tdata: dict, duration_frames: int):
+    cuts = {0, duration_frames}
+    for key in ("promptSegments", "cameraSegments", "controlSegments"):
+        for seg in tdata.get(key, []):
+            start = max(0, min(duration_frames, _frame(seg)))
+            end = max(0, min(duration_frames, _end_frame(seg)))
+            if end > start:
+                cuts.add(start)
+                cuts.add(end)
+
+    reference_hints = []
+    for ref in tdata.get("referenceImages", []):
+        note = (ref.get("note") or "").strip()
+        if note:
+            reference_hints.append(f"Reference {ref.get('refName', '@Ref')}: {note}")
+
+    prompts = []
+    lengths = []
+    ordered = sorted(cuts)
+    for start, end in zip(ordered, ordered[1:]):
+        parts = []
+        parts.extend(
+            (seg.get("prompt") or "").strip()
+            for seg in tdata.get("promptSegments", [])
+            if _frame(seg) < end and _end_frame(seg) > start and (seg.get("prompt") or "").strip()
+        )
+        parts.extend(
+            f"Camera: {_camera_prompt(seg)}"
+            for seg in tdata.get("cameraSegments", [])
+            if _frame(seg) < end and _end_frame(seg) > start and _camera_prompt(seg)
+        )
+        parts.extend(
+            _control_prompt(seg)
+            for seg in tdata.get("controlSegments", [])
+            if _frame(seg) < end and _end_frame(seg) > start
+        )
+        parts.extend(reference_hints)
+        prompts.append(". ".join([p for p in parts if p]) or "maintain the global scene and current visual continuity")
+        lengths.append(str(end - start))
+    return " | ".join(prompts), ",".join(lengths)
+
+
+def _apply_long_auto_direct_segment(tdata: dict, duration_frames: int, frame_rate: float):
+    meta = tdata.get("meta") or {}
+    if not meta.get("longAuto") or meta.get("materializedSegment"):
+        return tdata, duration_frames, None, None, None
+
+    max_seconds = float(meta.get("maxSegmentSeconds", 15.0) or 15.0)
+    manual_tolerance_seconds = float(meta.get("manualCutToleranceSeconds", 0.25) or 0.25)
+    manual_tolerance_frames = max(0, int(round(manual_tolerance_seconds * frame_rate)))
+    keyframe_tolerance_seconds = float(meta.get("keyframeToleranceSeconds", 0.25) or 0.25)
+    keyframe_tolerance_frames = max(0, int(round(keyframe_tolerance_seconds * frame_rate)))
+    auto_cut = bool(meta.get("autoCut", True))
+    segment_index = int(meta.get("activeSegmentIndex", 0) or 0)
+    plan = _plan_long_auto_segments(tdata, duration_frames, frame_rate, max_seconds, manual_tolerance_seconds, auto_cut)
+    if not plan:
+        return tdata, duration_frames, None, None, None
+
+    segment_index = max(0, min(segment_index, len(plan) - 1))
+    selected = plan[segment_index]
+    start, end = selected["start"], selected["end"]
+    manual_frames = {
+        max(0, min(duration_frames, _frame(seg)))
+        for seg in tdata.get("cutSegments", [])
+    }
+
+    cropped = {
+        "segments": [],
+        "promptSegments": [],
+        "referenceImages": list(tdata.get("referenceImages", [])),
+        "cameraSegments": [],
+        "controlSegments": [],
+        "audioSegments": [],
+        "cutSegments": [],
+        "meta": {
+            **meta,
+            "materializedSegment": True,
+            "sourceStartFrame": start,
+            "sourceEndFrame": end,
+            "sourceSegmentIndex": segment_index,
+            "sourceCutReasons": selected["reasons"],
+        },
+    }
+
+    for seg in tdata.get("segments", []):
+        clipped = _clip_keyframe_segment(seg, start, end, keyframe_tolerance_frames)
+        if clipped:
+            cropped["segments"].append(clipped)
+
+    for key in ("promptSegments", "cameraSegments", "controlSegments", "audioSegments"):
+        for seg in tdata.get(key, []):
+            clipped = _clip_timeline_segment(seg, start, end, manual_frames, manual_tolerance_frames)
+            if clipped:
+                cropped[key].append(clipped)
+
+    previous_tail = meta.get("previousTailFrame")
+    if segment_index > 0 and previous_tail and not _keyframe_starts_segment(tdata, start, keyframe_tolerance_frames):
+        if isinstance(previous_tail, str):
+            tail_seg = {"imageFile": previous_tail, "imageType": "output"}
+        elif isinstance(previous_tail, dict):
+            tail_seg = dict(previous_tail)
+        else:
+            tail_seg = {}
+        if tail_seg.get("imageFile") or tail_seg.get("imageB64"):
+            tail_seg.update({
+                "id": f"long-auto-tail-{segment_index:03d}",
+                "type": "image",
+                "start": 0,
+                "frame": 0,
+                "length": 1,
+                "guideStrength": float(tail_seg.get("guideStrength", 1.0) or 1.0),
+                "source": "previous_tail",
+            })
+            cropped["segments"].insert(0, tail_seg)
+
+    for cut in tdata.get("cutSegments", []):
+        frame = _frame(cut)
+        if start < frame < end:
+            new_cut = dict(cut)
+            new_cut["start"] = frame - start
+            new_cut["frame"] = frame - start
+            cropped["cutSegments"].append(new_cut)
+
+    new_duration = selected["length"]
+    local_prompts, segment_lengths = _compose_local_prompt_payload(cropped, new_duration)
+    log.warning(
+        "[Shezw LongAuto] Direct Queue renders segment %d/%d only: frames %d-%d (%s). "
+        "Use tools/long_auto_render.py for full multi-segment orchestration.",
+        segment_index + 1,
+        len(plan),
+        start,
+        end,
+        ",".join(selected["reasons"]),
+    )
+    return cropped, new_duration, local_prompts, segment_lengths, selected
+
+
 def _convert_to_latent_lengths(pixel_lengths, temporal_stride, latent_frames):
     """Convert pixel-space segment lengths to integer latent-space lengths using the
     largest-remainder method. Targets the full `latent_frames` when the pixel sum looks
@@ -411,7 +743,7 @@ class LTXDirector(io.ComfyNode):
                 ),
                 io.String.Input(
                     "local_prompts", multiline=True, default="",
-                    tooltip="Auto-populated from the timeline editor.",
+                    tooltip="Auto-populated from the Local Prompt track. Empty means use only global prompt conditioning.",
                 ),
                 io.String.Input(
                     "segment_lengths", default="",
@@ -476,24 +808,78 @@ class LTXDirector(io.ComfyNode):
                 divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
                 use_custom_audio=False) -> io.NodeOutput:
 
-        # --- Build guide_data from image segments FIRST (to derive output dimensions) ---
-        guide_data = {"images": [], "insert_frames": [], "strengths": [], "frame_rate": frame_rate}
+        try:
+            tdata_for_long_auto = json.loads(timeline_data) if timeline_data else {}
+            cropped_tdata, cropped_duration, cropped_prompts, cropped_lengths, _selected_segment = _apply_long_auto_direct_segment(
+                tdata_for_long_auto,
+                int(duration_frames),
+                float(frame_rate),
+            )
+            if cropped_tdata is not tdata_for_long_auto:
+                timeline_data = json.dumps(cropped_tdata, ensure_ascii=False)
+                duration_frames = int(cropped_duration)
+                duration_seconds = float(duration_frames) / float(frame_rate)
+                if cropped_prompts is not None:
+                    local_prompts = cropped_prompts
+                if cropped_lengths is not None:
+                    segment_lengths = cropped_lengths
+                guide_strength = ""
+        except Exception as e:
+            log.warning("[Shezw LongAuto] Could not apply direct segment crop: %s", e)
+
+        # --- Build guide_data from keyframe segments FIRST (to derive output dimensions) ---
+        guide_data = {"images": [], "insert_frames": [], "strengths": [], "frame_rate": frame_rate, "references": [], "controls": []}
         derived_w, derived_h = custom_width, custom_height
         try:
             tdata = json.loads(timeline_data) if timeline_data else {}
-            img_segs = [
+            keyframe_segs = [
                 s for s in tdata.get("segments", [])
                 if s.get("type", "image") == "image"
                 and (s.get("imageFile") or s.get("imageB64"))
                 and int(s.get("start", 0)) < duration_frames  # exclude segments fully outside duration
             ]
-            img_segs.sort(key=lambda s: s["start"])
+            keyframe_segs.sort(key=lambda s: s["start"])
+
+            reference_segs = [
+                s for s in tdata.get("referenceImages", [])
+                if s.get("imageFile") or s.get("imageB64")
+            ]
+            control_segs = [
+                s for s in tdata.get("controlSegments", [])
+                if int(s.get("start", 0)) < duration_frames
+            ]
 
             strengths = []
             if guide_strength.strip():
                 strengths = [float(x.strip()) for x in guide_strength.split(",") if x.strip()]
 
-            for idx, seg in enumerate(img_segs):
+            for idx, seg in enumerate(reference_segs):
+                try:
+                    ref_tensor = _load_image_tensor(seg)
+                    guide_data["references"].append({
+                        "name": seg.get("refName") or f"@Ref{idx + 1}",
+                        "image": ref_tensor,
+                        "imageFile": seg.get("imageFile", ""),
+                        "note": seg.get("note", ""),
+                    })
+                except Exception as e:
+                    log.warning("[PromptRelay] Could not load reference image %d: %s", idx + 1, e)
+
+            for seg in control_segs:
+                start = int(seg.get("start", 0))
+                length = int(seg.get("length", 0))
+                if length <= 0:
+                    continue
+                guide_data["controls"].append({
+                    "type": seg.get("controlType", "camera_depth"),
+                    "start": start,
+                    "length": min(length, duration_frames - start),
+                    "trimStart": int(seg.get("trimStart", 0) or 0),
+                    "strength": float(seg.get("strength", 0.75)),
+                    "prompt": seg.get("prompt", ""),
+                })
+
+            for idx, seg in enumerate(keyframe_segs):
                 tensor = _load_image_tensor(seg)
 
                 # Apply resize
@@ -529,26 +915,19 @@ class LTXDirector(io.ComfyNode):
                     derived_h = tensor.shape[1]
                     derived_w = tensor.shape[2]
 
-                strength = strengths[idx] if idx < len(strengths) else 1.0
+                strength = strengths[idx] if idx < len(strengths) else float(seg.get("guideStrength", 1.0))
                 guide_data["images"].append(tensor)
                 guide_data["insert_frames"].append(int(seg["start"]))
                 guide_data["strengths"].append(float(strength))
-            
-            # If no images were loaded from the timeline, create a dummy image at strength 0
-            # to prevent artifacts in text-to-video mode.
+
+            # Keyframe channel is intentionally allowed to be empty. In that case no
+            # guide frames are emitted to LTXDirectorGuide; only output dimensions are
+            # derived from explicit custom_width/custom_height or a sane default.
             if not guide_data["images"]:
                 w = derived_w if derived_w > 0 else 768
                 h = derived_h if derived_h > 0 else 512
-                w = (w // 32) * 32
-                h = (h // 32) * 32
-                
-                dummy_image = torch.zeros((1, h, w, 3), dtype=torch.float32)
-                guide_data["images"].append(dummy_image)
-                guide_data["insert_frames"].append(0)
-                guide_data["strengths"].append(0.0)
-                
-                derived_w = w
-                derived_h = h
+                derived_w = max(32, (w // 32) * 32)
+                derived_h = max(32, (h // 32) * 32)
         except Exception as e:
             log.warning("[PromptRelay] Could not build guide_data: %s", e)
 
@@ -571,9 +950,14 @@ class LTXDirector(io.ComfyNode):
         else:
             latent = optional_latent
 
-        patched, conditioning = _encode_relay(
-            model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon,
-        )
+        if local_prompts and local_prompts.strip():
+            patched, conditioning = _encode_relay(
+                model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon,
+            )
+        else:
+            patched = model
+            conditioning = clip.encode_from_tokens_scheduled(clip.tokenize(global_prompt or ""))
+            log.info("[PromptRelay] No local prompts supplied; using global prompt conditioning without temporal Prompt Relay patches.")
 
         # --- Build Audio Output ---
         audio_out = _build_combined_audio(timeline_data, ltxv_length, float(frame_rate))

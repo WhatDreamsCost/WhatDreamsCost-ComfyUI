@@ -6,6 +6,23 @@ Hopefully it will make creating cool stuff easier.
 
 All of my nodes are created with the help of AI, so there may or may not be redundant, messy code.
 
+## Advanced Pro Workflows
+
+This branch includes Shezw's advanced LTX Director Pro workflows and local node extensions.
+
+- Pro workflow guide: [README.pro.md](README.pro.md)
+- Workflow files: [pro-workflows/](pro-workflows/)
+- Long-auto planner: [tools/long_auto_render.py](tools/long_auto_render.py)
+
+Important dependency note: the Pro workflows use `LTXICLoRALoaderModelOnly`, which is provided by `Lightricks/ComfyUI-LTXVideo`, not by this repo. If ComfyUI reports this node as unknown, install or update:
+
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/Lightricks/ComfyUI-LTXVideo
+```
+
+Then restart ComfyUI. See [README.pro.md](README.pro.md) for the full dependency and model path notes.
+
 ## ▶️ YouTube Tutorial Videos
 
 <table>

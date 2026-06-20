@@ -1,8 +1,11 @@
 from comfy_extras.nodes_lt import LTXVAddGuide
 import torch
 import comfy.utils
+import logging
 from comfy_api.latest import io
 from .ltx_director import GuideData
+
+log = logging.getLogger(__name__)
 
 
 class LTXDirectorGuide(LTXVAddGuide):
@@ -79,9 +82,17 @@ class LTXDirectorGuide(LTXVAddGuide):
             image_1, t = cls.encode(vae, latent_width, latent_height, img_tensor, scale_factors)
             frame_idx, latent_idx = cls.get_latent_index(positive, latent_length, len(image_1), f_idx, scale_factors)
 
-            assert latent_idx + t.shape[2] <= latent_length, (
-                f"Guide image {idx + 1}: conditioning frames exceed the length of the latent sequence."
-            )
+            if latent_idx + t.shape[2] > latent_length:
+                log.warning(
+                    "[LTXDirectorGuide] Skipping guide image %d: insert frame %s maps to latent %s, "
+                    "guide length %s exceeds latent length %s.",
+                    idx + 1,
+                    f_idx,
+                    latent_idx,
+                    t.shape[2],
+                    latent_length,
+                )
+                continue
 
             positive, negative, latent_image, noise_mask = cls.append_keyframe(
                 positive, negative, frame_idx, latent_image, noise_mask, t, strength, scale_factors,

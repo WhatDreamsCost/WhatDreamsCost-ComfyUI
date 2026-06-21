@@ -214,6 +214,20 @@ class ResampleGuideFrames:
 def _load_motion_video_frames(video_file, trim_start_frames, length_frames, director_fps, resample_mode="nearest"):
     path = _resolve_input_video_path(video_file)
     target_fps = max(1.0, float(director_fps))
+
+    # Static-image IC reference (e.g. the Ingredients IC-LoRA): load the single still and
+    # loop it to fill the segment length, mirroring how the official pipeline turns a
+    # reference sheet into a static video. Trim/seek don't apply to a still — the existing
+    # ResampleGuideFrames repeats a 1-frame source to the target count.
+    if os.path.splitext(path)[1].lower() in (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"):
+        from PIL import Image as _PILImage
+        with _PILImage.open(path) as _im:
+            arr = np.asarray(_im.convert("RGB"), dtype=np.float32) / 255.0
+        single = torch.from_numpy(arr).unsqueeze(0)  # [1, H, W, 3]
+        target_count = max(1, int(round(float(length_frames))))
+        log.info(f"[LTXDirectorGuide] Static IC reference image {path} looped to {target_count} frames")
+        return ResampleGuideFrames().execute(single, target_fps, target_fps, target_count, resample_mode)
+
     start_s = max(0.0, float(trim_start_frames) / target_fps)
     dur_s = max(0.0, float(length_frames) / target_fps)
     end_s = start_s + dur_s if dur_s > 0 else None

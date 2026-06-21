@@ -2210,7 +2210,7 @@ class TimelineEditor {
 
     this.motionFileInput = document.createElement("input");
     this.motionFileInput.type = "file";
-    this.motionFileInput.accept = "video/*";
+    this.motionFileInput.accept = "video/*,image/*";
     this.motionFileInput.multiple = true;
     this.motionFileInput.style.display = "none";
     this.motionFileInput.addEventListener("change", (e) => this.handleMotionUpload(e.target.files));
@@ -4430,7 +4430,96 @@ class TimelineEditor {
     const frameRate = this.getFrameRate();
 
     for (let file of files) {
-      if (!(file.type.startsWith("video/") || file.name.toLowerCase().match(/\.(mp4|webm|mkv|avi|mov|m4v|flv|wmv)$/))) continue;
+      const isImageRef = file.type.startsWith("image/") || !!file.name.toLowerCase().match(/\.(png|jpe?g|webp|bmp|gif)$/);
+      const isVideo = file.type.startsWith("video/") || !!file.name.toLowerCase().match(/\.(mp4|webm|mkv|avi|mov|m4v|flv|wmv)$/);
+      if (!isImageRef && !isVideo) continue;
+
+      if (isImageRef) {
+        // Static IC reference image (e.g. the Ingredients IC-LoRA): add a motion segment
+        // that loops this single still across its span. The backend loads the image and
+        // repeats it to the segment length, so it behaves like a looped static video —
+        // which is exactly what the official IC-LoRA pipeline does with a reference sheet.
+        await new Promise((resolve) => {
+          try {
+            const blobUrl = URL.createObjectURL(file);
+            const img = new Image();
+            img.onerror = () => { console.error("[LTXDirector] IC image load error"); URL.revokeObjectURL(blobUrl); resolve(); };
+            img.onload = () => {
+              // Default span = the whole output, since a reference sheet conditions the
+              // entire clip. The user can resize the segment afterwards.
+              let newLength = Math.max(1, this.getDurationFrames());
+              let newStart = targetFrameStart;
+              if (newStart === null) {
+                newStart = 0;
+                this.timeline.motionSegments.sort((a, b) => a.start - b.start);
+                for (let i = 0; i < this.timeline.motionSegments.length; i++) {
+                  let s = this.timeline.motionSegments[i];
+                  if (newStart + newLength <= s.start) break;
+                  newStart = Math.max(newStart, s.start + s.length);
+                }
+              }
+
+              let imageB64 = "";
+              try {
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.min(img.naturalWidth, 512) || 512;
+                canvas.height = Math.round((img.naturalHeight / img.naturalWidth) * canvas.width) || 512;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                imageB64 = canvas.toDataURL('image/jpeg');
+              } catch (e) { /* cosmetic: fall back to no persisted thumbnail */ }
+
+              const seg = {
+                id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+                type: "motion_video",
+                start: newStart,
+                length: newLength,
+                trimStart: 0,
+                videoDurationFrames: newLength,
+                videoFile: "",        // filled once upload completes (image path)
+                isStaticRef: true,    // metadata; backend also detects by extension
+                fileName: file.name,
+                videoStrength: 1.0,
+                videoAttentionStrength: 0.65,
+                resampleMode: "nearest",
+                imageB64: imageB64,
+                imgObj: img,
+                _uploading: true,
+                _blobUrl: blobUrl,
+                fileSize: file.size
+              };
+
+              this.timeline.motionSegments.push(seg);
+              this.timeline.motionSegments.sort((a, b) => a.start - b.start);
+              if (!this.retakeMode) this.growTimelineIfNeeded(seg.start + seg.length);
+              this.selectionType = "motion";
+              this.selectedIndex = this.timeline.motionSegments.findIndex(s => s.id === seg.id);
+              this.updateUIFromSelection();
+              this.commitChanges(true);
+              this.render();
+              resolve();
+
+              this._uploadVideoFile(file).then(filePath => {
+                for (let s of this.timeline.motionSegments) {
+                  if (s._blobUrl === blobUrl || s.id === seg.id) { s.videoFile = filePath; s._uploading = false; }
+                }
+                this.commitChanges(true);
+                this.render();
+              }).catch(err => {
+                console.error("[LTXDirector] Background IC image upload failed", err);
+                const s = this.timeline.motionSegments.find(s => s.id === seg.id);
+                if (s) s._uploading = false;
+                this.render();
+              });
+            };
+            img.src = blobUrl;
+          } catch (err) {
+            console.error("[LTXDirector] IC image processing failed", err);
+            resolve();
+          }
+        });
+        continue;
+      }
 
       await new Promise(async (resolve) => {
         try {

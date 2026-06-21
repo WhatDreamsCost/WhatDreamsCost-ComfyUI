@@ -18,6 +18,21 @@ function setWidgetValue(node, name, value, options = {}) {
   return true;
 }
 
+function setWidgetLabel(node, name, label) {
+  const widget = getWidget(node, name);
+  if (!widget) return false;
+  widget.label = label;
+  return true;
+}
+
+function setNodeIOLabel(node, name, label) {
+  for (const io of [...(node?.inputs || []), ...(node?.outputs || [])]) {
+    if (io?.name !== name) continue;
+    io.label = label;
+    io.localized_name = label;
+  }
+}
+
 function nodeProp(node, name, fallback = "") {
   if (node?.properties && node.properties[name] !== undefined) return node.properties[name];
   return widgetValue(node, name, fallback);
@@ -95,6 +110,7 @@ const UI_LANGUAGES = {
 
 const I18N = {
   en: {
+    globalPrefix: "Global Prefix",
     prefixId: "Prefix-Id",
     storyScript: "Story script",
     language: "Language",
@@ -116,6 +132,7 @@ const I18N = {
     updatedImportFile: "Updated import file",
   },
   zh: {
+    globalPrefix: "全局前缀",
     prefixId: "前缀 ID",
     storyScript: "故事脚本",
     language: "语言",
@@ -604,6 +621,8 @@ function buildMetaPanel(node) {
   wrap.append(prefixRow, scriptRow, languageRow, status);
 
   const refreshText = () => {
+    setWidgetLabel(node, "global_prefix", t("globalPrefix"));
+    setNodeIOLabel(node, "global_prefix", t("globalPrefix"));
     prefixLine.title.textContent = t("prefixId");
     scriptLine.title.textContent = t("storyScript");
     languageLine.title.textContent = t("language");
@@ -742,6 +761,8 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       const r = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
       const node = this;
+      setWidgetLabel(node, "global_prefix", t("globalPrefix"));
+      setNodeIOLabel(node, "global_prefix", t("globalPrefix"));
       for (const name of ["workflow_id", "script_name", "ss_struct", "story_script", "export_dir", "ui_language"]) {
         hideWidget(node, name);
       }

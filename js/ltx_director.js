@@ -39,6 +39,11 @@ const DIRECTOR_I18N = {
     camera: "Camera",
     cut: "Cut",
     icControl: "IC-Control",
+    icLoraControl: "IC-LoRA Control",
+    strength: "Strength",
+    keyframeStrength: "Keyframe Strength",
+    referenceStrength: "Reference Strength",
+    icControlStrength: "IC-Control Strength",
     delete: "Delete",
     settings: "Settings",
     showHideSegments: "Show/Hide Segments",
@@ -102,7 +107,12 @@ const DIRECTOR_I18N = {
     localPrompt: "局部提示词",
     camera: "镜头",
     cut: "裁切",
-    icControl: "IC-Control",
+    icControl: "IC 控制",
+    icLoraControl: "IC-LoRA 控制",
+    strength: "强度",
+    keyframeStrength: "关键帧强度",
+    referenceStrength: "参考图强度",
+    icControlStrength: "IC 控制强度",
     delete: "删除",
     settings: "设置",
     showHideSegments: "显示/隐藏分段",
@@ -2625,7 +2635,7 @@ class TimelineEditor {
 
     this.strengthLabel = document.createElement("span");
     this.strengthLabel.className = "pr-strength-label";
-    this.strengthLabel.textContent = "Strength:";
+    this.strengthLabel.textContent = `${t("strength")}:`;
 
     this.strengthValue = document.createElement("input");
     this.strengthValue.type = "text";
@@ -3235,7 +3245,7 @@ class TimelineEditor {
     }
 
     if (this.selectionType === "cut" && seg) {
-      if (this.strengthLabel) this.strengthLabel.textContent = "Cut:";
+      if (this.strengthLabel) this.strengthLabel.textContent = `${t("cut")}:`;
       this.audioInfoArea.style.display = "none";
       if (this.cameraSelect) this.cameraSelect.style.display = "none";
       this.promptInput.style.display = "block";
@@ -3246,7 +3256,7 @@ class TimelineEditor {
       this.strengthValue.value = "1.00";
       this.strengthValue.disabled = true;
     } else if (this.selectionType === "audio" && seg) {
-      if (this.strengthLabel) this.strengthLabel.textContent = "Strength:";
+      if (this.strengthLabel) this.strengthLabel.textContent = `${t("strength")}:`;
       this.promptInput.style.display = "none";
       if (this.cameraSelect) this.cameraSelect.style.display = "none";
       this.strengthRow.style.display = "flex";
@@ -3259,7 +3269,7 @@ class TimelineEditor {
       this.strengthValue.value = "1.00";
       this.strengthValue.disabled = true;
     } else if (this.selectionType === "reference" && seg) {
-      if (this.strengthLabel) this.strengthLabel.textContent = "Reference Strength:";
+      if (this.strengthLabel) this.strengthLabel.textContent = `${t("referenceStrength")}:`;
       this.audioInfoArea.style.display = "none";
       if (this.cameraSelect) this.cameraSelect.style.display = "none";
       this.promptInput.style.display = "block";
@@ -3270,7 +3280,7 @@ class TimelineEditor {
       this.strengthValue.value = "1.00";
       this.strengthValue.disabled = true;
     } else if (this.selectionType === "camera" && seg) {
-      if (this.strengthLabel) this.strengthLabel.textContent = "Strength:";
+      if (this.strengthLabel) this.strengthLabel.textContent = `${t("strength")}:`;
       this.audioInfoArea.style.display = "none";
       this.promptInput.style.display = "none";
       this.promptInput.value = "";
@@ -3285,7 +3295,7 @@ class TimelineEditor {
       this.strengthValue.value = "1.00";
       this.strengthValue.disabled = true;
     } else if (this.selectionType === "prompt" && seg) {
-      if (this.strengthLabel) this.strengthLabel.textContent = "Strength:";
+      if (this.strengthLabel) this.strengthLabel.textContent = `${t("strength")}:`;
       this.audioInfoArea.style.display = "none";
       if (this.cameraSelect) this.cameraSelect.style.display = "none";
       this.promptInput.style.display = "block";
@@ -3296,7 +3306,7 @@ class TimelineEditor {
       this.strengthValue.value = "1.00";
       this.strengthValue.disabled = true;
     } else if (this.selectionType === "control" && seg) {
-      if (this.strengthLabel) this.strengthLabel.textContent = "IC-Control Strength:";
+      if (this.strengthLabel) this.strengthLabel.textContent = `${t("icControlStrength")}:`;
       this.audioInfoArea.style.display = "none";
       if (this.cameraSelect) this.cameraSelect.style.display = "none";
       this.promptInput.style.display = "block";
@@ -3307,7 +3317,7 @@ class TimelineEditor {
       this.strengthValue.value = (seg.strength ?? 0.75).toFixed(2);
       this.strengthValue.disabled = true;
     } else {
-      if (this.strengthLabel) this.strengthLabel.textContent = "Keyframe Strength:";
+      if (this.strengthLabel) this.strengthLabel.textContent = `${t("keyframeStrength")}:`;
       this.audioInfoArea.style.display = "none";
       if (this.cameraSelect) this.cameraSelect.style.display = "none";
       this.strengthRow.style.display = "flex";
@@ -5356,7 +5366,7 @@ class TimelineEditor {
     } else if (currentTrack === "control") {
       const controlBtn = document.createElement("button");
       controlBtn.className = "pr-gap-menu-btn";
-      controlBtn.innerHTML = `${ICONS.control} IC-LoRA Control`;
+      controlBtn.innerHTML = `${ICONS.control} ${t("icLoraControl")}`;
       controlBtn.onclick = () => {
         this.addSegmentInGap(gap.frameStart, gap.frameEnd, "control");
         this.dismissContextMenu();

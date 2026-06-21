@@ -14,6 +14,26 @@ function getWidget(node, name) {
   return node?.widgets?.find((w) => w.name === name);
 }
 
+function translated(key, fallback) {
+  if (typeof window.shezwT === "function") return window.shezwT(key, fallback);
+  return fallback;
+}
+
+function setWidgetLabel(node, name, label) {
+  const widget = getWidget(node, name);
+  if (!widget) return false;
+  widget.label = label;
+  return true;
+}
+
+function setNodeIOLabel(node, name, label) {
+  for (const io of [...(node?.inputs || []), ...(node?.outputs || [])]) {
+    if (io?.name !== name) continue;
+    io.label = label;
+    io.localized_name = label;
+  }
+}
+
 function getGlobalPrefixNode() {
   return (app?.graph?._nodes || []).find((node) => node.type === "ShezwMetaInfo")
     || (app?.graph?._nodes || []).find((node) => node.type === "ShezwGlobalPrefix");
@@ -84,6 +104,8 @@ app.registerExtension({
       const r = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
       const node = this;
       const widget = getWidget(node, "global_prefix") || node.widgets?.[0];
+      setWidgetLabel(node, "global_prefix", translated("globalPrefix", "Global Prefix"));
+      setNodeIOLabel(node, "global_prefix", translated("globalPrefix", "Global Prefix"));
       if (widget && !normalizePath(widget.value)) widget.value = nowPrefixId();
 
       const wrap = document.createElement("div");
@@ -109,6 +131,11 @@ app.registerExtension({
           fontSize: "11px",
         });
       }
+      const refreshLabels = () => {
+        setWidgetLabel(node, "global_prefix", translated("globalPrefix", "Global Prefix"));
+        setNodeIOLabel(node, "global_prefix", translated("globalPrefix", "Global Prefix"));
+      };
+      window.addEventListener("shezw-ui-language-change", refreshLabels);
       genBtn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         if (!widget) return;

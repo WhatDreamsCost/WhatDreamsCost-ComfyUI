@@ -201,8 +201,25 @@ function getGlobalPrefix() {
   return `${widgetValue(node, "global_prefix", "") || ""}`.trim();
 }
 
-let activeStoryScriptFileHandle = null;
-let activeStoryScriptFileName = "";
+function clearStoryScriptFileBinding(node) {
+  if (!node) return;
+  node._shezwStoryScriptFileHandle = null;
+  node._shezwStoryScriptFileName = "";
+}
+
+function bindStoryScriptFile(node, file, handle = null) {
+  if (!node) return;
+  node._shezwStoryScriptFileHandle = handle || null;
+  node._shezwStoryScriptFileName = file?.name || handle?.name || "";
+}
+
+function getStoryScriptFileHandle(node) {
+  return node?._shezwStoryScriptFileHandle || null;
+}
+
+function getStoryScriptFileName(node) {
+  return node?._shezwStoryScriptFileName || "";
+}
 
 function getAllowedStruct(storyNode) {
   const raw = nodeProp(storyNode, "ss_struct", "{}");
@@ -486,10 +503,13 @@ async function writeStoryScriptHandle(fileHandle, story) {
 async function saveStoryScript(storyNode, exportDir = "", options = {}) {
   const story = stripStoryScriptStruct(collectStoryScript(storyNode));
   const filename = storyFilename(storyNode, story);
+  const fileHandle = Object.prototype.hasOwnProperty.call(options, "fileHandle")
+    ? options.fileHandle
+    : getStoryScriptFileHandle(storyNode);
   setNodeProp(storyNode, "story_script", story);
   setWidgetValue(storyNode, "story_script", JSON.stringify(story, null, 2));
-  if (options.fileHandle) {
-    await writeStoryScriptHandle(options.fileHandle, story);
+  if (fileHandle) {
+    await writeStoryScriptHandle(fileHandle, story);
   }
   const resp = await api.fetchApi("/shezw/story_script/save", {
     method: "POST",
@@ -504,7 +524,7 @@ async function saveStoryScript(storyNode, exportDir = "", options = {}) {
   if (!resp.ok || !data.ok) throw new Error(data.error || "Story script save failed");
   return {
     ...data,
-    file_handle_name: options.fileHandle?.name || "",
+    file_handle_name: fileHandle?.name || getStoryScriptFileName(storyNode),
   };
 }
 
@@ -668,15 +688,17 @@ function buildMetaPanel(node) {
     const imported = JSON.parse(await file.text());
     const story = normalizeImportedStoryScript(imported, node);
     if (!story) throw new Error("Unsupported story script/workflow format");
-    activeStoryScriptFileHandle = handle;
-    activeStoryScriptFileName = file.name || handle?.name || "";
+    bindStoryScriptFile(node, file, handle);
     applyStoryScript(story, node);
-    importedFrom = activeStoryScriptFileName || "-";
+    importedFrom = getStoryScriptFileName(node) || "-";
     setStatus(getGlobalPrefix());
   }
 
   importBtn.addEventListener("click", async (ev) => {
     ev.stopPropagation();
+    clearStoryScriptFileBinding(node);
+    importedFrom = "-";
+    setStatus(getGlobalPrefix());
     if (window.showOpenFilePicker) {
       try {
         const [handle] = await window.showOpenFilePicker({
@@ -714,7 +736,7 @@ function buildMetaPanel(node) {
     ev.stopPropagation();
     storeBtn.disabled = true;
     try {
-      const data = await saveStoryScript(node, "", { fileHandle: activeStoryScriptFileHandle });
+      const data = await saveStoryScript(node, "");
       const handleLine = data.file_handle_name ? `\n${t("updatedImportFile")} ${data.file_handle_name}` : "";
       status.textContent = `${t("applied")} ${getGlobalPrefix() || "-"}\n${t("stored")} ${formatSavedPaths(data)}${handleLine}`;
     } catch (err) {

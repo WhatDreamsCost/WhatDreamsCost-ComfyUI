@@ -3584,6 +3584,7 @@ class TimelineEditor {
     this.ctx.fillRect(0, this.getTrackY("control"), width, 1);
     this.ctx.fillRect(0, this.getTrackY("audio"), width, 1);
 
+    this.drawAutoCutGuides(this.ctx, totalFrames, width);
     this.drawCutMarkers(this.ctx, totalFrames, width, activeCutSegId);
 
     // Draw gap "+" buttons
@@ -3909,6 +3910,41 @@ class TimelineEditor {
       }
       ctx.restore();
     }
+  }
+
+  getAutoCutGuideFrames() {
+    if (!this.timeline.meta?.longAuto) return [];
+    const plan = this.getLongAutoPlan();
+    const frames = new Map();
+    for (const seg of plan) {
+      if (seg.start <= 0) continue;
+      const reasons = seg.reasons || [];
+      if (!reasons.length || reasons.includes("manual_cut") || reasons.includes("timeline_start")) continue;
+      frames.set(seg.start, reasons);
+    }
+    return [...frames.entries()].map(([frame, reasons]) => ({ frame, reasons }));
+  }
+
+  drawAutoCutGuides(ctx, totalFrames, width) {
+    const guides = this.getAutoCutGuideFrames();
+    if (!guides.length || totalFrames <= 0) return;
+    const yTop = RULER_HEIGHT;
+    const yBottom = this.canvasHeight;
+    ctx.save();
+    ctx.strokeStyle = "rgba(135, 205, 255, 0.78)";
+    ctx.lineWidth = 1.25;
+    ctx.setLineDash([3, 5]);
+    for (const guide of guides) {
+      const frame = clamp(Math.round(guide.frame || 0), 0, totalFrames);
+      if (frame <= 0 || frame >= totalFrames) continue;
+      const x = (frame / totalFrames) * width;
+      ctx.beginPath();
+      ctx.moveTo(x, yTop);
+      ctx.lineTo(x, yBottom);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
   }
 
 

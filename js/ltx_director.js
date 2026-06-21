@@ -2038,7 +2038,7 @@ class TimelineEditor {
           seg.imgObj.onload = () => { if (!this._isDragging) this.render(); };
           seg.imgObj.src = seg.imageB64;
         }
-        if (seg.type === "motion_video") {
+        if (seg.type === "motion_video" && !seg.isStaticRef) {
           this._ensureVideoEl(seg);
           this._ensureThumbnails(seg);
           if (isOverrideAudio) {
@@ -3078,7 +3078,11 @@ class TimelineEditor {
         } else if (audioFiles.length > 0 && (targetTrack === "audio" || imageFiles.length === 0)) {
           this.handleAudioUpload(audioFiles, targetFrameStart);
         } else if (imageFiles.length > 0) {
-          this.handleImageUpload(imageFiles, targetFrameStart);
+          if (targetTrack === "motion") {
+            this.handleMotionUpload(imageFiles, targetFrameStart);
+          } else {
+            this.handleImageUpload(imageFiles, targetFrameStart);
+          }
         }
       }
     });
@@ -4446,18 +4450,11 @@ class TimelineEditor {
             img.onerror = () => { console.error("[LTXDirector] IC image load error"); URL.revokeObjectURL(blobUrl); resolve(); };
             img.onload = () => {
               // Default span = the whole output, since a reference sheet conditions the
-              // entire clip. The user can resize the segment afterwards.
+              // entire clip. It's meant to overlap the timeline, not be appended after
+              // existing clips — so default to start 0 rather than auto-placing past
+              // them (which would silently grow the render length). User can move it.
               let newLength = Math.max(1, this.getDurationFrames());
-              let newStart = targetFrameStart;
-              if (newStart === null) {
-                newStart = 0;
-                this.timeline.motionSegments.sort((a, b) => a.start - b.start);
-                for (let i = 0; i < this.timeline.motionSegments.length; i++) {
-                  let s = this.timeline.motionSegments[i];
-                  if (newStart + newLength <= s.start) break;
-                  newStart = Math.max(newStart, s.start + s.length);
-                }
-              }
+              let newStart = (targetFrameStart !== null) ? targetFrameStart : 0;
 
               let imageB64 = "";
               try {
@@ -9176,7 +9173,7 @@ class TimelineEditor {
   promptAddMotionInGap(frameStart, frameEnd) {
     const fi = document.createElement("input");
     fi.type = "file";
-    fi.accept = "video/*";
+    fi.accept = "video/*,image/*";
     fi.addEventListener("change", (ev) => {
       if (ev.target.files?.[0]) this.handleMotionUpload([ev.target.files[0]], frameStart);
     });

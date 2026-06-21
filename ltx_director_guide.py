@@ -220,9 +220,18 @@ def _load_motion_video_frames(video_file, trim_start_frames, length_frames, dire
     # reference sheet into a static video. Trim/seek don't apply to a still — the existing
     # ResampleGuideFrames repeats a 1-frame source to the target count.
     if os.path.splitext(path)[1].lower() in (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"):
-        from PIL import Image as _PILImage
+        from PIL import Image as _PILImage, ImageOps as _ImageOps
         with _PILImage.open(path) as _im:
-            arr = np.asarray(_im.convert("RGB"), dtype=np.float32) / 255.0
+            if getattr(_im, "n_frames", 1) > 1:
+                log.warning(f"[LTXDirectorGuide] {path} has {_im.n_frames} frames; using only the first as a static IC reference")
+            # Respect EXIF orientation (phone/camera exports) so the reference isn't sideways.
+            _im = _ImageOps.exif_transpose(_im)
+            # Composite transparency onto white instead of letting convert('RGB') flatten it to black.
+            if _im.mode in ("RGBA", "LA", "P"):
+                _im = _im.convert("RGBA")
+                _bg = _PILImage.new("RGBA", _im.size, (255, 255, 255, 255))
+                _im = _PILImage.alpha_composite(_bg, _im)
+            arr = np.clip(np.asarray(_im.convert("RGB"), dtype=np.float32) / 255.0, 0.0, 1.0)
         single = torch.from_numpy(arr).unsqueeze(0)  # [1, H, W, 3]
         target_count = max(1, int(round(float(length_frames))))
         log.info(f"[LTXDirectorGuide] Static IC reference image {path} looped to {target_count} frames")

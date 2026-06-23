@@ -1,169 +1,15 @@
 {
-  "id": "demo-image-ref-workflow",
+  "id": "demo-image-ref",
   "revision": 0,
-  "last_node_id": 107,
-  "last_link_id": 263,
+  "last_node_id": 97,
+  "last_link_id": 253,
   "nodes": [
-    {
-      "id": 106,
-      "type": "ShezwMetaInfo",
-      "pos": [
-        -620,
-        -520
-      ],
-      "size": [
-        560,
-        170
-      ],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "global_prefix",
-          "type": "STRING",
-          "widget": {
-            "name": "global_prefix"
-          },
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "name": "global_prefix",
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "workflow_id": "ltx-director-pro",
-        "script_name": "ltx-director-pro-ss.json",
-        "ss_struct": {
-          "schema": "ltx-director-pro.ss-struct.v1",
-          "structures": {
-            "story_script": {
-              "type": "object",
-              "properties": {
-                "schema": "string",
-                "workflow_id": "string",
-                "global_prefix": "string",
-                "created_at": "iso-datetime-string",
-                "nodes": "array<node_entry>"
-              }
-            },
-            "node_entry": {
-              "type": "object",
-              "properties": {
-                "id": "string",
-                "type": "string",
-                "title": "string",
-                "widgets": "object<string, value>"
-              }
-            },
-            "timeline_data": {
-              "type": "object",
-              "arrays": [
-                "segments",
-                "audioSegments",
-                "cameraSegments",
-                "controlSegments",
-                "promptSegments",
-                "referenceImages",
-                "cutSegments"
-              ],
-              "objects": [
-                "meta"
-              ]
-            }
-          },
-          "fields": [
-            {
-              "node_type": "ShezwMetaInfo",
-              "widgets": [
-                "global_prefix"
-              ]
-            },
-            {
-              "node_type": "LTXDirector",
-              "widgets": [
-                "global_prompt",
-                "duration_frames",
-                "duration_seconds",
-                "frame_rate",
-                "timeline_data",
-                "use_custom_audio",
-                "local_prompts",
-                "segment_lengths",
-                "guide_strength",
-                "custom_width",
-                "custom_height",
-                "resize_method",
-                "display_mode",
-                "epsilon",
-                "divisible_by",
-                "img_compression",
-                "metadata"
-              ]
-            },
-            {
-              "node_type": "LoadVideoUI",
-              "widgets": [
-                "video",
-                "start_time",
-                "end_time",
-                "duration",
-                "start_frame",
-                "end_frame",
-                "duration_frames",
-                "resize_method",
-                "custom_width",
-                "custom_height",
-                "frame_rate",
-                "display_mode",
-                "crop_x",
-                "crop_y",
-                "crop_w",
-                "crop_h"
-              ]
-            },
-            {
-              "node_type": "LoadAudioUI",
-              "widgets": [
-                "audio",
-                "start_time",
-                "end_time",
-                "duration",
-                "display_mode"
-              ]
-            },
-            {
-              "node_type": "ShezwUpscaleChunker",
-              "widgets": [
-                "chunk_seconds",
-                "segment_prefix",
-                "output_prefix",
-                "cleanup_wait_seconds",
-                "start_segment_index"
-              ]
-            }
-          ]
-        },
-        "story_script": {},
-        "export_dir": "",
-        "Node name for S&R": "ShezwMetaInfo",
-        "ui_language": "en"
-      },
-      "widgets_values": [
-        "demo-image-ref"
-      ],
-      "title": "Meta Info"
-    },
     {
       "id": 46,
       "type": "LTXDirector",
       "pos": [
-        -120,
-        160
+        -320,
+        120
       ],
       "size": [
         820,
@@ -245,7 +91,7 @@
         {
           "name": "combined_audio",
           "type": "AUDIO",
-          "links": []
+          "links": null
         }
       ],
       "properties": {
@@ -255,12 +101,12 @@
         "aux_id": "kijai/ComfyUI-PromptRelay"
       },
       "widgets_values": [
-        "cinematic live-action video, stable identity from reference image, audio-driven timing, no first-frame image conditioning.",
+        "Create a new 4 second video from text and optional audio while using @Ref1 only as visual reference, not as the first frame.",
         96,
         4.0,
-        "{\"segments\":[],\"audioSegments\":[],\"cameraSegments\":[{\"id\":\"demo-camera-static-001\",\"start\":0,\"length\":96,\"prompt\":\"static camera, locked stable shot, no pan, no zoom, no camera shake\",\"type\":\"camera\",\"cameraMotion\":\"static\"}],\"controlSegments\":[],\"promptSegments\":[{\"id\":\"demo-local-prompt-001\",\"start\":0,\"length\":96,\"prompt\":\"A new video generated from text and audio while preserving the person, clothing, and color palette from the reference image. The shot begins from a newly generated frame, not from the reference picture. The subject speaks naturally with subtle head movement, restrained hand gestures, clean facial structure, stable identity, no extra people, no text, no watermark.\",\"type\":\"prompt\"}],\"referenceImages\":[{\"id\":\"demo-reference-001\",\"type\":\"reference\",\"refName\":\"@Ref1\",\"imageB64\":\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAIAAADTED8xAAAD10lEQVR42u3cu40CMRiFUeogICIkpgACaqEoaiGkGoogIkFi8DxlXx/pK8D/7D2b7e4uj5vUbTufQABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASAC03et5H5uPBkB3o4cBANPHAADTxwAA08cAANPHAADrZwAA08cAAOtnAADrZwAA62cAAOtnAADrZwAA62cAAOtnAAAAAADA+hkAoPf1MwDAz46HfUkBAAovBQCAwPWXGwAAAAAAACBu/YUGAAAAAAAASFx/iQEAAAAAAABC1//XAAAAAAAAAAAAAAAAAHQKIHj9wwYAAAAAAAAAAAAAAAAAAAAAAAAAAPwJWFJ+xAAAIAAAEAAAAOArAACAAABAAAAAAAAAAAAAAAAAAAAAAADAgPUDAAAAAOR0Ol9/FQxg4GoAAAAAAAByDQyfDAAAAAAAQKiBv/cCAAAAAACQaKDkWAAAAAAAAOIMFF4KAAAAAABAloHyMwEAIM3AqBsBAAAAAABIMTD2QAAAyDEw4ToAAAgxMO00AABIMDD5LgAAaN7AnKMAAKBtAzMvAgCAhg3MPwcAAJpksNQhAADQnoEFrwAAgJYYLP5+AABog8FKLwcAgNoZrPpmAACol8EGrwUAgLowbPxCAADoOgByqvD3a/31+b91ARAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAiwcAAAEAgAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAii/+qzxkAIAAAEAASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIA0qc3m8Z5VhHOhRUAAAAASUVORK5CYII=\",\"note\":\"Use this image only as low-strength identity, outfit, color, and style reference. Do not copy it as the first frame; generate a fresh opening frame.\"}],\"cutSegments\":[],\"meta\":{\"longAuto\":false,\"activeSegmentIndex\":0,\"queueAllByDefault\":false,\"autoCut\":false,\"demo\":\"image_reference_with_audio_no_first_frame\",\"tailFramePrefix\":\"video/demo-image-ref-tail-frame\",\"segmentVideoPrefix\":\"video/demo-image-ref-video\"}}",
-        "A new video generated from text and audio while preserving the person, clothing, and color palette from the reference image. The shot begins from a newly generated frame, not from the reference picture. The subject speaks naturally with subtle head movement, restrained hand gestures, clean facial structure, stable identity, no extra people, no text, no watermark.. Camera: static camera, locked stable shot, no pan, no zoom, no camera shake. Reference @Ref1: Use this image only as low-strength identity, outfit, color, and style reference. Do not copy it as the first frame; generate a fresh opening frame.",
-        "96",
+        "{\"segments\":[],\"audioSegments\":[],\"cameraSegments\":[],\"controlSegments\":[],\"promptSegments\":[],\"referenceImages\":[{\"id\":\"demo-ref-1\",\"type\":\"reference\",\"refName\":\"@Ref1\",\"imageB64\":\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAIAAADTED8xAAAD10lEQVR42u3cu40CMRiFUeogICIkpgACaqEoaiGkGoogIkFi8DxlXx/pK8D/7D2b7e4uj5vUbTufQABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASAC03et5H5uPBkB3o4cBANPHAADTxwAA08cAANPHAADrZwAA08cAAOtnAADrZwAA62cAAOtnAADrZwAA62cAAOtnAAAAAADA+hkAoPf1MwDAz46HfUkBAAovBQCAwPWXGwAAAAAAACBu/YUGAAAAAAAASFx/iQEAAAAAAABC1//XAAAAAAAAAAAAAAAAAHQKIHj9wwYAAAAAAAAAAAAAAAAAAAAAAAAAAPwJWFJ+xAAAIAAAEAAAAOArAACAAABAAAAAAAAAAAAAAAAAAAAAAADAgPUDAAAAAOR0Ol9/FQxg4GoAAAAAAAByDQyfDAAAAAAAQKiBv/cCAAAAAACQaKDkWAAAAAAAAOIMFF4KAAAAAABAloHyMwEAIM3AqBsBAAAAAABIMTD2QAAAyDEw4ToAAAgxMO00AABIMDD5LgAAaN7AnKMAAKBtAzMvAgCAhg3MPwcAAJpksNQhAADQnoEFrwAAgJYYLP5+AABog8FKLwcAgNoZrPpmAACol8EGrwUAgLowbPxCAADoOgByqvD3a/31+b91ARAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAiwcAAAEAgAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAii/+qzxkAIAAAEAASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIAEgASABIA0qc3m8Z5VhHOhRUAAAAASUVORK5CYII=\",\"note\":\"Identity and outfit reference only. Do not copy as the first frame.\"}],\"cutSegments\":[],\"meta\":{\"longAuto\":false}}",
+        "",
+        "",
         0.001,
         "",
         true,
@@ -271,9 +117,9 @@
         "crop",
         32,
         12,
-        "ltx_director_pro=true; demo_image_ref=true; no_first_frame_keyframe=true; story_script=true; global_prefix=true; add_audio_with_director_audio_track=true"
+        "demo_image_ref=true; no_first_frame=true; audio_via_director_audio_track=true"
       ],
-      "title": "LTX DIRECTOR PRO - Demo Image Reference + Audio",
+      "title": "Demo - Image Reference + Audio",
       "extra": {
         "shezw_long_auto": {
           "manualCutToleranceSeconds": 0.25,
@@ -285,8 +131,8 @@
       "id": 30,
       "type": "SaveVideo",
       "pos": [
-        3230,
-        3970
+        3140,
+        120
       ],
       "size": [
         690,
@@ -309,20 +155,20 @@
         "Node name for S&R": "SaveVideo"
       },
       "widgets_values": [
-        "video/demo-image-ref-video",
+        "video/demo-image-ref",
         "auto",
         "auto"
       ],
       "color": "#222",
       "bgcolor": "#000",
-      "title": "SAVE LONG-AUTO SEGMENT VIDEO"
+      "title": "Save Video"
     },
     {
       "id": 96,
       "type": "739520a4-718f-490f-87d1-34ffbca98e3f",
       "pos": [
-        3000,
-        4620
+        2460,
+        120
       ],
       "size": [
         230,
@@ -376,9 +222,7 @@
         {
           "name": "IMAGE",
           "type": "IMAGE",
-          "links": [
-            258
-          ],
+          "links": null,
           "localized_name": "IMAGE"
         }
       ],
@@ -395,8 +239,8 @@
       "id": 93,
       "type": "dc399e64-01cd-40b2-9337-972428cc66de",
       "pos": [
-        1430,
-        3970
+        -1040,
+        120
       ],
       "size": [
         400,
@@ -473,8 +317,8 @@
       "id": 94,
       "type": "4b017e47-bf16-441b-ad03-edce978b3be3",
       "pos": [
-        3000,
-        3970
+        900,
+        120
       ],
       "size": [
         230,
@@ -531,14 +375,14 @@
         {
           "name": "camera_control_image",
           "type": "IMAGE",
-          "link": 256,
+          "link": null,
           "label": "camera_control_image"
         },
         {
           "name": "motion_control_image",
           "label": "motion_control_image",
           "type": "IMAGE",
-          "link": 262
+          "link": null
         }
       ],
       "outputs": [
@@ -598,8 +442,8 @@
       "id": 95,
       "type": "7cf6430b-4784-4af1-8cde-9268e9465c62",
       "pos": [
-        3000,
-        4290
+        1600,
+        120
       ],
       "size": [
         230,
@@ -659,14 +503,14 @@
         {
           "name": "camera_control_image",
           "type": "IMAGE",
-          "link": 257,
+          "link": null,
           "label": "camera_control_image"
         },
         {
           "name": "motion_control_image",
           "label": "motion_control_image",
           "type": "IMAGE",
-          "link": 263
+          "link": null
         }
       ],
       "outputs": [
@@ -695,35 +539,11 @@
       "bgcolor": "#000"
     },
     {
-      "id": 92,
-      "type": "MarkdownNote",
-      "pos": [
-        -1040,
-        120
-      ],
-      "size": [
-        840,
-        420
-      ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "Long-Auto Notes",
-      "properties": {},
-      "widgets_values": [
-        "# Demo: Image Reference + Audio, no first-frame keyframe\n\nThis demo is intentionally not I2V first-frame conditioning:\n- Keyframe/image `segments` is empty.\n- `@Ref1` lives only in `referenceImages` and is consumed by `ShezwDirectorICLoRAGuide` as visual reference.\n- Use the Director `+Audio` button to add/replace an audio clip; `use_custom_audio` is enabled.\n- Replace the embedded placeholder reference image with a real character/product/style image.\n\nIf the result ignores the reference, check `Apply Director Reference + IC-Control` and increase its `reference_strength` widget."
-      ],
-      "color": "#322",
-      "bgcolor": "#533"
-    },
-    {
       "id": 97,
       "type": "LTXICLoRALoaderModelOnly",
       "pos": [
-        760,
-        160
+        -700,
+        120
       ],
       "size": [
         500,
@@ -771,556 +591,6 @@
         1
       ],
       "title": "IC-LoRA Loader - Union Control"
-    },
-    {
-      "id": 98,
-      "type": "LoadVideoUI",
-      "pos": [
-        760,
-        360
-      ],
-      "size": [
-        360,
-        360
-      ],
-      "flags": {},
-      "order": 19,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "video",
-          "type": "STRING",
-          "widget": {
-            "name": "video"
-          },
-          "link": null
-        },
-        {
-          "name": "start_time",
-          "type": "FLOAT",
-          "widget": {
-            "name": "start_time"
-          },
-          "link": null
-        },
-        {
-          "name": "end_time",
-          "type": "FLOAT",
-          "widget": {
-            "name": "end_time"
-          },
-          "link": null
-        },
-        {
-          "name": "duration",
-          "type": "FLOAT",
-          "widget": {
-            "name": "duration"
-          },
-          "link": null
-        },
-        {
-          "name": "start_frame",
-          "type": "INT",
-          "widget": {
-            "name": "start_frame"
-          },
-          "link": null
-        },
-        {
-          "name": "end_frame",
-          "type": "INT",
-          "widget": {
-            "name": "end_frame"
-          },
-          "link": null
-        },
-        {
-          "name": "duration_frames",
-          "type": "INT",
-          "widget": {
-            "name": "duration_frames"
-          },
-          "link": null
-        },
-        {
-          "name": "resize_method",
-          "type": "COMBO",
-          "widget": {
-            "name": "resize_method"
-          },
-          "link": null
-        },
-        {
-          "name": "custom_width",
-          "type": "INT",
-          "widget": {
-            "name": "custom_width"
-          },
-          "link": null
-        },
-        {
-          "name": "custom_height",
-          "type": "INT",
-          "widget": {
-            "name": "custom_height"
-          },
-          "link": null
-        },
-        {
-          "name": "frame_rate",
-          "type": "INT",
-          "widget": {
-            "name": "frame_rate"
-          },
-          "link": null
-        },
-        {
-          "name": "display_mode",
-          "type": "COMBO",
-          "widget": {
-            "name": "display_mode"
-          },
-          "link": null
-        },
-        {
-          "name": "crop_x",
-          "type": "FLOAT",
-          "widget": {
-            "name": "crop_x"
-          },
-          "link": null
-        },
-        {
-          "name": "crop_y",
-          "type": "FLOAT",
-          "widget": {
-            "name": "crop_y"
-          },
-          "link": null
-        },
-        {
-          "name": "crop_w",
-          "type": "FLOAT",
-          "widget": {
-            "name": "crop_w"
-          },
-          "link": null
-        },
-        {
-          "name": "crop_h",
-          "type": "FLOAT",
-          "widget": {
-            "name": "crop_h"
-          },
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "links": [
-            256,
-            257
-          ],
-          "localized_name": "images"
-        },
-        {
-          "name": "audio",
-          "type": "AUDIO",
-          "links": null,
-          "localized_name": "audio"
-        },
-        {
-          "name": "duration",
-          "type": "FLOAT",
-          "links": null,
-          "localized_name": "duration"
-        },
-        {
-          "name": "frame_count",
-          "type": "INT",
-          "links": null,
-          "localized_name": "frame_count"
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "LoadVideoUI"
-      },
-      "widgets_values": [
-        "",
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        "maintain aspect ratio",
-        0,
-        0,
-        24,
-        "seconds",
-        0,
-        0,
-        1,
-        1
-      ],
-      "title": "OPTIONAL AUTO CAMERA CONTROL VIDEO / IMAGE INPUT",
-      "color": "#223",
-      "bgcolor": "#335"
-    },
-    {
-      "id": 101,
-      "type": "GetImageRangeFromBatch",
-      "pos": [
-        3230,
-        4620
-      ],
-      "size": [
-        260,
-        110
-      ],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [
-        {
-          "localized_name": "start_index",
-          "name": "start_index",
-          "type": "INT",
-          "widget": {
-            "name": "start_index"
-          },
-          "link": null
-        },
-        {
-          "localized_name": "num_frames",
-          "name": "num_frames",
-          "type": "INT",
-          "widget": {
-            "name": "num_frames"
-          },
-          "link": null
-        },
-        {
-          "localized_name": "images",
-          "name": "images",
-          "type": "IMAGE",
-          "link": 258
-        },
-        {
-          "localized_name": "masks",
-          "name": "masks",
-          "shape": 7,
-          "type": "MASK",
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "localized_name": "IMAGE",
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            259
-          ]
-        },
-        {
-          "localized_name": "MASK",
-          "name": "MASK",
-          "type": "MASK",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui-kjnodes",
-        "ver": "1.0.0",
-        "Node name for S&R": "GetImageRangeFromBatch"
-      },
-      "widgets_values": [
-        -1,
-        1
-      ],
-      "color": "#222",
-      "bgcolor": "#000",
-      "title": "GET LAST FRAME AS PNG SOURCE"
-    },
-    {
-      "id": 102,
-      "type": "SaveImageKJ",
-      "pos": [
-        3510,
-        4620
-      ],
-      "size": [
-        350,
-        120
-      ],
-      "flags": {},
-      "order": 6,
-      "mode": 0,
-      "inputs": [
-        {
-          "localized_name": "images",
-          "name": "images",
-          "type": "IMAGE",
-          "link": 259
-        },
-        {
-          "localized_name": "filename_prefix",
-          "name": "filename_prefix",
-          "type": "STRING",
-          "widget": {
-            "name": "filename_prefix"
-          },
-          "link": null
-        },
-        {
-          "localized_name": "output_folder",
-          "name": "output_folder",
-          "type": "STRING",
-          "widget": {
-            "name": "output_folder"
-          },
-          "link": null
-        },
-        {
-          "localized_name": "caption_file_extension",
-          "name": "caption_file_extension",
-          "type": "STRING",
-          "widget": {
-            "name": "caption_file_extension"
-          },
-          "link": null
-        },
-        {
-          "localized_name": "caption",
-          "name": "caption",
-          "shape": 7,
-          "type": "STRING",
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "localized_name": "filename",
-          "name": "filename",
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui-kjnodes",
-        "ver": "1.0.0",
-        "Node name for S&R": "SaveImageKJ"
-      },
-      "widgets_values": [
-        "video/demo-image-ref-tail-frame",
-        "output",
-        ""
-      ],
-      "color": "#222",
-      "bgcolor": "#000",
-      "title": "SAVE LAST FRAME PNG"
-    },
-    {
-      "id": 103,
-      "type": "LoadVideoUI",
-      "pos": [
-        760,
-        660
-      ],
-      "size": [
-        360,
-        360
-      ],
-      "flags": {},
-      "order": 20,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "video",
-          "type": "STRING",
-          "widget": {
-            "name": "video"
-          },
-          "link": null
-        },
-        {
-          "name": "start_time",
-          "type": "FLOAT",
-          "widget": {
-            "name": "start_time"
-          },
-          "link": null
-        },
-        {
-          "name": "end_time",
-          "type": "FLOAT",
-          "widget": {
-            "name": "end_time"
-          },
-          "link": null
-        },
-        {
-          "name": "duration",
-          "type": "FLOAT",
-          "widget": {
-            "name": "duration"
-          },
-          "link": null
-        },
-        {
-          "name": "start_frame",
-          "type": "INT",
-          "widget": {
-            "name": "start_frame"
-          },
-          "link": null
-        },
-        {
-          "name": "end_frame",
-          "type": "INT",
-          "widget": {
-            "name": "end_frame"
-          },
-          "link": null
-        },
-        {
-          "name": "duration_frames",
-          "type": "INT",
-          "widget": {
-            "name": "duration_frames"
-          },
-          "link": null
-        },
-        {
-          "name": "resize_method",
-          "type": "COMBO",
-          "widget": {
-            "name": "resize_method"
-          },
-          "link": null
-        },
-        {
-          "name": "custom_width",
-          "type": "INT",
-          "widget": {
-            "name": "custom_width"
-          },
-          "link": null
-        },
-        {
-          "name": "custom_height",
-          "type": "INT",
-          "widget": {
-            "name": "custom_height"
-          },
-          "link": null
-        },
-        {
-          "name": "frame_rate",
-          "type": "INT",
-          "widget": {
-            "name": "frame_rate"
-          },
-          "link": null
-        },
-        {
-          "name": "display_mode",
-          "type": "COMBO",
-          "widget": {
-            "name": "display_mode"
-          },
-          "link": null
-        },
-        {
-          "name": "crop_x",
-          "type": "FLOAT",
-          "widget": {
-            "name": "crop_x"
-          },
-          "link": null
-        },
-        {
-          "name": "crop_y",
-          "type": "FLOAT",
-          "widget": {
-            "name": "crop_y"
-          },
-          "link": null
-        },
-        {
-          "name": "crop_w",
-          "type": "FLOAT",
-          "widget": {
-            "name": "crop_w"
-          },
-          "link": null
-        },
-        {
-          "name": "crop_h",
-          "type": "FLOAT",
-          "widget": {
-            "name": "crop_h"
-          },
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "links": [
-            262,
-            263
-          ],
-          "localized_name": "images"
-        },
-        {
-          "name": "audio",
-          "type": "AUDIO",
-          "links": null,
-          "localized_name": "audio"
-        },
-        {
-          "name": "duration",
-          "type": "FLOAT",
-          "links": null,
-          "localized_name": "duration"
-        },
-        {
-          "name": "frame_count",
-          "type": "INT",
-          "links": null,
-          "localized_name": "frame_count"
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "LoadVideoUI"
-      },
-      "widgets_values": [
-        "",
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        "maintain aspect ratio",
-        0,
-        0,
-        24,
-        "seconds",
-        0,
-        0,
-        1,
-        1
-      ],
-      "title": "OPTIONAL AUTO MOTION / ACTION CONTROL VIDEO INPUT",
-      "color": "#223",
-      "bgcolor": "#335"
     }
   ],
   "links": [
@@ -1539,54 +809,6 @@
       95,
       8,
       "FLOAT"
-    ],
-    [
-      256,
-      98,
-      0,
-      94,
-      8,
-      "IMAGE"
-    ],
-    [
-      257,
-      98,
-      0,
-      95,
-      8,
-      "IMAGE"
-    ],
-    [
-      258,
-      96,
-      1,
-      101,
-      2,
-      "IMAGE"
-    ],
-    [
-      259,
-      101,
-      0,
-      102,
-      0,
-      "IMAGE"
-    ],
-    [
-      262,
-      103,
-      0,
-      94,
-      9,
-      "IMAGE"
-    ],
-    [
-      263,
-      103,
-      0,
-      95,
-      9,
-      "IMAGE"
     ]
   ],
   "groups": [],
@@ -5006,37 +4228,18 @@
   },
   "config": {},
   "extra": {
-    "frontendVersion": "1.40.0",
-    "VHS_latentpreview": false,
-    "VHS_latentpreviewrate": 0,
-    "VHS_MetadataImage": true,
-    "VHS_KeepIntermediate": true,
     "ds": {
-      "scale": 0.55,
+      "scale": 0.8,
       "offset": [
-        1060,
-        320
+        120,
+        120
       ]
-    },
-    "workflowRendererVersion": "LG",
-    "shezw_long_auto": {
-      "role": "segment_template",
-      "max_segment_seconds": 15,
-      "keyframe_tolerance_seconds": 0.25,
-      "manual_cut_field": "timeline_data.cutSegments",
-      "tail_frame_carry": "auto",
-      "keyframe_overrides_tail_frame": true,
-      "auto_cut": true,
-      "source_workflow": "pro-console.json",
-      "runner": "tools/long_auto_render.py",
-      "direct_queue_mode": "active_segment_only",
-      "manual_cut_tolerance_seconds": 0.25
     },
     "shezw_demo": {
       "name": "demo-image-ref",
-      "purpose": "LTX 2.3 reference image without first-frame keyframe, with Director audio track support",
-      "no_first_frame_keyframe": true,
-      "use_custom_audio": true
+      "image_reference": true,
+      "no_first_frame": true,
+      "audio_via_director_audio_track": true
     }
   },
   "version": 0.4

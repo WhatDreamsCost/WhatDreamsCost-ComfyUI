@@ -603,6 +603,25 @@ class LTXStoryboard(io.ComfyNode):
             )
             audio_latent = {"samples": torch.zeros((1, 1, 1, 1), device=comfy.model_management.intermediate_device())}
 
+        # ---- 4c. Compute extend-mode offset + combined length ----
+        # In extend mode the UI's `duration_frames` represents the NEW content length —
+        # the user works as if their timeline starts at the first frame of new content.
+        # Internally we add the prior region's pixel-frame count to derive the COMBINED
+        # length used by the relay's max_frames and to offset all kf / segment positions.
+        # LTX VAE: first latent frame = 1 pixel frame (causal), each subsequent = 8 pixel frames.
+        scale_factors = vae.downscale_index_formula
+        prior_pixel_offset = 0
+        combined_pixel_frames = duration_frames
+        if extend_from_video_latent is not None and prior_latent_t > 0:
+            time_scale = scale_factors[0] if isinstance(scale_factors, (tuple, list)) else 8
+            prior_pixel_offset = 1 + (prior_latent_t - 1) * time_scale
+            combined_pixel_frames = duration_frames + prior_pixel_offset
+            log.info(
+                "[LTXStoryboard] Extend mode timeline math: new_content=%d frames, prior=%d frames, "
+                "combined=%d frames. UI positions auto-offset by %d internally.",
+                duration_frames, prior_pixel_offset, combined_pixel_frames, prior_pixel_offset,
+            )
+
         # ---- 5. Call kijai's PromptRelayEncodeTimeline ----
         # If timeline has no segments (empty editor), `local_prompts` will likely be empty
         # and the relay will raise. Fall back: use global_prompt as a single local prompt.
@@ -617,6 +636,21 @@ class LTXStoryboard(io.ComfyNode):
                 relay_local_prompts = " "
                 relay_segment_lengths = str(duration_frames)
 
+        # In extend mode, prepend a leading "prior" segment (length = prior_pixel_offset,
+        # empty prompt → falls back to global_prompt) so the user's local_prompts and
+        # segment_lengths describe ONLY the new content. Without this, the relay would
+        # stretch the user's segments across the entire combined timeline including the
+        # prior region, which would corrupt the new content's prompt placement.
+        if prior_pixel_offset > 0:
+            prefixed_segments = [str(prior_pixel_offset)] + [s.strip() for s in relay_segment_lengths.split(",") if s.strip()]
+            prefixed_prompts = [""] + [p.strip() for p in relay_local_prompts.split("|")]
+            relay_segment_lengths = ",".join(prefixed_segments)
+            relay_local_prompts = "|".join(prefixed_prompts)
+            log.info(
+                "[LTXStoryboard] Extend mode: prepended prior segment (length=%d, empty prompt) to relay segments.",
+                prior_pixel_offset,
+            )
+
         try:
             PromptRelayEncodeTimeline = _get_prompt_relay_timeline_class()
             relay_result = PromptRelayEncodeTimeline.execute(
@@ -624,7 +658,7 @@ class LTXStoryboard(io.ComfyNode):
                 clip=clip,
                 latent=latent,
                 global_prompt=global_prompt,
-                max_frames=duration_frames,
+                max_frames=combined_pixel_frames,
                 timeline_data=timeline_data or "",
                 local_prompts=relay_local_prompts,
                 segment_lengths=relay_segment_lengths,
@@ -662,7 +696,7 @@ class LTXStoryboard(io.ComfyNode):
         # In extend mode the upstream LTXVAudioVideoMask already sets the working
         # resolution — we pass it through untouched. Wire LatentUpscaleBy downstream
         # on the video_latent output if a post-conditioning scale is wanted there.
-        scale_factors = vae.downscale_index_formula
+        # (scale_factors and prior_pixel_offset were computed earlier in section 4c.)
         in_extend_mode = extend_from_video_latent is not None
         if scale_by != 1.0 and not in_extend_mode:
             B, C, F, H, W = latent["samples"].shape
@@ -679,8 +713,11 @@ class LTXStoryboard(io.ComfyNode):
 
         _, _, latent_length, latent_height, latent_width = latent_image.shape
 
+        # KF positions are offset by prior_pixel_offset (computed in section 4c) so the
+        # UI's "frame 0" maps to "first frame of new content" in extend mode.
         for i, img_tensor in enumerate(guide_data["images"]):
-            f_idx = int(guide_data["insert_frames"][i])
+            f_idx_ui = int(guide_data["insert_frames"][i])
+            f_idx = f_idx_ui + prior_pixel_offset
             strength = float(guide_data["strengths"][i])
 
             image_1, t = LTXVAddGuide.encode(vae, latent_width, latent_height, img_tensor, scale_factors)
@@ -688,8 +725,8 @@ class LTXStoryboard(io.ComfyNode):
 
             if latent_idx + t.shape[2] > latent_length:
                 log.warning(
-                    "[LTXStoryboard] kf %d at pixel %d → latent_idx %d would exceed latent_length %d; skipping.",
-                    i, f_idx, latent_idx, latent_length,
+                    "[LTXStoryboard] kf %d at UI pixel %d (combined pixel %d) → latent_idx %d would exceed latent_length %d; skipping.",
+                    i, f_idx_ui, f_idx, latent_idx, latent_length,
                 )
                 continue
 
@@ -697,8 +734,8 @@ class LTXStoryboard(io.ComfyNode):
                 positive, negative, frame_idx, latent_image, noise_mask, t, strength, scale_factors,
             )
             log.info(
-                "[LTXStoryboard] kf %d: pixel=%d (snapped=%d) → latent_idx=%d, strength=%.2f",
-                i, f_idx, frame_idx, latent_idx, strength,
+                "[LTXStoryboard] kf %d: UI pixel=%d → combined pixel=%d (snapped=%d) → latent_idx=%d, strength=%.2f",
+                i, f_idx_ui, f_idx, frame_idx, latent_idx, strength,
             )
 
         latent = {"samples": latent_image, "noise_mask": noise_mask}

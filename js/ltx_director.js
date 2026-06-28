@@ -2756,9 +2756,9 @@ class TimelineEditor {
     this.globalPromptInput = document.createElement("textarea");
     this.globalPromptInput.className = "pr-prompt-area";
     this.globalPromptInput.placeholder = "Enter global prompt here...";
-    this.globalPromptInput.spellcheck = false;
     globalPromptWrapper.appendChild(this.globalPromptInput);
 
+    this.globalPromptInput.addEventListener("contextmenu", (e) => e.stopPropagation());
     this.globalPromptInput.addEventListener("focus", () => {
       globalPromptWrapper.classList.add("focus-active");
       this.wrapper.classList.add("has-focus");
@@ -2917,6 +2917,7 @@ class TimelineEditor {
     this.promptInput.style.opacity = "0.4";
     this.promptWrapper.appendChild(this.promptInput);
 
+    this.promptInput.addEventListener("contextmenu", (e) => e.stopPropagation());
     this.promptInput.addEventListener("focus", () => {
       this.promptWrapper.classList.add("focus-active");
       this.wrapper.classList.add("has-focus");

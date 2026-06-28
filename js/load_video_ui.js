@@ -1,3 +1,5 @@
+import { addMiddleClickPan, addWheelPassthrough } from './utility.js';
+
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
@@ -443,6 +445,10 @@ app.registerExtension({
                 // UI CONTAINER (Preview & Timeline Editor)
                 // ====================================================================
                 const container = document.createElement("div");
+
+                addMiddleClickPan(container);
+                addWheelPassthrough(container);
+
                 const defaultBg = "rgba(30, 30, 30, 0.9)";
                 Object.assign(container.style, {
                     display: "flex",

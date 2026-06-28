@@ -1,3 +1,5 @@
+import { addMiddleClickPan, addWheelPassthrough } from './utility.js';
+
 import { app } from "../../scripts/app.js";
 import { ComfyWidgets } from "../../scripts/widgets.js";
 
@@ -190,6 +192,9 @@ app.registerExtension({
                         }
                     }
                 }
+
+                addMiddleClickPan(uiContainer);
+                addWheelPassthrough(uiContainer);
 
                 // Tell LiteGraph exactly how much vertical space to hold for our UI
                 statsWidget.computeSize = function() {

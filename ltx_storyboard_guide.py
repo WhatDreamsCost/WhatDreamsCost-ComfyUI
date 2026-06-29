@@ -27,6 +27,7 @@ import torch
 
 import comfy.utils
 from comfy_extras.nodes_lt import LTXVAddGuide
+from .ltx_storyboard import _detect_prior_latent_t
 from comfy_api.latest import io
 
 
@@ -123,6 +124,22 @@ class LTXStoryboardGuide(LTXVAddGuide):
 
         _, _, latent_length, latent_height, latent_width = latent_image.shape
 
+        # Detect prior region from the input latent's noise_mask and apply the SAME
+        # extend-mode offset that LTXStoryboard applies in stage-1. Without this,
+        # stage-1 anchors the kf at one combined position and stage-2 (via this node
+        # after LTXVCropGuides + LTXVLatentUpsampler) anchors the same kf at a
+        # DIFFERENT, earlier position — and the model sees temporally inconsistent
+        # kfs across stages, so the kf content drifts or vanishes. See LTXStoryboard
+        # section 4c for the matching math; mirror it here.
+        time_scale = scale_factors[0] if isinstance(scale_factors, (tuple, list)) else 8
+        prior_latent_t = _detect_prior_latent_t(noise_mask)
+        prior_pixel_offset = 1 + (prior_latent_t - 1) * time_scale if prior_latent_t > 0 else 0
+        if prior_pixel_offset > 0:
+            log.info(
+                "[LTXStoryboardGuide] Extend mode detected: prior_latent_t=%d, applying UI→combined offset of %d pixel frames (matches LTXStoryboard stage-1).",
+                prior_latent_t, prior_pixel_offset,
+            )
+
         images = guide_data.get("images", [])
         insert_frames = guide_data.get("insert_frames", [])
         strengths = guide_data.get("strengths", [])
@@ -132,7 +149,8 @@ class LTXStoryboardGuide(LTXVAddGuide):
             return io.NodeOutput(positive, negative, {"samples": latent_image, "noise_mask": noise_mask})
 
         for i, img_tensor in enumerate(images):
-            f_idx = int(insert_frames[i]) if i < len(insert_frames) else 0
+            f_idx_ui = int(insert_frames[i]) if i < len(insert_frames) else 0
+            f_idx = f_idx_ui + prior_pixel_offset
             strength = float(strengths[i]) if i < len(strengths) else 1.0
 
             # Mirror LTXVAddGuideMulti's loop body exactly (comfyui-kjnodes/nodes/ltxv_nodes.py:61-97).
@@ -141,8 +159,8 @@ class LTXStoryboardGuide(LTXVAddGuide):
 
             if latent_idx + t.shape[2] > latent_length:
                 log.warning(
-                    "[LTXStoryboardGuide] kf %d at pixel %d → latent_idx %d would exceed latent_length %d; skipping.",
-                    i, f_idx, latent_idx, latent_length,
+                    "[LTXStoryboardGuide] kf %d at UI pixel %d (combined pixel %d) → latent_idx %d would exceed latent_length %d; skipping.",
+                    i, f_idx_ui, f_idx, latent_idx, latent_length,
                 )
                 continue
 
@@ -151,8 +169,8 @@ class LTXStoryboardGuide(LTXVAddGuide):
             )
 
             log.info(
-                "[LTXStoryboardGuide] kf %d: pixel=%d (snapped=%d) → latent_idx=%d, strength=%.2f",
-                i, f_idx, frame_idx, latent_idx, strength,
+                "[LTXStoryboardGuide] kf %d: UI pixel=%d → combined pixel=%d (snapped=%d) → latent_idx=%d, strength=%.2f",
+                i, f_idx_ui, f_idx, frame_idx, latent_idx, strength,
             )
 
         return io.NodeOutput(

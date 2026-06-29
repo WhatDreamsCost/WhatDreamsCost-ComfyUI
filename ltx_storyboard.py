@@ -636,19 +636,31 @@ class LTXStoryboard(io.ComfyNode):
                 relay_local_prompts = " "
                 relay_segment_lengths = str(duration_frames)
 
-        # In extend mode, prepend a leading "prior" segment (length = prior_pixel_offset,
-        # empty prompt → falls back to global_prompt) so the user's local_prompts and
-        # segment_lengths describe ONLY the new content. Without this, the relay would
-        # stretch the user's segments across the entire combined timeline including the
-        # prior region, which would corrupt the new content's prompt placement.
+        # In extend mode, prepend a leading "prior" segment (length = prior_pixel_offset)
+        # so the user's local_prompts and segment_lengths describe ONLY the new content.
+        # Without this, the relay would stretch the user's segments across the entire
+        # combined timeline including the prior region, which would corrupt the new
+        # content's prompt placement.
+        #
+        # The prior segment's local prompt MUST be non-empty AND non-whitespace —
+        # ComfyUI-PromptRelay/nodes.py:68 strips empties from `local_prompts.split("|")`:
+        #     locals_list = [p.strip() for p in local_prompts.split("|") if p.strip()]
+        # So "" or " " would silently disappear, leaving segment_lengths > prompts and
+        # tripping ValueError ("Number of segment_lengths (N) must match number of
+        # local prompts (N-1)"). We reuse the user's `global_prompt` text — semantically
+        # the prior region falls back to the global narrative, and the prior is
+        # noise_mask=0 (locked) so the prompt blend over it is effectively academic.
+        # If global_prompt is also empty, use "." as a minimal placeholder (≈1 token).
         if prior_pixel_offset > 0:
+            prior_local_prompt = global_prompt.strip() if global_prompt.strip() else "."
             prefixed_segments = [str(prior_pixel_offset)] + [s.strip() for s in relay_segment_lengths.split(",") if s.strip()]
-            prefixed_prompts = [""] + [p.strip() for p in relay_local_prompts.split("|")]
+            prefixed_prompts = [prior_local_prompt] + [p.strip() for p in relay_local_prompts.split("|") if p.strip()]
             relay_segment_lengths = ",".join(prefixed_segments)
             relay_local_prompts = "|".join(prefixed_prompts)
             log.info(
-                "[LTXStoryboard] Extend mode: prepended prior segment (length=%d, empty prompt) to relay segments.",
-                prior_pixel_offset,
+                "[LTXStoryboard] Extend mode: prepended prior segment (length=%d, prompt=%r) — segments=%d, prompts=%d.",
+                prior_pixel_offset, prior_local_prompt[:40] + ("…" if len(prior_local_prompt) > 40 else ""),
+                len(prefixed_segments), len(prefixed_prompts),
             )
 
         try:

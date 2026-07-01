@@ -194,7 +194,15 @@ app.registerExtension({
                     if (filename.match(/^[a-zA-Z]:\\/) || filename.startsWith('/')) {
                         url = api.apiURL(`/video_ui_custom_view?filename=${encodeURIComponent(filename)}`);
                     } else {
-                        url = api.apiURL(`/view?filename=${encodeURIComponent(filename)}&type=input`);
+                        // Split subfolder from filename if path contains /
+                        const parts = filename.split('/');
+                        let actualFilename = filename;
+                        let subfolder = '';
+                        if (parts.length > 1) {
+                            subfolder = parts.slice(0, -1).join('/');
+                            actualFilename = parts[parts.length - 1];
+                        }
+                        url = api.apiURL(`/view?filename=${encodeURIComponent(actualFilename)}&type=input${subfolder ? `&subfolder=${encodeURIComponent(subfolder)}` : ''}`);
                     }
 
                     if (videoPreview) videoPreview.src = url;
@@ -317,8 +325,10 @@ app.registerExtension({
 
                             if (resp.status === 200) {
                                 const data = await resp.json();
-                                videoWidget.value = data.name;
-                                node.updatePreview(data.name);
+                                // Include subfolder path if provided
+                                const videoPath = data.subfolder ? `${data.subfolder}/${data.name}` : data.name;
+                                videoWidget.value = videoPath;
+                                node.updatePreview(videoPath);
                                 if (startTimeWidget) startTimeWidget.value = 0;
                                 if (endTimeWidget) endTimeWidget.value = 0;
                                 node.syncFramesFromTime();
@@ -773,6 +783,21 @@ app.registerExtension({
                 videoPreview.controls = true;
                 videoPreview.controlsList = "nodownload nofullscreen noremoteplayback";
                 videoPreview.muted = false; // Changed from true to false so the video starts unmuted
+                
+                // Add error handling for video loading
+                videoPreview.onerror = function(e) {
+                    console.error("[SmartLoadVideoUI] Video loading error:", e);
+                    if (errorMsg) {
+                        errorMsg.textContent = "Video preview failed to load. Check console for details.";
+                        errorMsg.style.display = "block";
+                    }
+                };
+                
+                videoPreview.onloadeddata = function() {
+                    if (errorMsg) errorMsg.style.display = "none";
+                    console.log("[SmartLoadVideoUI] Video loaded successfully");
+                };
+                
                 videoWrapper.appendChild(videoPreview);
 
                 const cropBox = document.createElement("div");

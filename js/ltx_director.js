@@ -2220,7 +2220,11 @@ class TimelineEditor {
     this.videoFileInput.accept = "video/*";
     this.videoFileInput.multiple = true;
     this.videoFileInput.style.display = "none";
-    this.videoFileInput.addEventListener("change", (e) => this.handleVideoUpload(e.target.files));
+    this.videoFileInput.addEventListener("change", (e) => {
+      const files = e.target.files;
+      e.target.value = ""; // reset up front so the button works again even if an upload hangs
+      this.handleVideoUpload(files);
+    });
 
     const uploadBtn = document.createElement("button");
     uploadBtn.className = "pr-btn";
@@ -4244,18 +4248,26 @@ class TimelineEditor {
 
             // Extract first-frame thumbnail from local blob — instant
             vid.currentTime = 0.01;
-            vid.onseeked = () => {
+            let seekHandled = false;
+            const onSeekReady = () => {
+              if (seekHandled) return;            // onseeked and the watchdog must not both run
+              seekHandled = true;
+              clearTimeout(seekWatchdog);
               vid.onseeked = null;
-              const canvas = document.createElement('canvas');
-              canvas.width = Math.min(vid.videoWidth, 512);
-              canvas.height = Math.round((vid.videoHeight / vid.videoWidth) * canvas.width);
-              const ctx = canvas.getContext('2d');
-              ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
-              vidSeg.imageB64 = canvas.toDataURL('image/jpeg');
+              try {
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.min(vid.videoWidth, 512) || 512;
+                canvas.height = Math.round((vid.videoHeight / vid.videoWidth) * canvas.width) || 288;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
+                vidSeg.imageB64 = canvas.toDataURL('image/jpeg');
 
-              const imgObj = new Image();
-              imgObj.onload = () => { vidSeg.imgObj = imgObj; this.render(); };
-              imgObj.src = vidSeg.imageB64;
+                const imgObj = new Image();
+                imgObj.onload = () => { vidSeg.imgObj = imgObj; this.render(); };
+                imgObj.src = vidSeg.imageB64;
+              } catch (e) {
+                console.warn("[LTXDirector] thumbnail capture failed, continuing without it", e);
+              }
 
               // Add to timeline immediately
               this.timeline.segments.push(vidSeg);
@@ -4362,6 +4374,9 @@ class TimelineEditor {
                 this.render();
               });
             };
+            // ponytail: some VFR / odd-codec mp4s never fire onseeked → 5s watchdog so add-video can't wedge
+            const seekWatchdog = setTimeout(onSeekReady, 5000);
+            vid.onseeked = onSeekReady;
           };
 
           vid.onerror = (e) => {

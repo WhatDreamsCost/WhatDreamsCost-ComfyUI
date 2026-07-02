@@ -207,6 +207,7 @@ def _compose_audio_extend_and_custom(
     combined_pixel_frames: int,
     prior_pixel_offset: int,
     frame_rate: float,
+    custom_audio_lock: float = 1.0,
 ) -> dict | None:
     """Compose an audio latent by overlaying custom audio content on top of an extend
     audio base. Locked regions (mask=0) win — the prior extend region is never
@@ -299,17 +300,26 @@ def _compose_audio_extend_and_custom(
             custom_samples[:, :, overlay_slice],
             base_samples[:, :, overlay_slice],
         )
+        # Soft-anchor: mask_value = 1.0 - custom_audio_lock. At lock=1.0 → mask=0
+        # (hard lock, current behavior). At lock=0.5 → mask=0.5 (custom samples act as
+        # a soft target the sampler biases toward but can drift from — necessary when
+        # hard-locking silent audio kills video motion via LTX-2's audio↔video
+        # cross-attention). At lock=0.0 → mask=1 (samples ignored, pure generation).
+        lock_mask_value = 1.0 - float(custom_audio_lock)
         base_mask[:, :, overlay_slice] = torch.where(
             overlay_where,
-            torch.zeros_like(seg_mask),
+            torch.full_like(seg_mask, lock_mask_value),
             seg_mask,
         )
         overlaid_ranges.append((seg_start_px, seg_end_combined_px - prior_pixel_offset, start_lat, end_lat))
 
     if overlaid_ranges:
+        lock_desc = ("hard lock (mask=0)" if custom_audio_lock >= 0.999
+                     else "no lock (mask=1, samples effectively ignored)" if custom_audio_lock <= 0.001
+                     else f"soft anchor (mask={1.0 - float(custom_audio_lock):.2f})")
         log.info(
-            "[LTXStoryboard] Audio compose: overlaid %d segment(s). Ranges (UI pixel → audio latent): %s",
-            len(overlaid_ranges),
+            "[LTXStoryboard] Audio compose: overlaid %d segment(s) with %s. Ranges (UI pixel → audio latent): %s",
+            len(overlaid_ranges), lock_desc,
             ", ".join(f"[{a}-{b}]px→[{c}-{d}]lat" for (a, b, c, d) in overlaid_ranges),
         )
     else:
@@ -455,6 +465,18 @@ class LTXStoryboard(io.ComfyNode):
                     "use_custom_audio", default=False, optional=True,
                     tooltip="If True and audio segments are present in timeline_data, build a combined audio waveform via _build_combined_audio.",
                 ),
+                io.Float.Input(
+                    "custom_audio_lock", default=1.0, min=0.0, max=1.0, step=0.01, optional=True,
+                    tooltip=(
+                        "How hard to lock the audio latent to your custom audio at user segment ranges. "
+                        "1.0 = hard lock (mask=0 there — sampler cannot deviate from your audio). "
+                        "0.5 = soft anchor (mask=0.5 — your audio biases the sampler but it can drift). "
+                        "0.0 = no lock (mask=1 — samples placed but ignored at inference; degenerate). "
+                        "Use lower values (~0.4-0.6) if hard-locked silent regions are killing video motion — "
+                        "LTX-2's joint AV branch correlates quiet audio with static video, so softening the "
+                        "audio lock gives the video branch room to generate motion."
+                    ),
+                ),
                 io.String.Input(
                     "local_prompts", multiline=True, default="",
                     tooltip="Auto-populated from the JS timeline editor (pipe-separated local prompts).",
@@ -547,6 +569,7 @@ class LTXStoryboard(io.ComfyNode):
         extend_from_audio_latent=None,
         relay_options=None,
         use_custom_audio: bool = False,
+        custom_audio_lock: float = 1.0,
         frame_rate: float = 24.0,
         display_mode: str = "seconds",
         custom_width: int = 0,
@@ -721,6 +744,7 @@ class LTXStoryboard(io.ComfyNode):
                 combined_pixel_frames=_early_combined_pixel_frames,
                 prior_pixel_offset=_early_prior_pixel_offset,
                 frame_rate=frame_rate,
+                custom_audio_lock=custom_audio_lock,
             )
             if audio_latent is not None:
                 samples = audio_latent["samples"]

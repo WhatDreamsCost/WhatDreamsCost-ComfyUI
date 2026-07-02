@@ -1,0 +1,8 @@
+======================================================
+Job started on node: ip-172-17-50-134
+To connect, open a new terminal on the login node and run:
+ssh ip-172-17-50-134
+======================================================
+slurmstepd: error: *** REASON: burst_buffer/lua: Stage-out in progress ***
+slurmstepd: error: *** JOB 815570 ON ip-172-17-50-134 CANCELLED AT 2026-07-01T04:00:08 ***
+slurmstepd: error: *** REASON: burst_buffer/lua: Stage-out in progress ***

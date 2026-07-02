@@ -124,21 +124,54 @@ class LTXStoryboardGuide(LTXVAddGuide):
 
         _, _, latent_length, latent_height, latent_width = latent_image.shape
 
-        # Detect prior region from the input latent's noise_mask and apply the SAME
-        # extend-mode offset that LTXStoryboard applies in stage-1. Without this,
-        # stage-1 anchors the kf at one combined position and stage-2 (via this node
-        # after LTXVCropGuides + LTXVLatentUpsampler) anchors the same kf at a
-        # DIFFERENT, earlier position — and the model sees temporally inconsistent
-        # kfs across stages, so the kf content drifts or vanishes. See LTXStoryboard
-        # section 4c for the matching math; mirror it here.
+        # Rebuild the noise_mask for the prior region if it was stripped upstream.
+        # LTXVLatentUpsampler.upsample_latent explicitly `pop`s "noise_mask" from its
+        # output dict (nodes_lt_upsampler.py:69), so by the time this node runs after
+        # a stage-1 sample + Separate + Crop + Upsampler chain, the prior region's
+        # locked mask (mask ≤ 0.05) is gone. Without it, stage-2 sampling denoises
+        # the prior frames at the schedule's denoise rate (typically 0.4) — enough
+        # to visibly re-generate the prior region ("half second of re-denoised
+        # extended video"). We restore it here using prior_latent_t from guide_data.
+        gd_prior_t_probe = int(guide_data.get("prior_latent_t", 0) or 0)
+        if gd_prior_t_probe > 0:
+            mask_max = float(noise_mask.max().item()) if noise_mask.numel() > 0 else 1.0
+            mask_min_at_prior = float(noise_mask[:, :, :gd_prior_t_probe].min().item()) if noise_mask.shape[2] >= gd_prior_t_probe else 1.0
+            if mask_min_at_prior > 0.05:  # prior region isn't locked → rebuild
+                B, _, F_lat, H_m, W_m = noise_mask.shape
+                fresh_mask = torch.ones((B, 1, F_lat, H_m, W_m), dtype=noise_mask.dtype, device=noise_mask.device)
+                fresh_mask[:, :, :gd_prior_t_probe] = 0.0
+                noise_mask = fresh_mask
+                log.info(
+                    "[LTXStoryboardGuide] Restored noise_mask for stage-2 prior lock: first %d latent frames set to mask=0 (was max=%.3f, min-at-prior=%.3f — upsampler stripped it).",
+                    gd_prior_t_probe, mask_max, mask_min_at_prior,
+                )
+
+        # Apply the SAME extend-mode offset that LTXStoryboard applied in stage-1.
+        # PREFERRED SOURCE: `guide_data["prior_pixel_offset"]` — stamped by LTXStoryboard
+        # at section 4c. This is the authoritative source because LTXVLatentUpsampler
+        # explicitly drops the latent's noise_mask (nodes_lt_upsampler.py:69), so
+        # auto-detecting prior_latent_t from the upsampled latent's mask returns 0
+        # even when we're in an extend-mode continuation.
+        # FALLBACK: detect from noise_mask (works if someone wired the Guide before
+        # the upsampler, or with a non-upsampled latent that still has its mask).
         time_scale = scale_factors[0] if isinstance(scale_factors, (tuple, list)) else 8
-        prior_latent_t = _detect_prior_latent_t(noise_mask)
-        prior_pixel_offset = 1 + (prior_latent_t - 1) * time_scale if prior_latent_t > 0 else 0
-        if prior_pixel_offset > 0:
+        gd_offset = int(guide_data.get("prior_pixel_offset", 0) or 0)
+        gd_prior_t = int(guide_data.get("prior_latent_t", 0) or 0)
+        if gd_offset > 0:
+            prior_pixel_offset = gd_offset
+            prior_latent_t = gd_prior_t
             log.info(
-                "[LTXStoryboardGuide] Extend mode detected: prior_latent_t=%d, applying UI→combined offset of %d pixel frames (matches LTXStoryboard stage-1).",
+                "[LTXStoryboardGuide] Extend mode (from guide_data): prior_latent_t=%d, applying UI→combined offset of %d pixel frames.",
                 prior_latent_t, prior_pixel_offset,
             )
+        else:
+            prior_latent_t = _detect_prior_latent_t(noise_mask)
+            prior_pixel_offset = 1 + (prior_latent_t - 1) * time_scale if prior_latent_t > 0 else 0
+            if prior_pixel_offset > 0:
+                log.info(
+                    "[LTXStoryboardGuide] Extend mode (detected from noise_mask): prior_latent_t=%d, applying UI→combined offset of %d pixel frames.",
+                    prior_latent_t, prior_pixel_offset,
+                )
 
         images = guide_data.get("images", [])
         insert_frames = guide_data.get("insert_frames", [])

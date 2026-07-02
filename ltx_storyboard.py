@@ -457,6 +457,11 @@ class LTXStoryboard(io.ComfyNode):
             "strengths": [],
             "reach_before_pixels": [],
             "reach_after_pixels": [],
+            # Populated in section 4c below; the Guide node (stage-2) reads these directly
+            # because `LTXVLatentUpsampler` drops the latent's noise_mask, so auto-detecting
+            # prior_latent_t from the upsampled latent is not possible.
+            "prior_latent_t": 0,
+            "prior_pixel_offset": 0,
         }
 
         derived_w = custom_width if custom_width > 0 else 768
@@ -559,15 +564,14 @@ class LTXStoryboard(io.ComfyNode):
             combined_audio = _silence_audio(duration_frames, frame_rate)
 
         # ---- 4b. Build audio latent ----
-        # Priority:
-        #   1. extend_from_audio_latent — upstream-provided latent (extend mode) wins.
-        #   2. use_custom_audio + audio_segments + audio_vae → encode combined_audio to
+        # Priority (user-intent-first — `use_custom_audio=True` is an explicit ask, so it wins
+        # over a passively-wired extend socket that may just be carrying silence through an
+        # upstream AnySwitch):
+        #   1. use_custom_audio + audio_segments + audio_vae → encode combined_audio to
         #      a REAL audio latent that drives LTX's audio-conditioning path during sampling.
+        #   2. extend_from_audio_latent — upstream-provided latent (extend mode, no custom).
         #   3. Empty audio latent matching duration (silence).
-        if extend_from_audio_latent is not None:
-            audio_latent = extend_from_audio_latent
-            log.info("[LTXStoryboard] audio_latent path: EXTEND (using upstream extend_from_audio_latent).")
-        elif use_custom_audio and audio_segments and audio_vae is not None:
+        if use_custom_audio and audio_segments and audio_vae is not None:
             audio_latent = _encode_audio_to_latent(audio_vae, combined_audio)
             if audio_latent is not None:
                 samples = audio_latent["samples"]
@@ -578,8 +582,11 @@ class LTXStoryboard(io.ComfyNode):
                     " (latent looks silent — encode may have collapsed to zeros)" if peak_latent < 1e-4 else "",
                 )
             else:
-                log.warning("[LTXStoryboard] audio_latent path: CUSTOM ENCODE RETURNED None; falling back to empty latent.")
-                audio_latent = _build_empty_audio_latent(audio_vae, duration_frames, frame_rate)
+                log.warning("[LTXStoryboard] audio_latent path: CUSTOM ENCODE RETURNED None; falling back to extend/empty.")
+                audio_latent = extend_from_audio_latent if extend_from_audio_latent is not None else _build_empty_audio_latent(audio_vae, duration_frames, frame_rate)
+        elif extend_from_audio_latent is not None:
+            audio_latent = extend_from_audio_latent
+            log.info("[LTXStoryboard] audio_latent path: EXTEND (using upstream extend_from_audio_latent — use_custom_audio=%s).", use_custom_audio)
         else:
             why = []
             if not use_custom_audio: why.append("use_custom_audio=False")
@@ -621,6 +628,10 @@ class LTXStoryboard(io.ComfyNode):
                 "combined=%d frames. UI positions auto-offset by %d internally.",
                 duration_frames, prior_pixel_offset, combined_pixel_frames, prior_pixel_offset,
             )
+        # Stamp the guide bundle so the stage-2 Guide node can apply the same offset
+        # (the upsampler drops noise_mask, so it can't auto-detect the prior region).
+        guide_data["prior_latent_t"] = prior_latent_t if extend_from_video_latent is not None else 0
+        guide_data["prior_pixel_offset"] = prior_pixel_offset
 
         # ---- 5. Call kijai's PromptRelayEncodeTimeline ----
         # If timeline has no segments (empty editor), `local_prompts` will likely be empty

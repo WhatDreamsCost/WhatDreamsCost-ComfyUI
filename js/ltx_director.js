@@ -1,3 +1,5 @@
+import { addMiddleClickPan, addWheelPassthrough, addWheelPassthroughPrompt } from './utility.js';
+
 const { app } = window.comfyAPI.app;
 const { api } = window.comfyAPI.api;
 
@@ -2759,6 +2761,9 @@ class TimelineEditor {
     this.globalPromptInput.spellcheck = false;
     globalPromptWrapper.appendChild(this.globalPromptInput);
 
+    this.globalPromptInput.addEventListener("wheel", (e) => e.stopPropagation());
+    addWheelPassthroughPrompt(this.globalPromptInput);
+
     this.globalPromptInput.addEventListener("focus", () => {
       globalPromptWrapper.classList.add("focus-active");
       this.wrapper.classList.add("has-focus");
@@ -2916,6 +2921,9 @@ class TimelineEditor {
     this.promptInput.placeholder = "No segment selected!";
     this.promptInput.style.opacity = "0.4";
     this.promptWrapper.appendChild(this.promptInput);
+
+    this.promptInput.addEventListener("wheel", (e) => e.stopPropagation());
+    addWheelPassthroughPrompt(this.promptInput);
 
     this.promptInput.addEventListener("focus", () => {
       this.promptWrapper.classList.add("focus-active");
@@ -3738,6 +3746,9 @@ class TimelineEditor {
     this.wrapper.appendChild(this.globalPropContainer);
 
     this.container.appendChild(this.wrapper);
+
+    addMiddleClickPan(this.wrapper);
+    addWheelPassthrough(this.wrapper);
   }
 
   syncWidgetsAndUI() {

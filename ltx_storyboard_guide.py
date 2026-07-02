@@ -181,10 +181,23 @@ class LTXStoryboardGuide(LTXVAddGuide):
             log.info("[LTXStoryboardGuide] guide_data has no images; passing through unchanged.")
             return io.NodeOutput(positive, negative, {"samples": latent_image, "noise_mask": noise_mask})
 
+        # Same "auto-clamp to latent's max valid position" logic as LTXStoryboard.
+        # LTX 8k+1 pixel-frame convention can leave 1-8 UI pixels with no latent slot;
+        # clamping keeps the "last frame" kf usable instead of silently skipping it.
+        max_valid_combined_pixel = time_scale * (latent_length - 1)
+
         for i, img_tensor in enumerate(images):
             f_idx_ui = int(insert_frames[i]) if i < len(insert_frames) else 0
             f_idx = f_idx_ui + prior_pixel_offset
             strength = float(strengths[i]) if i < len(strengths) else 1.0
+
+            clamped = False
+            if f_idx > max_valid_combined_pixel:
+                original_ui = f_idx_ui
+                original_combined = f_idx
+                f_idx = max_valid_combined_pixel
+                f_idx_ui = max(0, f_idx - prior_pixel_offset)
+                clamped = True
 
             # Mirror LTXVAddGuideMulti's loop body exactly (comfyui-kjnodes/nodes/ltxv_nodes.py:61-97).
             image_1, t = cls.encode(vae, latent_width, latent_height, img_tensor, scale_factors)
@@ -192,7 +205,7 @@ class LTXStoryboardGuide(LTXVAddGuide):
 
             if latent_idx + t.shape[2] > latent_length:
                 log.warning(
-                    "[LTXStoryboardGuide] kf %d at UI pixel %d (combined pixel %d) → latent_idx %d would exceed latent_length %d; skipping.",
+                    "[LTXStoryboardGuide] kf %d at UI pixel %d (combined %d) → latent_idx %d still exceeds latent_length %d after clamp attempt; skipping.",
                     i, f_idx_ui, f_idx, latent_idx, latent_length,
                 )
                 continue
@@ -201,10 +214,16 @@ class LTXStoryboardGuide(LTXVAddGuide):
                 positive, negative, frame_idx, latent_image, noise_mask, t, strength, scale_factors,
             )
 
-            log.info(
-                "[LTXStoryboardGuide] kf %d: UI pixel=%d → combined pixel=%d (snapped=%d) → latent_idx=%d, strength=%.2f",
-                i, f_idx_ui, f_idx, frame_idx, latent_idx, strength,
-            )
+            if clamped:
+                log.warning(
+                    "[LTXStoryboardGuide] kf %d: UI pixel %d (combined %d) exceeded latent capacity — CLAMPED to UI pixel %d (combined %d) → latent_idx=%d, strength=%.2f.",
+                    i, original_ui, original_combined, f_idx_ui, f_idx, latent_idx, strength,
+                )
+            else:
+                log.info(
+                    "[LTXStoryboardGuide] kf %d: UI pixel=%d → combined pixel=%d (snapped=%d) → latent_idx=%d, strength=%.2f",
+                    i, f_idx_ui, f_idx, frame_idx, latent_idx, strength,
+                )
 
         return io.NodeOutput(
             positive, negative, {"samples": latent_image, "noise_mask": noise_mask},

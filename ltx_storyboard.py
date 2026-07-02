@@ -913,17 +913,60 @@ class LTXStoryboard(io.ComfyNode):
 
         # KF positions are offset by prior_pixel_offset (computed in section 4c) so the
         # UI's "frame 0" maps to "first frame of new content" in extend mode.
+        #
+        # AUTHORITATIVE PIXEL-FRAME CAPACITY from the latent shape. The user's
+        # `duration_frames` widget can drift from the actual latent (LTX's 8k+1
+        # pixel-frame convention rounds it), and in extend mode the extend latent's
+        # length is set upstream. Either way, the latent's shape is what actually
+        # gets sampled — so derive our bounds from it and log the true UI-pixel
+        # budget so the user knows where the last valid kf position lives.
+        time_scale = scale_factors[0] if isinstance(scale_factors, (tuple, list)) else 8
+        # For a 1-frame kf, get_latent_index gives latent_idx = (f_idx + time_scale - 1) // time_scale.
+        # Valid range: latent_idx <= latent_length - 1 → f_idx <= time_scale * (latent_length - 1).
+        max_valid_combined_pixel = time_scale * (latent_length - 1)
+        max_valid_ui_pixel = max(0, max_valid_combined_pixel - prior_pixel_offset)
+        actual_combined_pixel_frames = 1 + time_scale * (latent_length - 1)
+        actual_new_content_pixel_frames = actual_combined_pixel_frames - prior_pixel_offset
+        expected_new_content_frames = duration_frames
+        if expected_new_content_frames > actual_new_content_pixel_frames:
+            log.warning(
+                "[LTXStoryboard] duration_frames=%d exceeds what the latent supports (%d pixel frames of new content). "
+                "Latent has %d frames = %d combined pixel frames (prior=%d + available new=%d). "
+                "KFs beyond UI pixel %d will be auto-clamped to that position.",
+                expected_new_content_frames, actual_new_content_pixel_frames,
+                latent_length, actual_combined_pixel_frames, prior_pixel_offset,
+                actual_new_content_pixel_frames, max_valid_ui_pixel,
+            )
+        log.info(
+            "[LTXStoryboard] KF budget: latent has %d frames, combined pixel range 0..%d (%d frames), "
+            "UI pixel range 0..%d (%d frames after prior offset of %d).",
+            latent_length, max_valid_combined_pixel, actual_combined_pixel_frames,
+            max_valid_ui_pixel, actual_new_content_pixel_frames, prior_pixel_offset,
+        )
+
         for i, img_tensor in enumerate(guide_data["images"]):
             f_idx_ui = int(guide_data["insert_frames"][i])
             f_idx = f_idx_ui + prior_pixel_offset
             strength = float(guide_data["strengths"][i])
 
+            # Auto-clamp kf positions that overshoot the latent's addressable range.
+            # This handles the "last few UI pixels have no latent slot" case that
+            # falls out of LTX's 8k+1 pixel-frame convention.
+            clamped = False
+            if f_idx > max_valid_combined_pixel:
+                original_ui = f_idx_ui
+                original_combined = f_idx
+                f_idx = max_valid_combined_pixel
+                f_idx_ui = max(0, f_idx - prior_pixel_offset)  # for log clarity
+                clamped = True
+
             image_1, t = LTXVAddGuide.encode(vae, latent_width, latent_height, img_tensor, scale_factors)
             frame_idx, latent_idx = LTXVAddGuide.get_latent_index(positive, latent_length, len(image_1), f_idx, scale_factors)
 
             if latent_idx + t.shape[2] > latent_length:
+                # Should never trigger after clamping, but leave the safety net.
                 log.warning(
-                    "[LTXStoryboard] kf %d at UI pixel %d (combined pixel %d) → latent_idx %d would exceed latent_length %d; skipping.",
+                    "[LTXStoryboard] kf %d at UI pixel %d (combined %d) → latent_idx %d still exceeds latent_length %d after clamp attempt; skipping.",
                     i, f_idx_ui, f_idx, latent_idx, latent_length,
                 )
                 continue
@@ -931,10 +974,16 @@ class LTXStoryboard(io.ComfyNode):
             positive, negative, latent_image, noise_mask = LTXVAddGuide.append_keyframe(
                 positive, negative, frame_idx, latent_image, noise_mask, t, strength, scale_factors,
             )
-            log.info(
-                "[LTXStoryboard] kf %d: UI pixel=%d → combined pixel=%d (snapped=%d) → latent_idx=%d, strength=%.2f",
-                i, f_idx_ui, f_idx, frame_idx, latent_idx, strength,
-            )
+            if clamped:
+                log.warning(
+                    "[LTXStoryboard] kf %d: UI pixel %d (combined %d) exceeded latent capacity — CLAMPED to UI pixel %d (combined %d) → latent_idx=%d, strength=%.2f.",
+                    i, original_ui, original_combined, f_idx_ui, f_idx, latent_idx, strength,
+                )
+            else:
+                log.info(
+                    "[LTXStoryboard] kf %d: UI pixel=%d → combined pixel=%d (snapped=%d) → latent_idx=%d, strength=%.2f",
+                    i, f_idx_ui, f_idx, frame_idx, latent_idx, strength,
+                )
 
         latent = {"samples": latent_image, "noise_mask": noise_mask}
 

@@ -48,9 +48,9 @@ function syncWidgetAcrossNodes(sourceNode, widgetName, value) {
 }
 
 app.registerExtension({
-    name: "Comfy.LTXKeyframer.DynamicInputs",
+    name: "Comfy.SmartLTXKeyframer.DynamicInputs",
     async nodeCreated(node) {
-        if (node.comfyClass !== "LTXKeyframer") return;
+        if (node.comfyClass !== "SmartLTXKeyframer") return;
 
         // Register this node instance globally
         window._LTXKeyframerGlobalNodes.add(node);
@@ -296,7 +296,7 @@ app.registerExtension({
                 const originNode = graph.getNodeById(link.origin_id);
                 if (!originNode) return null;
 
-                if (originNode.comfyClass === "MultiImageLoader") {
+                if (originNode.comfyClass === "SmartMultiImageLoader") {
                     return originNode;
                 }
 
@@ -311,7 +311,7 @@ app.registerExtension({
                 if (typeof originNode.getInnerNode === "function") {
                     try {
                         const innerNode = originNode.getInnerNode(link.origin_slot);
-                        if (innerNode && innerNode.comfyClass === "MultiImageLoader") {
+                        if (innerNode && innerNode.comfyClass === "SmartMultiImageLoader") {
                             return innerNode;
                         }
                     } catch (e) {
@@ -345,7 +345,7 @@ app.registerExtension({
             function findAllLoaders(nodes) {
                 if (!nodes) return;
                 for (let n of nodes) {
-                    if (n.comfyClass === "MultiImageLoader") {
+                    if (n.comfyClass === "SmartMultiImageLoader") {
                         multiImageLoaders.push(n);
                     }
                     if (n.subgraph && n.subgraph._nodes) {

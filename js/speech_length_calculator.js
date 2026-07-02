@@ -160,9 +160,9 @@ function buildUIHTML(statsData) {
 }
 
 app.registerExtension({
-    name: "Comfy.SpeechLengthCalculator",
+    name: "Comfy.SmartSpeechLengthCalculator",
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
-        if (nodeData.name === "SpeechLengthCalculator") {
+        if (nodeData.name === "SmartSpeechLengthCalculator") {
 
             const onNodeCreated = nodeType.prototype.onNodeCreated;
             nodeType.prototype.onNodeCreated = function () {

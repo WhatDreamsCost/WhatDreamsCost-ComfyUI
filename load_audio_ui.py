@@ -39,7 +39,7 @@ def load_audio_file(filepath: str) -> tuple[torch.Tensor, int]:
         return wav, sr
 
 
-class LoadAudioUI:
+class SmartLoadAudioUI:
     @classmethod
     def INPUT_TYPES(s):
         try:
@@ -71,7 +71,7 @@ class LoadAudioUI:
             }
         }
 
-    CATEGORY = "WhatDreamsCost"
+    CATEGORY = "Smart-WhatDreamsCost"
     RETURN_TYPES = ("AUDIO", "FLOAT")
     RETURN_NAMES = ("audio", "duration")
     FUNCTION = "load_audio"

@@ -2,13 +2,13 @@ import torch
 import comfy.utils
 from comfy_api.latest import io
 
-class LTXKeyframer(io.ComfyNode):
+class SmartLTXKeyframer(io.ComfyNode):
     @classmethod
     def define_schema(cls):
         inputs = [
             io.Vae.Input("vae", tooltip="Video VAE used to encode the images"),
             io.Latent.Input("latent", tooltip="Video latent to insert images into"),
-            io.Image.Input("multi_input", tooltip="Batched images from MultiImageLoader"),
+            io.Image.Input("multi_input", tooltip="Batched images from SmartMultiImageLoader"),
         ]
         
         inputs.append(io.Int.Input("num_images", default=1, min=0, max=50, step=1, display_name="images_loaded", tooltip="Select how many index/strength widgets to configure."))
@@ -36,9 +36,9 @@ class LTXKeyframer(io.ComfyNode):
             ])
 
         return io.Schema(
-            node_id="LTXKeyframer",
-            display_name="LTX Keyframer",
-            category="WhatDreamsCost",
+            node_id="SmartLTXKeyframer",
+            display_name="Smart LTX Keyframer",
+            category="Smart-WhatDreamsCost",
             description="Replaces video latent frames with the encoded input images. Number of widgets is dynamically configured.",
             inputs=inputs,
             outputs=[

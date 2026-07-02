@@ -272,7 +272,7 @@ def _load_motion_video_frames(video_file, trim_start_frames, length_frames, dire
 
 # --- Main Class ---
 
-class LTXDirectorGuide:
+class SmartLTXDirectorGuide:
     @classmethod
     def INPUT_TYPES(cls):
         loras = folder_paths.get_filename_list("loras")
@@ -630,7 +630,7 @@ def _get_noise_mask_for_crop(latent):
     return noise_mask.clone()
 
 
-class LTXDirectorCropGuides:
+class SmartLTXDirectorCropGuides:
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -667,8 +667,3 @@ class LTXDirectorCropGuides:
         positive = node_helpers.conditioning_set_values(positive, clear_values)
         negative = node_helpers.conditioning_set_values(negative, clear_values)
         return (positive, negative, {"samples": latent_image, "noise_mask": noise_mask})
-
-NODE_CLASS_MAPPINGS = {
-    "LTXDirectorGuide": LTXDirectorGuide,
-    "LTXDirectorCropGuides": LTXDirectorCropGuides,
-}

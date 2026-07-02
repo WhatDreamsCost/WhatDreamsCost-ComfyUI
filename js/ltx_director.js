@@ -11149,9 +11149,9 @@ const APPENDED_WIDGET_DEFAULTS = [
 ];
 
 app.registerExtension({
-  name: "LTXDirector",
+  name: "SmartLTXDirector",
   async beforeRegisterNodeDef(nodeType, nodeData, app) {
-    if (nodeData.name === "LTXDirector") {
+    if (nodeData.name === "SmartLTXDirector") {
 
       const onNodeCreated = nodeType.prototype.onNodeCreated;
       nodeType.prototype.onNodeCreated = function () {

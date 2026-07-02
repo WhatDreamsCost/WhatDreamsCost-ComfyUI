@@ -4,9 +4,9 @@ import { app } from "../../scripts/app.js";
 // All configuration (images, insert frames, strengths) comes from
 // the guide_data output of Prompt Relay Encode (Timeline).
 app.registerExtension({
-    name: "Comfy.LTXDirectorGuide",
+    name: "Comfy.SmartLTXDirectorGuide",
     async nodeCreated(node) {
-        if (node.comfyClass !== "LTXDirectorGuide") return;
+        if (node.comfyClass !== "SmartLTXDirectorGuide") return;
 
         // 1. Hook onConfigure so the widget remains standard and visible during workflow loading,
         // and only gets hidden AFTER LiteGraph and third-party extensions have finished configuring it.

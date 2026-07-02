@@ -3,7 +3,7 @@ import torch
 import comfy.utils
 from comfy_api.latest import io
 
-class LTXSequencer(LTXVAddGuide):
+class SmartLTXSequencer(LTXVAddGuide):
     @classmethod
     def define_schema(cls):
         inputs = [
@@ -11,7 +11,7 @@ class LTXSequencer(LTXVAddGuide):
             io.Conditioning.Input("negative", tooltip="Negative conditioning to which guide keyframe info will be added"),
             io.Vae.Input("vae", tooltip="Video VAE used to encode the guide images"),
             io.Latent.Input("latent", tooltip="Video latent, guides are added to the end of this latent"),
-            io.Image.Input("multi_input", tooltip="Batched images from MultiImageLoader"),
+            io.Image.Input("multi_input", tooltip="Batched images from SmartMultiImageLoader"),
         ]
         
         inputs.append(io.Int.Input("num_images", default=1, min=0, max=50, step=1, display_name="images_loaded", tooltip="Select how many index/strength widgets to configure."))
@@ -52,9 +52,9 @@ class LTXSequencer(LTXVAddGuide):
             ])
 
         return io.Schema(
-            node_id="LTXSequencer",
-            display_name="LTX Sequencer",
-            category="WhatDreamsCost",
+            node_id="SmartLTXSequencer",
+            display_name="Smart LTX Sequencer",
+            category="Smart-WhatDreamsCost",
             description="Add multiple guide images at specified frame indices or seconds with strengths. Number of widgets is dynamically configured.",
             inputs=inputs,
             outputs=[

@@ -154,10 +154,15 @@ def _compress_image(tensor: torch.Tensor, crf: int) -> torch.Tensor:
         return tensor
 
 
-def _build_combined_audio(timeline_data_str: str, duration_frames: int, frame_rate: float) -> dict:
-    """Parses timeline JSON, loads/trims audio directly from memory using PyAV, 
+def _build_combined_audio(timeline_data_str: str, duration_frames: int, frame_rate: float, pixel_offset: int = 0) -> dict:
+    """Parses timeline JSON, loads/trims audio directly from memory using PyAV,
     and aligns to a global timeline yielding ComfyUI's format.
-    Output length explicitly mimics the timeline's duration_frames length."""
+    Output length explicitly mimics the timeline's duration_frames length.
+
+    pixel_offset: shifts every segment's placement in the output waveform by this many
+    pixel frames. Used by LTXStoryboard extend mode where the UI timeline's "0" is the
+    first frame of NEW content, but the waveform must span the COMBINED timeline
+    (prior + new) so its length matches the extend audio latent."""
     target_sr = 44100
     total_samples = max(1, int(math.ceil(duration_frames / frame_rate * target_sr)))
     empty_audio = {"waveform": torch.zeros((1, 2, total_samples), dtype=torch.float32), "sample_rate": target_sr}
@@ -247,8 +252,9 @@ def _build_combined_audio(timeline_data_str: str, duration_frames: int, frame_ra
             # Extract the correct segment of the audio
             clip_waveform = waveform[:, start_sample_src:end_sample_src]
 
-            # Position onto the timeline
-            start_sample_dst = int(start_frames / frame_rate * target_sr)
+            # Position onto the timeline (shifted by pixel_offset — needed for extend mode
+            # where the UI's segment `start=0` should land at combined pixel `prior_pixel_offset`).
+            start_sample_dst = int((start_frames + pixel_offset) / frame_rate * target_sr)
             
             if start_sample_dst >= out_waveform.shape[1]:
                 continue

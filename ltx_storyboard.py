@@ -653,17 +653,31 @@ class LTXStoryboard(io.ComfyNode):
         # ---- 4a. Build combined audio waveform ----
         # Needed for both the `combined_audio` output AND (when use_custom_audio=True
         # with audio_vae available) for the conditioning audio latent itself.
+        # In extend mode we build at COMBINED length (prior + new) with segments shifted
+        # by prior_pixel_offset — this makes the encoded audio latent length match the
+        # extend_from_audio_latent's length, so the compose step can overlay cleanly.
+        _early_prior_pixel_offset_audio = 0
+        if extend_from_video_latent is not None and prior_latent_t > 0:
+            _early_time_scale_audio = vae.downscale_index_formula[0] if isinstance(vae.downscale_index_formula, (tuple, list)) else 8
+            _early_prior_pixel_offset_audio = 1 + (prior_latent_t - 1) * _early_time_scale_audio
+        _audio_wave_length_frames = duration_frames + _early_prior_pixel_offset_audio
+
         log.info(
             "[LTXStoryboard] AUDIO DECISION INPUTS: use_custom_audio=%s, "
-            "len(audio_segments)=%d, audio_vae=%s, extend_from_audio_latent=%s",
+            "len(audio_segments)=%d, audio_vae=%s, extend_from_audio_latent=%s, "
+            "combined_wave_length=%d frames (prior_offset=%d)",
             use_custom_audio, len(audio_segments),
             "wired" if audio_vae is not None else "MISSING",
             "wired" if extend_from_audio_latent is not None else "none",
+            _audio_wave_length_frames, _early_prior_pixel_offset_audio,
         )
         if use_custom_audio and audio_segments:
             try:
-                ltxv_length = duration_frames + 1
-                combined_audio = _build_combined_audio(timeline_data or "", ltxv_length, float(frame_rate))
+                ltxv_length = _audio_wave_length_frames + 1
+                combined_audio = _build_combined_audio(
+                    timeline_data or "", ltxv_length, float(frame_rate),
+                    pixel_offset=_early_prior_pixel_offset_audio,
+                )
                 wf = combined_audio.get("waveform")
                 if wf is not None:
                     peak = float(wf.abs().max().item()) if wf.numel() > 0 else 0.0

@@ -158,3 +158,6 @@ Import times for custom nodes:
 [32m[INFO][0m FETCH ComfyRegistry Data [DONE]
 [32m[INFO][0m [ComfyUI-Manager] default cache updated: https://api.comfy.org/nodes
 [32m[INFO][0m [ComfyUI-Manager] All startup tasks have been completed.
+slurmstepd: error: *** REASON: burst_buffer/lua: Stage-out in progress ***
+slurmstepd: error: *** JOB 817808 ON ip-172-17-61-240 CANCELLED AT 2026-07-02T13:45:00 ***
+slurmstepd: error: *** REASON: burst_buffer/lua: Stage-out in progress ***

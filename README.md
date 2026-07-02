@@ -4,7 +4,7 @@ This will be a collection of free resources for ComfyUI.
 
 Hopefully it will make creating cool stuff easier!
 
-Also if you want to support this project or my channel I did make a Ko-fi due to popular demand lol (anything helps!)
+Also if you want to support this project or my channel, I did make a Ko-fi due to popular demand lol (anything helps!)
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/J5N221K0D5)
 

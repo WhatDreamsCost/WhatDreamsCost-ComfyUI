@@ -1,0 +1,160 @@
+/admin/home-kateriw/venvComfy310/lib/python3.12/site-packages/torch/cuda/__init__.py:63: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+[32m[INFO][0m setup plugin alembic.autogenerate.schemas
+[32m[INFO][0m setup plugin alembic.autogenerate.tables
+[32m[INFO][0m setup plugin alembic.autogenerate.types
+[32m[INFO][0m setup plugin alembic.autogenerate.constraints
+[32m[INFO][0m setup plugin alembic.autogenerate.defaults
+[32m[INFO][0m setup plugin alembic.autogenerate.comments
+[32m[INFO][0m [ComfyUI-Manager] Using uv as Python module for pip operations.
+Using Python 3.12.3 environment at: /admin/home-kateriw/venvComfy310
+Using Python 3.12.3 environment at: /admin/home-kateriw/venvComfy310
+Using Python 3.12.3 environment at: /admin/home-kateriw/venvComfy310
+[32m[INFO][0m [PRE] ComfyUI-Manager
+[comfy-env] ComfyUI-PanoPack: 1 isolation env(s):
+[comfy-env]   nodes -> /admin/home-kateriw/ComfyUI_clean/custom_nodes/ComfyUI-PanoPack/nodes
+[comfy-env] Workspace: /admin/home-kateriw/.ce
+[comfy-env]     env: /admin/home-kateriw/.ce/.pixi/envs/panopack-nodes  [OK]
+[comfy-env] prestartup complete
+[comfy-env] comfyui-sharp: 1 isolation env(s):
+[comfy-env]   nodes -> /admin/home-kateriw/ComfyUI_clean/custom_nodes/comfyui-sharp/nodes
+[comfy-env]     env: /admin/home-kateriw/.ce/.pixi/envs/sharp-nodes  [OK]
+[comfy-env] prestartup complete
+[comfy-env] ComfyUI-MoGe2: 1 isolation env(s):
+[comfy-env]   nodes -> /admin/home-kateriw/ComfyUI_clean/custom_nodes/ComfyUI-MoGe2/nodes
+[comfy-env]     env: /admin/home-kateriw/.ce/.pixi/envs/moge2-nodes  [OK]
+[comfy-env] prestartup complete
+[32m[INFO][0m 
+Prestartup times for custom nodes:
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/comfyui-easy-use
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/rgthree-comfy
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/ComfyUI-GaussianPack
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/comfyui-sharp
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/ComfyUI-MoGe2
+[32m[INFO][0m    0.6 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/ComfyUI-PanoPack
+[32m[INFO][0m 
+/admin/home-kateriw/venvComfy310/lib/python3.12/site-packages/torch/cuda/__init__.py:63: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+[32m[INFO][0m Found comfy_kitchen backend triton: {'available': True, 'disabled': True, 'unavailable_reason': None, 'capabilities': ['apply_rope', 'apply_rope1', 'apply_rope_split_half', 'apply_rope_split_half1', 'dequantize_nvfp4', 'dequantize_per_tensor_fp8', 'quantize_mxfp8', 'quantize_nvfp4', 'quantize_per_tensor_fp8']}
+[32m[INFO][0m Found comfy_kitchen backend eager: {'available': True, 'disabled': False, 'unavailable_reason': None, 'capabilities': ['apply_rope', 'apply_rope1', 'apply_rope_split_half', 'apply_rope_split_half1', 'dequantize_mxfp8', 'dequantize_nvfp4', 'dequantize_per_tensor_fp8', 'gemv_awq_w4a16', 'quantize_mxfp8', 'quantize_nvfp4', 'quantize_per_tensor_fp8', 'quantize_svdquant_w4a4', 'scaled_mm_mxfp8', 'scaled_mm_nvfp4', 'scaled_mm_svdquant_w4a4', 'stochastic_rounding_fp8']}
+[32m[INFO][0m Found comfy_kitchen backend cuda: {'available': True, 'disabled': False, 'unavailable_reason': None, 'capabilities': ['apply_rope', 'apply_rope1', 'apply_rope_split_half', 'apply_rope_split_half1', 'dequantize_nvfp4', 'dequantize_per_tensor_fp8', 'gemv_awq_w4a16', 'quantize_mxfp8', 'quantize_nvfp4', 'quantize_per_tensor_fp8', 'quantize_svdquant_w4a4', 'scaled_mm_nvfp4', 'scaled_mm_svdquant_w4a4', 'stochastic_rounding_fp8']}
+[32m[INFO][0m Checkpoint files will always be loaded safely.
+[32m[INFO][0m Total VRAM 143158 MB, total RAM 2047942 MB
+[32m[INFO][0m pytorch version: 2.12.0+cu130
+[32m[INFO][0m Set vram state to: NORMAL_VRAM
+[32m[INFO][0m Device: cuda:0 NVIDIA H200 : cudaMallocAsync
+[32m[INFO][0m Using async weight offloading with 2 streams
+[32m[INFO][0m Enabled pinned memory 1843147.0
+[32m[INFO][0m Using pytorch attention
+aimdo: /project/src-posix/cuda-funchooks.c:52:DEBUG:aimdo_setup_hooks: hooks successfully installed
+aimdo: /project/src/control.c:247:INFO:comfy-aimdo inited for GPU: NVIDIA H200 (VRAM: 143157 MB)
+[32m[INFO][0m DynamicVRAM support detected and enabled
+[32m[INFO][0m Python version: 3.12.3 (main, Mar 23 2026, 19:04:32) [GCC 13.3.0]
+[32m[INFO][0m ComfyUI version: 0.25.0
+[32m[INFO][0m comfy-aimdo version: 0.4.10
+[32m[INFO][0m comfy-kitchen version: 0.2.10
+[32m[INFO][0m comfyui-frontend-package version: 1.45.15
+[32m[INFO][0m comfyui-workflow-templates version: 0.10.0
+[32m[INFO][0m comfyui-embedded-docs version: 0.5.4
+[32m[INFO][0m comfy-kitchen version: 0.2.10
+[32m[INFO][0m comfy-aimdo version: 0.4.10
+[32m[INFO][0m [Prompt Server] web root: /admin/home-kateriw/venvComfy310/lib/python3.12/site-packages/comfyui_frontend_package/static
+[32m[INFO][0m Asset seeder disabled
+[32m[INFO][0m [START] ComfyUI-Manager
+[32m[INFO][0m ### Loading: ComfyUI-Manager (V4.2.2)
+[32m[INFO][0m [ComfyUI-Manager] network_mode: public
+[32m[INFO][0m ### ComfyUI Version: v0.25.0-12-gca3dbe20 | Released on '2026-06-17'
+[1m[33m[WARNING][0m [ComfyUI-Manager] The matrix sharing feature has been disabled because the `matrix-nio` dependency is not installed.
+	To use this feature, please run the following command:
+	/admin/home-kateriw/venvComfy310/bin/python3 -m pip install matrix-nio
+
+[32m[INFO][0m [ComfyUI-Manager] Legacy UI is enabled.
+[32m[INFO][0m [ComfyUI-Manager] default cache updated: https://raw.githubusercontent.com/Comfy-Org/ComfyUI-Manager/main/alter-list.json
+[32m[INFO][0m [ComfyUI-Manager] default cache updated: https://raw.githubusercontent.com/Comfy-Org/ComfyUI-Manager/main/model-list.json
+[32m[INFO][0m [ComfyUI-Manager] default cache updated: https://raw.githubusercontent.com/Comfy-Org/ComfyUI-Manager/main/github-stats.json
+[32m[INFO][0m [ComfyUI-Manager] default cache updated: https://raw.githubusercontent.com/Comfy-Org/ComfyUI-Manager/main/custom-node-list.json
+[32m[INFO][0m [ComfyUI-Manager] default cache updated: https://raw.githubusercontent.com/Comfy-Org/ComfyUI-Manager/main/extension-node-map.json
+[comfy-env] Version: 0.3.89
+[comfy-env] register_nodes: ComfyUI-GaussianPack
+[comfy-env] ComfyUI source dir: /admin/home-kateriw/ComfyUI_clean
+[comfy-env] Scanning nodes metadata (isolation root)...
+[comfy-env] Cache hit for nodes: 11 nodes
+[comfy-env] Scanned nodes root: 11 nodes (0.0s)
+[comfy-env] Imported nodes root: 11 nodes (isolation)
+[comfy-env] Registered 11 total nodes
+[1m[31m[ERROR][0m bitsandbytes library load error: Configured CUDA binary not found at /admin/home-kateriw/venvComfy310/lib/python3.12/site-packages/bitsandbytes/libbitsandbytes_cuda130.so
+ If you are using Intel CPU/XPU, please install intel_extension_for_pytorch to enable required ops
+Traceback (most recent call last):
+  File "/admin/home-kateriw/venvComfy310/lib/python3.12/site-packages/bitsandbytes/cextension.py", line 318, in <module>
+    lib = get_native_library()
+          ^^^^^^^^^^^^^^^^^^^^
+  File "/admin/home-kateriw/venvComfy310/lib/python3.12/site-packages/bitsandbytes/cextension.py", line 282, in get_native_library
+    raise RuntimeError(f"Configured {BNB_BACKEND} binary not found at {cuda_binary_path}")
+RuntimeError: Configured CUDA binary not found at /admin/home-kateriw/venvComfy310/lib/python3.12/site-packages/bitsandbytes/libbitsandbytes_cuda130.so
+flash_attn is installed but failed to import: No module named 'flash_attn_2_cuda'. Falling back to native PyTorch attention.
+[36;20m[/admin/home-kateriw/ComfyUI_clean/custom_nodes/comfy-mtb] | INFO -> loaded [96m106[0m nodes successfuly[0m
+[36;20m[/admin/home-kateriw/ComfyUI_clean/custom_nodes/comfy-mtb] | INFO -> Some nodes (2) could not be loaded. This can be ignored, but go to http://127.0.0.1:8199/mtb if you want more information.[0m
+/admin/home-kateriw/venvComfy310/lib/python3.12/site-packages/timm/models/layers/__init__.py:49: FutureWarning: Importing from timm.models.layers is deprecated, please import via timm.layers
+  warnings.warn(f"Importing from {__name__} is deprecated, please import via timm.layers", FutureWarning)
+[32m[INFO][0m No OpenGL_accelerate module loaded: No module named 'OpenGL_accelerate'
+[comfy-env] Version: 0.3.89
+[comfy-env] register_nodes: ComfyUI-PanoPack
+[comfy-env] ComfyUI source dir: /admin/home-kateriw/ComfyUI_clean
+[comfy-env] Scanning nodes metadata (isolation root)...
+[comfy-env] Cache hit for nodes: 15 nodes
+[comfy-env] Scanned nodes root: 15 nodes (0.0s)
+[comfy-env] Imported nodes root: 15 nodes (isolation)
+[comfy-env] Registered 15 total nodes
+[comfy-env] Version: 0.3.89
+[comfy-env] register_nodes: comfyui-sharp
+[comfy-env] ComfyUI source dir: /admin/home-kateriw/ComfyUI_clean
+[comfy-env] Scanning nodes metadata (isolation root)...
+[comfy-env] Cache hit for nodes: 17 nodes
+[comfy-env] Scanned nodes root: 17 nodes (0.0s)
+[comfy-env] Imported nodes root: 17 nodes (isolation)
+[comfy-env] Registered 17 total nodes
+[comfy-env] Version: 0.3.89
+[comfy-env] register_nodes: ComfyUI-MoGe2
+[comfy-env] ComfyUI source dir: /admin/home-kateriw/ComfyUI_clean
+[comfy-env] Scanning nodes metadata (isolation root)...
+[comfy-env] Cache hit for nodes: 3 nodes
+[comfy-env] Scanned nodes root: 3 nodes (0.0s)
+[comfy-env] Imported nodes root: 3 nodes (isolation)
+[comfy-env] Registered 3 total nodes
+[32m[INFO][0m 
+Import times for custom nodes:
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/websocket_image_save.py
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/comfyui_rcm_sampler
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/masquerade-nodes-comfyui
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/tripleksampler
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/gaussian-viewer
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/ComfyUI-FL-LTXTools
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/comfyui-inpaint-nodes
+[32m[INFO][0m    0.0 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/comfyui_essentials
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/panorama-stickers
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/comfyui-custom-scripts
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/ComfyUI-Filmworld
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/comfyui-frame-interpolation
+[32m[INFO][0m    0.1 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/comfyui-kjnodes
+[32m[INFO][0m    0.2 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/rgthree-comfy
+[32m[INFO][0m    0.3 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/ComfyUI-LTXVideo
+[32m[INFO][0m    0.7 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/ComfyUI-MoGe2
+[32m[INFO][0m    0.8 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/comfyui-videohelpersuite
+[32m[INFO][0m    1.2 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/comfyui-sharp
+[32m[INFO][0m    1.3 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/ComfyUI-GaussianPack
+[32m[INFO][0m    2.3 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/ComfyUI-PanoPack
+[32m[INFO][0m    2.9 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/comfy-mtb
+[32m[INFO][0m    3.7 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/comfyui-logicutils
+[32m[INFO][0m    9.5 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/was-ns
+[32m[INFO][0m   10.8 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/comfyui_fill-nodes
+[32m[INFO][0m   49.4 seconds: /admin/home-kateriw/ComfyUI_clean/custom_nodes/comfyui-easy-use
+[32m[INFO][0m 
+[32m[INFO][0m Context impl SQLiteImpl.
+[32m[INFO][0m Will assume non-transactional DDL.
+[32m[INFO][0m Using RAM pressure cache.
+[32m[INFO][0m Starting server
+
+[32m[INFO][0m To see the GUI go to: http://127.0.0.1:8199
+[32m[INFO][0m FETCH ComfyRegistry Data [DONE]
+[32m[INFO][0m [ComfyUI-Manager] default cache updated: https://api.comfy.org/nodes
+[32m[INFO][0m [ComfyUI-Manager] All startup tasks have been completed.

@@ -1,0 +1,70 @@
+--- Pre-flight on ip-172-17-61-240 (retry 0/2) ---
+    host MemAvailable: 1853 GB  (require >= 300)
+    GPU memory.free:   139 GB   (require >= 130)
+    OK
+--- Launching ComfyUI ---
+    COMFY_DIR=/admin/home-kateriw/ComfyUI_clean
+    VENV=/admin/home-kateriw/venvComfy310
+    TORCH_VER=2.12.0
+--- Starting ComfyUI (Wait for initialization) ---
+--- Retrieving Tunnel URL ---
+[START] Security scan
+[DONE] Security scan
+** ComfyUI startup time: 2026-07-02 13:30:49.049
+** Platform: Linux
+** Python version: 3.12.3 (main, Mar 23 2026, 19:04:32) [GCC 13.3.0]
+** Python executable: /admin/home-kateriw/venvComfy310/bin/python3
+** ComfyUI Path: /admin/home-kateriw/ComfyUI_clean
+** ComfyUI Base Folder Path: /admin/home-kateriw/ComfyUI_clean
+** User directory: /admin/home-kateriw/ComfyUI_clean/user
+** ComfyUI-Manager config path: /admin/home-kateriw/ComfyUI_clean/user/__manager/config.ini
+** Log path: /admin/home-kateriw/ComfyUI_clean/user/comfyui.log
+
+
+
+################################################################
+###                                                          ###
+###  COMFYUI IS READY!                                       ###
+###  URL: https://entering-outdoor-mobiles-laptops.trycloudflare.com
+###                                                          ###
+################################################################
+
+
+
+[ComfyUI-Manager] Using GitPython backend
+[34m[ComfyUI-Easy-Use] server: [0mv1.3.6 [92mLoaded[0m
+[34m[ComfyUI-Easy-Use] web root: [0m/admin/home-kateriw/ComfyUI_clean/custom_nodes/comfyui-easy-use/web_version/v2 [92mLoaded[0m
+
+[92m[rgthree-comfy] Loaded 48 exciting nodes. 🎉[0m
+
+[33m[rgthree-comfy] ComfyUI's new Node 2.0 rendering may be incompatible with some rgthree-comfy nodes and features, breaking some rendering as well as losing the ability to access a node's properties (a vital part of many nodes). It also appears to run MUCH more slowly spiking CPU usage and causing jankiness and unresponsiveness, especially with large workflows. Personally I am not planning to use the new Nodes 2.0 and, unfortunately, am not able to invest the time to investigate and overhaul rgthree-comfy where needed. If you have issues when Nodes 2.0 is enabled, I'd urge you to switch it off as well and join me in hoping ComfyUI is not planning to deprecate the existing, stable canvas rendering all together.
+[0m
+LOADED 5 FONTS
+
+
+███╗   ███╗ █████╗  ██████╗██╗  ██╗██╗███╗   ██╗███████╗               
+████╗ ████║██╔══██╗██╔════╝██║  ██║██║████╗  ██║██╔════╝               
+██╔████╔██║███████║██║     ███████║██║██╔██╗ ██║█████╗                 
+██║╚██╔╝██║██╔══██║██║     ██╔══██║██║██║╚██╗██║██╔══╝                 
+██║ ╚═╝ ██║██║  ██║╚██████╗██║  ██║██║██║ ╚████║███████╗               
+╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝╚══════╝               
+                                                                       
+██████╗ ███████╗██╗     ██╗   ██╗███████╗██╗ ██████╗ ███╗   ██╗███████╗
+██╔══██╗██╔════╝██║     ██║   ██║██╔════╝██║██╔═══██╗████╗  ██║██╔════╝
+██║  ██║█████╗  ██║     ██║   ██║███████╗██║██║   ██║██╔██╗ ██║███████╗
+██║  ██║██╔══╝  ██║     ██║   ██║╚════██║██║██║   ██║██║╚██╗██║╚════██║
+██████╔╝███████╗███████╗╚██████╔╝███████║██║╚██████╔╝██║ ╚████║███████║
+╚═════╝ ╚══════╝╚══════╝ ╚═════╝ ╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝
+                                                                       
+
+
+[Filmworld] Detected Debian multi-arch Python headers (/usr/include/x86_64-linux-gnu/python3.12/pyconfig.h). Forcing CC=/usr/bin/gcc CXX=/usr/bin/g++ for gsplat JIT compatibility. Set FILMWORLD_NO_COMPILER_OVERRIDE=1 to disable this override.
+[92m[ComfyUI-FL-LTXTools] Loaded successfully! Nodes: Motion Boost[0m
+[34mWAS Node Suite: [0mOpenCV Python FFMPEG support is enabled[0m
+[34mWAS Node Suite [93mWarning: [0m`ffmpeg_bin_path` is not set in `/admin/home-kateriw/ComfyUI_clean/custom_nodes/was-ns/was_suite_config.json` config file. Will attempt to use system ffmpeg binaries if available.[0m
+[34mWAS Node Suite: [0mFinished.[0m [32mLoaded[0m [0m220[0m [32mnodes successfully.[0m
+
+	[3m[93m"Art is not a thing; it is a way."[0m[3m - Elbert Hubbard[0m
+
+[GaussianViewer] ComfyUI frontend version: 1.45.15
+FETCH DATA from: /admin/home-kateriw/ComfyUI_clean/user/__manager/cache/3351870820_custom-node-list.json [DONE]

@@ -199,6 +199,125 @@ def _encode_audio_to_latent(audio_vae, audio_dict: dict | None) -> dict | None:
         return None
 
 
+def _compose_audio_extend_and_custom(
+    audio_vae,
+    extend_audio_latent: dict | None,
+    combined_audio: dict | None,
+    audio_segments: list,
+    combined_pixel_frames: int,
+    prior_pixel_offset: int,
+    frame_rate: float,
+) -> dict | None:
+    """Compose an audio latent by overlaying custom audio content on top of an extend
+    audio base. Locked regions (mask=0) win — the prior extend region is never
+    overwritten. User audio segments overlay custom samples + set mask=0 wherever they
+    fall in a currently-free region.
+
+    Result:
+      - Prior region (from extend, if any): extend samples + mask=0 (locked)
+      - User audio segments (post-prior): custom samples + mask=0 (locked)
+      - Everything else: base samples (silence in fresh mode, extend content in extend
+        mode) + mask=1 (free — model generates audio there)
+
+    Constants match ComfyUI-KJNodes/nodes/ltxv_nodes.py:200 — LTX audio VAE runs at
+    25 audio latent frames per second (16000 Hz / 160 mel_hop / 4 latent_downsample).
+    Audio segment `start` and `length` from the timeline are in pixel frames using
+    the video frame_rate — we convert to seconds, then to audio latent frames.
+    """
+    LTX_AUDIO_LATENTS_PER_SECOND = 25.0
+
+    # Step 1: encode the full-length combined_audio waveform to a latent.
+    custom_dict = _encode_audio_to_latent(audio_vae, combined_audio)
+    if custom_dict is None:
+        log.warning("[LTXStoryboard] Audio compose: custom encode returned None — falling back to extend/empty.")
+        return extend_audio_latent
+
+    custom_samples = custom_dict["samples"]  # [B, C, L_audio, F_freq]
+    L_audio = custom_samples.shape[2]
+
+    # Step 2: pick the base (extend or fresh silence). Ensure temporal length matches.
+    if extend_audio_latent is not None and extend_audio_latent.get("samples") is not None:
+        extend_samples = extend_audio_latent["samples"]
+        if extend_samples.shape[2] != L_audio:
+            log.warning(
+                "[LTXStoryboard] Audio compose: extend_audio_latent has L=%d but custom encode has L=%d — using custom-only silence base.",
+                extend_samples.shape[2], L_audio,
+            )
+            base_samples = torch.zeros_like(custom_samples)
+            base_mask = torch.ones(
+                (custom_samples.shape[0], 1, L_audio, custom_samples.shape[3]),
+                dtype=custom_samples.dtype, device=custom_samples.device,
+            )
+        else:
+            base_samples = extend_samples.clone()
+            upstream_mask = extend_audio_latent.get("noise_mask")
+            if upstream_mask is not None:
+                base_mask = upstream_mask.clone()
+            else:
+                base_mask = torch.ones(
+                    (base_samples.shape[0], 1, L_audio, base_samples.shape[3]),
+                    dtype=base_samples.dtype, device=base_samples.device,
+                )
+    else:
+        base_samples = torch.zeros_like(custom_samples)
+        base_mask = torch.ones(
+            (custom_samples.shape[0], 1, L_audio, custom_samples.shape[3]),
+            dtype=custom_samples.dtype, device=custom_samples.device,
+        )
+
+    # Step 3: for each user audio segment, compute audio-latent range and overlay
+    # (only where the base mask is currently >0.05, so the prior locked region wins).
+    C = base_samples.shape[1]
+    overlaid_ranges = []
+    for seg in audio_segments:
+        try:
+            seg_start_px = int(seg.get("start", 0))
+            seg_length_px = int(seg.get("length", 0))
+        except (TypeError, ValueError):
+            continue
+        if seg_length_px <= 0:
+            continue
+
+        seg_start_combined_px = seg_start_px + prior_pixel_offset
+        seg_end_combined_px = seg_start_combined_px + seg_length_px
+
+        fr = max(1.0, float(frame_rate))
+        start_lat = int(round(seg_start_combined_px / fr * LTX_AUDIO_LATENTS_PER_SECOND))
+        end_lat = int(round(seg_end_combined_px / fr * LTX_AUDIO_LATENTS_PER_SECOND))
+        start_lat = max(0, min(start_lat, L_audio))
+        end_lat = max(0, min(end_lat, L_audio))
+        if start_lat >= end_lat:
+            continue
+
+        # Overlay only where base_mask is currently free (>0.05). Prior stays locked.
+        overlay_slice = slice(start_lat, end_lat)
+        seg_mask = base_mask[:, :, overlay_slice]  # [B, 1, N, F]
+        overlay_where = seg_mask > 0.05             # broadcast condition
+
+        base_samples[:, :, overlay_slice] = torch.where(
+            overlay_where.expand(-1, C, -1, -1),
+            custom_samples[:, :, overlay_slice],
+            base_samples[:, :, overlay_slice],
+        )
+        base_mask[:, :, overlay_slice] = torch.where(
+            overlay_where,
+            torch.zeros_like(seg_mask),
+            seg_mask,
+        )
+        overlaid_ranges.append((seg_start_px, seg_end_combined_px - prior_pixel_offset, start_lat, end_lat))
+
+    if overlaid_ranges:
+        log.info(
+            "[LTXStoryboard] Audio compose: overlaid %d segment(s). Ranges (UI pixel → audio latent): %s",
+            len(overlaid_ranges),
+            ", ".join(f"[{a}-{b}]px→[{c}-{d}]lat" for (a, b, c, d) in overlaid_ranges),
+        )
+    else:
+        log.info("[LTXStoryboard] Audio compose: no segments overlaid (all fell in prior or outside range).")
+
+    return {"samples": base_samples, "noise_mask": base_mask}
+
+
 def _build_empty_audio_latent(audio_vae, duration_frames: int, frame_rate: float, batch_size: int = 1) -> dict | None:
     """Generate an empty audio latent matching the video duration. Produces a 4D tensor
     `[B, C, num_audio_latents, audio_freq]` matching what LTXVConcatAVLatent + LTXAV's
@@ -564,29 +683,47 @@ class LTXStoryboard(io.ComfyNode):
             combined_audio = _silence_audio(duration_frames, frame_rate)
 
         # ---- 4b. Build audio latent ----
-        # Priority (user-intent-first — `use_custom_audio=True` is an explicit ask, so it wins
-        # over a passively-wired extend socket that may just be carrying silence through an
-        # upstream AnySwitch):
-        #   1. use_custom_audio + audio_segments + audio_vae → encode combined_audio to
-        #      a REAL audio latent that drives LTX's audio-conditioning path during sampling.
-        #   2. extend_from_audio_latent — upstream-provided latent (extend mode, no custom).
-        #   3. Empty audio latent matching duration (silence).
+        # Priority:
+        #   1. use_custom_audio + audio_segments + audio_vae → COMPOSE: extend audio locks the
+        #      prior region (mask=0 there), custom audio locks the user's segments (mask=0
+        #      there), everything else stays mask=1 (model generates audio). If no extend
+        #      is wired, base is silence (fresh mode) and only user segments are locked.
+        #   2. extend_from_audio_latent — passthrough (no custom).
+        #   3. Empty audio latent (silence).
+        # Note: prior_pixel_offset is computed just after this block (section 4c). We need
+        # it here for the audio compose, so compute it inline early. Extend mode only.
+        _early_prior_pixel_offset = 0
+        if extend_from_video_latent is not None and prior_latent_t > 0:
+            _early_time_scale = vae.downscale_index_formula[0] if isinstance(vae.downscale_index_formula, (tuple, list)) else 8
+            _early_prior_pixel_offset = 1 + (prior_latent_t - 1) * _early_time_scale
+        _early_combined_pixel_frames = duration_frames + _early_prior_pixel_offset
+
         if use_custom_audio and audio_segments and audio_vae is not None:
-            audio_latent = _encode_audio_to_latent(audio_vae, combined_audio)
+            audio_latent = _compose_audio_extend_and_custom(
+                audio_vae=audio_vae,
+                extend_audio_latent=extend_from_audio_latent,
+                combined_audio=combined_audio,
+                audio_segments=audio_segments,
+                combined_pixel_frames=_early_combined_pixel_frames,
+                prior_pixel_offset=_early_prior_pixel_offset,
+                frame_rate=frame_rate,
+            )
             if audio_latent is not None:
                 samples = audio_latent["samples"]
-                peak_latent = float(samples.abs().max().item()) if samples.numel() > 0 else 0.0
+                mask = audio_latent.get("noise_mask")
+                locked_frames = int((mask <= 0.05).any(dim=-1).sum().item()) if mask is not None else 0
+                total_frames = samples.shape[2]
                 log.info(
-                    "[LTXStoryboard] audio_latent path: CUSTOM-ENCODED. shape=%s, peak_abs=%.4f%s",
-                    tuple(samples.shape), peak_latent,
-                    " (latent looks silent — encode may have collapsed to zeros)" if peak_latent < 1e-4 else "",
+                    "[LTXStoryboard] audio_latent path: COMPOSE (extend + %d user segment(s)). "
+                    "shape=%s, %d/%d latent frames locked (prior + user segments).",
+                    len(audio_segments), tuple(samples.shape), locked_frames, total_frames,
                 )
             else:
-                log.warning("[LTXStoryboard] audio_latent path: CUSTOM ENCODE RETURNED None; falling back to extend/empty.")
+                log.warning("[LTXStoryboard] audio_latent path: COMPOSE FAILED; falling back to extend/empty.")
                 audio_latent = extend_from_audio_latent if extend_from_audio_latent is not None else _build_empty_audio_latent(audio_vae, duration_frames, frame_rate)
         elif extend_from_audio_latent is not None:
             audio_latent = extend_from_audio_latent
-            log.info("[LTXStoryboard] audio_latent path: EXTEND (using upstream extend_from_audio_latent — use_custom_audio=%s).", use_custom_audio)
+            log.info("[LTXStoryboard] audio_latent path: EXTEND (passthrough — use_custom_audio=%s, audio_segments=%d).", use_custom_audio, len(audio_segments))
         else:
             why = []
             if not use_custom_audio: why.append("use_custom_audio=False")

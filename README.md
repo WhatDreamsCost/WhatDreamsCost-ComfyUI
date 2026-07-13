@@ -82,7 +82,9 @@ Also you will need to update ComfyUI-LTXVideo and ComfyUI-KJNodes to the latest 
 
   - **Quality of Life Improvements:** Snapping, in/out points, multi-select, mark selection, workspace folder, more HUD options, resizable prompt boxes, new hotkeys, labels, filename preview options, "split at playhead" functionality, end frames (convert any keyframe into a end/last frame), toggleable tracks, NAG Support, tons of bug fixes and more!
 
-
+<details>
+  <summary>Click to view older Updates</summary>
+  
 **v1.3.9**
   * **Fixed recent updates not showing in the manager**
 
@@ -108,8 +110,6 @@ If anyone finds anymore bugs or has idea for improvements please let me know!
     - Minor fix to the example workflow (i forgot to set the clip loader type to ltxv lol)
 
 
-<details>
-  <summary>Click to view older Updates</summary>
     
  **v1.3.0**
   * **New nodes: LTX Director and LTX Director Guide**

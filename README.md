@@ -40,6 +40,31 @@ Also you will need to update ComfyUI-LTXVideo and ComfyUI-KJNodes to the latest 
 
 # 🔄 Recent Updates
 
+**v2.0.4**
+  * **LTX Director**
+    - **Reference Image Support:** Now supports the LTX Ingredients IC-LoRA, and adding images on the IC-LoRA track. If your wondering why I chose the ingredient IC-LoRA over other methods, it's simply because i've found it to be the most stable and consistent solution after trying the others (such as MSR and BFS). I will be sharing my findings soon on how to make the most use of it.
+    - **Multiple Optimizations (potential 1.5-3x speed up (yes the range is that big) depending on your hardware/what parameters you are using):** 
+    1. Model Caching: Allows subsequent runs to reuse patched models. This not only prevents the model from needing to be reloaded every run (which can be a huge speed up in itself), but also optimizes CPU overhead.
+    2. Faster generations that don't use Prompt Relay: Normal t2v/i2v/v2v generations will no longer use prompt relay. Now generations that don't use promtp relay will run at the same speed as other workflows
+    3. Improved SageAttention / Triton compatibility.
+    4. Multiple Video Loading optimizations
+    - **Quality of Life changes**
+    1. Added multiple options to the right click menu for IC-LoRA segments
+    2. Smoother Timeline Scrubbing: Seeking through video now show much thumbnails (basically meaning you can more accurately trim/edit videos on the timeline)
+  * **Load Video UI** 
+    - Fixed drag and dropping videos onto node
+    - Added dropdown for selecting files
+    - Added support for scanning both input and whatdreamscost workspace folder for videos
+    - Added full Nodes 2.0 Support (now renders properly in both litegraph and 2.0)
+    - Added filename output (heavily requested)
+* **Load Audio UI** 
+    - Fixed drag and dropping videos onto node
+    - Added support for scanning both input and whatdreamscost workspace folder for audio
+    - Added full Nodes 2.0 Support (now renders properly in both litegraph and 2.0)
+    - Added filename output (heavily requested)
+    
+  
+
 **v2.0.0**
 * **Massive Update to LTX Director. I will add the full list of changes later.**
 
@@ -176,6 +201,8 @@ A Complete Timeline Editor For LTX 2.3. This is the sucessor of my previous node
 
   - **Audio Inpainting:** Seamlessly blend imported audio with generated audio. Not only can audio be extended, but can also be prompted alongside your imprted audio to really bring your generations to life.
 
+  - **Reference Image Support:** Now supports the LTX Ingredients IC-LoRA, and adding images on the IC-LoRA track. If your wondering why I chose the ingredient IC-LoRA over other methods, it's simply because i've found it to be the most stable and consistent solution after trying the others (such as MSR and BFS). I will be sharing my findings soon on how to make the most use of it.
+
   - **Retake Mode (Beta):** Redirect what happens within a shot. Allows you to select a segment within a video, and re-generate what happens in that segment. An early working experiment.
 
   - **Timeline Saving/Loading:** You can now save your timeline and settings to a json file. It will keep any videos/audio/images you have imported into the node and every setting you have changed.
@@ -264,7 +291,7 @@ Download workflows here: https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyU
 
 # ❗ Known Issues
 
-Fixed everything so far. If there are any other issue or bugs you find please let me know!
+Retake mode is not "potent" enough. I am in the process of completely overhauling it and will hopefully release the new version soon. 
 
 # 💡 Additional Info
 

@@ -917,6 +917,10 @@ class LTXDirector(io.ComfyNode):
                     "timeline_data", default="",
                     tooltip="JSON state of the timeline editor (auto-managed; do not edit by hand).",
                 ),
+                io.String.Input(
+                    "timeline_json_input", default="", force_input=True, optional=True,
+                    tooltip="Optional. When connected, overrides 'timeline_data' with this JSON so the whole timeline (segments / reference images / prompts) can be supplied programmatically. Per-segment prompts and lengths are derived from the JSON's segments when their widgets are left empty.",
+                ),
                 io.Boolean.Input(
                     "use_custom_audio", default=False, optional=True,
                     tooltip="Toggle between using timeline audio (ON) and generating audio from scratch (OFF).",
@@ -999,7 +1003,11 @@ class LTXDirector(io.ComfyNode):
                 frame_rate=24, display_mode="seconds",
                 custom_width=768, custom_height=512, resize_method="maintain aspect ratio",
                 divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
-                use_custom_audio=False, inpaint_audio=True, use_custom_motion=True, override_audio=False) -> io.NodeOutput:
+                use_custom_audio=False, inpaint_audio=True, use_custom_motion=True, override_audio=False, timeline_json_input="") -> io.NodeOutput:
+
+        # API override: a connected timeline_json_input replaces the timeline_data widget.
+        if isinstance(timeline_json_input, str) and timeline_json_input.strip():
+            timeline_data = timeline_json_input
 
         # Parse timeline data
         try:
@@ -1017,6 +1025,16 @@ class LTXDirector(io.ComfyNode):
                 global_prompt = tdata.get("retake_global_prompt", "")
             else:
                 global_prompt = tdata.get("global_prompt", "")
+
+        # Derive per-segment prompts / lengths from timeline_data when the widgets are
+        # empty (e.g. an API-driven timeline_json_input that isn't paired with the
+        # auto-populated local_prompts / segment_lengths widgets).
+        _relay_segments = sorted(tdata.get("segments", []), key=lambda s: int(s.get("start", 0)))
+        if _relay_segments:
+            if not local_prompts.strip():
+                local_prompts = "|".join(str(s.get("prompt", "")) for s in _relay_segments)
+            if not segment_lengths.strip():
+                segment_lengths = ",".join(str(int(s.get("length", 1))) for s in _relay_segments)
 
         log.info(f"[LTXDirector] execute RECEIVED global_prompt: {repr(global_prompt)}")
 

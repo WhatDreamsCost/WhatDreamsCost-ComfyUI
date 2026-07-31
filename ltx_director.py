@@ -20,6 +20,8 @@ from aiohttp import web
 
 from comfy_api.latest import io
 
+from nodes import NODE_CLASS_MAPPINGS
+
 from .prompt_relay import (
     get_raw_tokenizer,
     map_token_indices,
@@ -773,7 +775,7 @@ def _convert_to_latent_lengths(pixel_lengths, temporal_stride, latent_frames):
 
 _CLONED_MODEL_CACHE = weakref.WeakKeyDictionary()
 
-def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon):
+def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon, use_gemma_api, api_key, ckpt_name, enhance_prompt):
     for name, val in (("global_prompt", global_prompt),
                       ("local_prompts", local_prompts),
                       ("segment_lengths", segment_lengths)):
@@ -799,7 +801,14 @@ def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_len
             active_prompt = local_p.strip() if local_p.strip() else global_prompt.strip()
 
         log.info(f"[PromptRelay] Single prompt workflow detected ('{active_prompt}'). Bypassing attention masking for maximum speed.")
-        conditioning = clip.encode_from_tokens_scheduled(clip.tokenize(active_prompt))
+        #conditioning = clip.encode_from_tokens_scheduled(clip.tokenize(active_prompt))
+        conditioning = encode_conditioning(
+            clip, active_prompt,
+            use_api=use_gemma_api,      # new bool input on your node
+            api_key=api_key,            # new string input on your node
+            ckpt_name=ckpt_name,        # new checkpoint input on your node
+            enhance_prompt=enhance_prompt,  # optional, can hardcode False if you don't want to expose it
+        )
         
         node_cache = _CLONED_MODEL_CACHE.setdefault(model, {})
         cache_key = ("unpatched", unique_id)
@@ -839,7 +848,15 @@ def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_len
     for i, (s, e) in enumerate(token_ranges):
         log.info("[PromptRelay] Segment %d: tokens [%d:%d] (%d tokens)", i, s, e, e - s)
 
-    conditioning = clip.encode_from_tokens_scheduled(clip.tokenize(full_prompt))
+    #conditioning = clip.encode_from_tokens_scheduled(clip.tokenize(full_prompt))
+    conditioning = encode_conditioning(
+        clip, full_prompt,
+        use_api=use_gemma_api,      # new bool input on your node
+        api_key=api_key,            # new string input on your node
+        ckpt_name=ckpt_name,        # new checkpoint input on your node
+        enhance_prompt=enhance_prompt,  # optional, can hardcode False if you don't want to expose it
+    )
+
 
     effective_lengths = distribute_segment_lengths(len(locals_list), latent_frames, parsed_lengths)
 
@@ -864,6 +881,32 @@ def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_len
     to["promptrelay_mask_fn"] = mask_fn
 
     return patched, conditioning
+
+def encode_conditioning(clip, full_prompt, use_api=False, api_key="", ckpt_name="", enhance_prompt=False):
+    """
+    Encodes conditioning either via GemmaAPITextEncode (LTX API) or standard CLIP encoding.
+    Falls back to CLIP if the API node is unavailable or use_api is False.
+    """
+    if use_api and api_key:
+        try:
+            from nodes import NODE_CLASS_MAPPINGS
+            if "GemmaAPITextEncode" in NODE_CLASS_MAPPINGS:
+                gemma_encoder = NODE_CLASS_MAPPINGS["GemmaAPITextEncode"]()
+                conditioning, = gemma_encoder.encode(
+                    api_key=api_key,
+                    prompt=full_prompt,
+                    ckpt_name=ckpt_name,
+                    enhance_prompt=enhance_prompt,
+                )
+                log.info("[PromptRelay] Using GemmaAPITextEncode for conditioning")
+                return conditioning
+            else:
+                log.warning("[PromptRelay] GemmaAPITextEncode not found in NODE_CLASS_MAPPINGS, falling back to CLIP")
+        except Exception as e:
+            log.warning("[PromptRelay] GemmaAPITextEncode failed (%s), falling back to CLIP", e)
+
+    log.info("[PromptRelay] Using standard CLIP encoding for conditioning")
+    return clip.encode_from_tokens_scheduled(clip.tokenize(full_prompt))
 
 
 class LTXDirector(io.ComfyNode):
@@ -980,6 +1023,25 @@ class LTXDirector(io.ComfyNode):
                     "override_audio", default=False, optional=True,
                     tooltip="Use the audio from the IC-LoRA video instead of using the audio track.",
                 ),
+                #use_gemma_api (BOOLEAN), api_key (STRING), and ckpt_name
+                io.Boolean.Input(
+                    "use_gemma_api", default=False, optional=True,
+                    tooltip="Use the Gemma API",
+                ),
+                io.String.Input(
+                    "api_key", default="", optional=True,
+                    tooltip="Gemma API key",
+                ),
+                io.Boolean.Input(
+                    "enhance_prompt", default=False, optional=True,
+                    tooltip="Should the API enhance the prompts",
+                ),
+                io.Combo.Input(
+                    "ckpt_name",
+                    options=folder_paths.get_filename_list("checkpoints"),
+                    optional=True,
+                    tooltip="Checkpoint for Gemma API encoding (only needed when use_gemma_api is enabled)",
+                ),
             ],
             outputs=[
                 io.Model.Output(display_name="model"),
@@ -999,7 +1061,8 @@ class LTXDirector(io.ComfyNode):
                 frame_rate=24, display_mode="seconds",
                 custom_width=768, custom_height=512, resize_method="maintain aspect ratio",
                 divisible_by=32, img_compression=0, audio_vae=None, optional_latent=None,
-                use_custom_audio=False, inpaint_audio=True, use_custom_motion=True, override_audio=False) -> io.NodeOutput:
+                use_custom_audio=False, inpaint_audio=True, use_custom_motion=True, override_audio=False,
+                use_gemma_api=False, api_key="", ckpt_name="", enhance_prompt=False) -> io.NodeOutput:
 
         # Parse timeline data
         try:
@@ -1198,7 +1261,7 @@ class LTXDirector(io.ComfyNode):
             latent = optional_latent
 
         patched, conditioning = _encode_relay(
-            model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon,
+            model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon, use_gemma_api, api_key, ckpt_name, enhance_prompt
         )
 
         # --- Build Audio Output ---

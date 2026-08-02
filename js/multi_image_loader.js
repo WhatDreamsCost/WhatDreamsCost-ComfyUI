@@ -1,3 +1,5 @@
+import { addMiddleClickPan, addWheelPassthrough } from './utility.js';
+
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
@@ -118,6 +120,9 @@ app.registerExtension({
             const nodeWidth = node.size?.[0] || width || 220;
             return [Math.max(10, nodeWidth - 30), requiredGalleryHeight];
         };
+
+        addMiddleClickPan(container);
+        addWheelPassthrough(container);
 
         // --- SAFELY HIDE THE IMAGE_PATHS WIDGET ---
         const pathsWidget = node.widgets.find(w => w.name === "image_paths");

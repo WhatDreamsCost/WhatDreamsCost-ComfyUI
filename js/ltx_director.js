@@ -5342,34 +5342,49 @@ class TimelineEditor {
     }, 0);
   }
 
+  isGlobalPromptConnected() {
+    return this.node.inputs?.some(i => i.name === "global_prompt" && i.link != null) ?? false;
+  }
+
   getGlobalPrompt() {
+    if (this.isGlobalPromptConnected()) {
+      const index = this.node.inputs.findIndex(i => i.name === "global_prompt");
+      const originNode = this.node.getInputNode(index);
+      const val = originNode?.widgets?.[0]?.value;
+      return typeof val === "string" ? val : "";
+    }
     if (this.globalPromptInput) {
       return this.globalPromptInput.value || "";
     }
-    let val = "";
-    if (this.node) {
-      const globalInput = this.node.inputs?.find(i => i.name === "global_prompt");
-      if (globalInput && globalInput.link !== null && globalInput.link !== undefined) {
-        const link = window.app.graph?.links?.[globalInput.link];
-        if (link) {
-          const originNode = window.app.graph.getNodeById(link.origin_id);
-          if (originNode && originNode.widgets && originNode.widgets.length > 0) {
-            val = originNode.widgets[0].value || "";
-          }
-        }
-      } else {
-        const w = this.node.widgets?.find(x => x.name === "global_prompt");
-        if (w) {
-          val = w.value || "";
-        } else {
-          val = this.node.properties?.global_prompt || "";
-        }
+    const w = this.node.widgets?.find(x => x.name === "global_prompt");
+    return w ? (w.value || "") : (this.node.properties?.global_prompt || "");
+  }
+
+  updateGlobalPromptConnection() {
+    const connected = this.isGlobalPromptConnected();
+    const isMotionPrompt = !this.retakeMode && this.selectionType === "motion";
+    const title = "Controlled by the connected global_prompt input.";
+    if (this.globalPromptInput) {
+      this.globalPromptInput.readOnly = connected;
+      this.globalPromptInput.title = connected ? title : "";
+    }
+    if (this.promptInput) {
+      this.promptInput.readOnly = connected && isMotionPrompt;
+      this.promptInput.title = this.promptInput.readOnly ? title : "";
+    }
+    if (connected) {
+      const val = this.getGlobalPrompt();
+      const current = this.retakeMode ? this.timeline.retake_global_prompt : this.timeline.global_prompt;
+      if (val !== current || this.globalPromptInput?.value !== val ||
+          (isMotionPrompt && this.promptInput?.value !== val)) {
+        this.syncGlobalPrompt(val);
       }
     }
-    return val;
   }
 
   syncGlobalPrompt(val) {
+    const connected = this.isGlobalPromptConnected();
+    if (connected) val = this.getGlobalPrompt();
     if (this.node.properties) {
       this.node.properties.global_prompt = val;
     }
@@ -5378,29 +5393,7 @@ class TimelineEditor {
     } else {
       this.timeline.global_prompt = val;
     }
-    const globalInput = this.node.inputs?.find(i => i.name === "global_prompt");
-    let synced = false;
-    if (globalInput && globalInput.link !== null && globalInput.link !== undefined) {
-      const link = window.app.graph?.links?.[globalInput.link];
-      if (link) {
-        const originNode = window.app.graph.getNodeById(link.origin_id);
-        if (originNode && originNode.widgets && originNode.widgets.length > 0) {
-          const w = originNode.widgets[0];
-          const oldVal = w.value;
-          w.value = val;
-          if (originNode.onWidgetChanged) {
-            originNode.onWidgetChanged(w.name, val, oldVal, w);
-          }
-          if (w.callback) {
-            try {
-              originNode.widgets[0].callback(val);
-            } catch (err) { }
-          }
-          synced = true;
-        }
-      }
-    }
-    if (!synced) {
+    if (!connected) {
       const w = this.node.widgets?.find(x => x.name === "global_prompt");
       if (w) {
         const oldVal = w.value;
@@ -5418,6 +5411,9 @@ class TimelineEditor {
     if (this.globalPromptInput && this.globalPromptInput.value !== val) {
       this.globalPromptInput.value = val;
     }
+    if (!this.retakeMode && this.selectionType === "motion" && this.promptInput) {
+      this.promptInput.value = val;
+    }
     if (this.node) {
       this.node.setDirtyCanvas(true, false);
     }
@@ -5429,6 +5425,7 @@ class TimelineEditor {
   }
 
   updateUIFromSelection() {
+    this.updateGlobalPromptConnection();
     if (this.selectedSegmentIds && this.isMultiSelectActive()) {
       if (this.globalPromptInput) {
         this.globalPromptInput.disabled = true;
@@ -11427,58 +11424,7 @@ app.registerExtension({
 
         const self = this;
         this._syncGlobalPromptFromLink = function () {
-          const globalInput = self.inputs?.find(i => i.name === "global_prompt");
-          if (globalInput && globalInput.link !== null && globalInput.link !== undefined) {
-            const link = app.graph.links[globalInput.link];
-            if (link) {
-              const originNode = app.graph.getNodeById(link.origin_id);
-              if (originNode) {
-                // Usually string values are in widgets[0] for primitives
-                if (originNode.widgets && originNode.widgets.length > 0) {
-                  const val = originNode.widgets[0].value;
-                  if (self._timelineEditor && self._timelineEditor.globalPromptInput) {
-                    const isRetake = self._timelineEditor.retakeMode;
-                    const currentValInEditor = isRetake ? (self._timelineEditor.timeline.retake_global_prompt || "") : (self._timelineEditor.timeline.global_prompt || "");
-                    if (val !== currentValInEditor) {
-                      if (isRetake) {
-                        self._timelineEditor.timeline.retake_global_prompt = val;
-                      } else {
-                        self._timelineEditor.timeline.global_prompt = val;
-                      }
-                      self._timelineEditor.globalPromptInput.value = val;
-                      if (self._timelineEditor.selectionType === "motion") {
-                        self._timelineEditor.promptInput.value = val;
-                      }
-                      if (self.properties) {
-                        self.properties.global_prompt = val;
-                      }
-                    } else if (self._timelineEditor.globalPromptInput.value !== val) {
-                      self._timelineEditor.globalPromptInput.value = val;
-                    }
-                  }
-                }
-              }
-            }
-          } else {
-            if (self.properties && self._timelineEditor && self._timelineEditor.globalPromptInput) {
-              const val = self.properties.global_prompt || "";
-              const isRetake = self._timelineEditor.retakeMode;
-              const currentValInEditor = isRetake ? (self._timelineEditor.timeline.retake_global_prompt || "") : (self._timelineEditor.timeline.global_prompt || "");
-              if (val !== currentValInEditor) {
-                if (isRetake) {
-                  self._timelineEditor.timeline.retake_global_prompt = val;
-                } else {
-                  self._timelineEditor.timeline.global_prompt = val;
-                }
-                self._timelineEditor.globalPromptInput.value = val;
-                if (self._timelineEditor.selectionType === "motion") {
-                  self._timelineEditor.promptInput.value = val;
-                }
-              } else if (self._timelineEditor.globalPromptInput.value !== val) {
-                self._timelineEditor.globalPromptInput.value = val;
-              }
-            }
-          }
+          self._timelineEditor?.updateGlobalPromptConnection();
         };
 
         const origOnConnectionsChange = this.onConnectionsChange;

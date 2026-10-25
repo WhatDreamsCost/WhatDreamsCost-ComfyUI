@@ -500,7 +500,7 @@ class LTXDirectorGuide:
         # Standard Timeline Keyframe Guidance:
         # Appends image segments as keyframes (and motion segments if present)
         # to the latent stream using standard LTX-Video cross-attention conditioning.
-        # Registers guide attention entries if IC-LoRA is active.
+        # Registers every guide so its attention entries partition all appended tokens.
         # -----------------------------------------------------------------------
         if len(images) > 0 or len(segments) > 0:
             print(f"[LTXDirectorGuide] Using Appended Keyframe Guidance. is_lora_active: {is_lora_active}")
@@ -536,9 +536,9 @@ class LTXDirectorGuide:
                 positive, negative, latent_image, noise_mask = nodes_lt.LTXVAddGuide.append_keyframe(
                     positive, negative, frame_idx, latent_image, noise_mask, guide_latent, strength, scale_factors
                 )
-                if is_lora_active:
-                    positive = _append_guide_attention_entry(positive, tokens_added, guide_orig_shape, attention_strength=image_attention_strength)
-                    negative = _append_guide_attention_entry(negative, tokens_added, guide_orig_shape, attention_strength=image_attention_strength)
+                attention_strength = image_attention_strength if is_lora_active else 1.0
+                positive = _append_guide_attention_entry(positive, tokens_added, guide_orig_shape, attention_strength=attention_strength)
+                negative = _append_guide_attention_entry(negative, tokens_added, guide_orig_shape, attention_strength=attention_strength)
 
             # B. Process Motion Video Segments
             for seg in segments:
@@ -608,9 +608,9 @@ class LTXDirectorGuide:
                     positive, negative, latent_image, noise_mask = nodes_lt.LTXVAddGuide.append_keyframe(
                         positive, negative, frame_idx, latent_image, noise_mask, guide_latent, video_strength, scale_factors, guide_mask=guide_mask, latent_downscale_factor=float(latent_downscale_factor), causal_fix=causal_fix
                     )
-                    if is_lora_active:
-                        positive = _append_guide_attention_entry(positive, tokens_added, guide_orig_shape, attention_strength=video_attention_strength)
-                        negative = _append_guide_attention_entry(negative, tokens_added, guide_orig_shape, attention_strength=video_attention_strength)
+                    attention_strength = video_attention_strength if is_lora_active else 1.0
+                    positive = _append_guide_attention_entry(positive, tokens_added, guide_orig_shape, attention_strength=attention_strength)
+                    negative = _append_guide_attention_entry(negative, tokens_added, guide_orig_shape, attention_strength=attention_strength)
                 except Exception as e:
                     raise RuntimeError(f"LTX Director Guide motion segment failed for {seg}: {e}") from e
 
